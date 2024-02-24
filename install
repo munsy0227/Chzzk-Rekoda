@@ -1,7 +1,21 @@
 #!/bin/bash
 
+echo "Checking if python exists"
+if command -v python3 > /dev/null 2>&1; then
+    py=$(which python3)
+    echo "Using python3"
+else
+    if python --version | grep -q 3.; then
+py=$(which python)
+echo "Using python"
+    else
+echo "Please install Python3 or 3.11 manually."
+exit 1
+    fi
+fi
+
 echo "필수 구성 요소를 설치합니다"
-python -m venv venv
+$py -m venv venv
 source venv/bin/activate
 pip install requests streamlink
 deactivate
