@@ -34,9 +34,15 @@ add_ffmpeg_to_path(os.path.dirname(ffmpeg_path))
 LIVE_DETAIL_API = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
 
 
+#방송상태 감지 주기 확인
+script_directory = os.path.dirname(os.path.abspath(__name__))
+time_file_path = os.path.join(script_directory, 'time_sleep.txt')
+with open(time_file_path, "r") as time_file:
+    timeout_str = time_file.readline().strip()
+    timeout = int(timeout_str)
+
 
 # 채널 정보
-script_directory = os.path.dirname(os.path.abspath(__name__))
 channels_file_path = os.path.join(script_directory, 'channels.json')
 with open(channels_file_path, "r") as channels_file:
     channels = json.load(channels_file)
@@ -128,7 +134,7 @@ def record_stream(channel, headers):
         else:
             print(f"{channel['name']} 채널은 현재 방송중이 아닙니다.")
 
-        time.sleep(80)  # 방송상태 감지 주기(초) 30~120초 권장
+        time.sleep(timeout)  # 방송상태 감지 주기(초) 30~120초 권장
 
 
 

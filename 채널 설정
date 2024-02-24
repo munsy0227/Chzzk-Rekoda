@@ -42,3 +42,7 @@ echo "}" >> delays.json
 
 echo "delays.json 파일이 생성되었습니다."
 
+echo "방송상태 감지 주기(초)를 설정합니다 30~120초 권장:"
+read -r time
+echo  $time > time_sleep.txt
+echo "time_sleep.txt 파일이 생성되었습니다."
