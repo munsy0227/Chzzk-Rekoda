@@ -5,5 +5,10 @@
 
 ## 설치 방법
 ```bash
+#ubuntu:
+sudo apt install ffmpeg
+#arch linux
+sudo pacman -S ffmpeg
+#공통사항
 ./install
 ```
