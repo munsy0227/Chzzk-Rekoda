@@ -12,3 +12,11 @@ sudo pacman -S ffmpeg
 #공통사항
 ./install
 ```
+
+## 사용 방법
+```bash
+#녹화 실행
+./chzzk_record
+#채널 설정
+./채널\ 설정
+```
