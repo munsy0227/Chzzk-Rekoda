@@ -90,6 +90,11 @@ def record_stream(channel, headers):
         delay = 0  # 기본값으로 0을 설정합니다.
 
     time.sleep(delay)  # 딜레이만큼 대기합니다.
+    
+    # active 필드가 "off"이면 녹화를 실행하지 않습니다.
+    if channel.get("active", "on") == "off":
+        print(f"{channel['name']} 채널은 비활성화되어 있습니다. 녹화를 실행하지 않습니다.")
+        return
 
     while True:
         live_info = get_live_info(channel, headers)
