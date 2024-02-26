@@ -11,6 +11,17 @@ delays_file_path = os.path.join(script_directory, 'delays.json')
 # channels 리스트 정의
 channels = []
 
+#쿠키 저장 변수
+def save_cookie_info(SES, AUT):
+    cookie_data = {
+        "NID_SES": SES,
+        "NID_AUT": AUT
+    }
+    cookie_file_path = "cookie.json"  # 쿠키 파일 경로 설정
+    with open(cookie_file_path, "w") as cookie_file:
+        json.dump(cookie_data, cookie_file, indent=2)
+    print("쿠키 정보가 성공적으로 저장되었습니다.")
+
 # 채널 수 불러오기
 if os.path.exists(channels_file_path):
     with open(channels_file_path, "r") as f:
@@ -75,7 +86,7 @@ while True:
                         print("다시 입력해주세요.\n")
                         time.sleep(1)
                         
-            if 값1 == "2":
+            elif 값1 == "2":
                 # 채널 삭제
                 print("현재 설정된 채널 목록:")
                 for 채널 in channels:
@@ -135,15 +146,16 @@ while True:
                 else:
                     print(f"ID가 {채널_ID}인 채널을 찾을 수 없습니다.")
             
-            if 값1 == "4":
+            elif 값1 == "4":
                 print("메뉴로 돌아갑니다")
+                time.sleep(1)
                 break
                 
             else:
                 print("다시 입력해주세요./이전 메뉴로 돌아갑니다.\n")
                 time.sleep(1)
 
-    if 값 == "2":
+    elif 값 == "2":
         while True:
             print("\n1. 녹화용 쓰레드 수 설정\n2. 방송 재탐색 주기\n3. 녹화파일 해상도\n4. 돌아가기")
             값2 = str(input("실행하고 싶은 번호를 입력해주세요: "))
@@ -183,6 +195,7 @@ while True:
         
             elif 값2 == "4":
                 print("메뉴로 돌아갑니다")
+                time.sleep(1)
                 break
             
             else:
@@ -195,9 +208,12 @@ while True:
                 
             
     elif 값 == "3":
-        print("test")
+        SES = str(input("SES를 입력하세요: "))
+        AUT = str(input("AUT를 입력하세요: "))
+        save_cookie_info(SES, AUT)
+        
     elif 값 == "4":
-        print("설정을 마침니다.")
+        print("설정을 마칩니다.")
         break
     else:
         print("다시 입력해주세요.\n")
