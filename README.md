@@ -10,6 +10,8 @@ sudo apt install ffmpeg
 #arch linux
 sudo pacman -S ffmpeg
 #공통사항
+git clone https://github.com/munsy0227/Chzzk-Auto-Recorder-for-Linux.git
+cd Chzzk-Auto-Recorder-for-Linux
 ./install
 ```
 
@@ -17,13 +19,7 @@ sudo pacman -S ffmpeg
 ```bash
 #녹화 실행
 ./chzzk_record
-#채널 설정
-./채널\ 설정
+#설정
+./settings
 ```
-## 수정 예정 사항
-- 채널 설정 파이썬 기반으로 바꿀 예정
-- 채널 설정에 기능 추가
-- 특정 채널 녹화 on/off 추가
-- 쿠키 설정 추가
-- 더 자세한 사용법
-- 기타 문제 해결
+
