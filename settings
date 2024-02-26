@@ -1,0 +1,20 @@
+#!/bin/bash
+
+echo "Checking if python exists"
+if command -v python3 > /dev/null 2>&1; then
+    py=$(which python3)
+    echo "Using python3"
+else
+    if python --version | grep -q 3.; then
+py=$(which python)
+echo "Using python"
+    else
+echo "Please install Python3 or 3.11 manually."
+exit 1
+    fi
+fi
+
+source venv/bin/activate
+$py settings.py
+
+exit 0
