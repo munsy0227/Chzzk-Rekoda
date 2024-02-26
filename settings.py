@@ -143,8 +143,57 @@ while True:
                 print("다시 입력해주세요./이전 메뉴로 돌아갑니다.\n")
                 time.sleep(1)
 
-    elif 값 == "2":
-        print("test")
+    if 값 == "2":
+        while True:
+            print("\n1. 녹화용 쓰레드 수 설정\n2. 방송 재탐색 주기\n3. 녹화파일 해상도\n4. 돌아가기")
+            값2 = str(input("실행하고 싶은 번호를 입력해주세요: "))
+        
+            if 값2 == "1":
+                쓰레드_파일_경로 = os.path.join(script_directory, 'thread.txt')
+                with open(쓰레드_파일_경로, "r") as thread_file:
+                    쓰레드 = thread_file.readline().strip()
+                print(f"현재 녹화용 쓰레드 수는 {쓰레드}입니다.")
+                print("2~4쓰레드 권장, 저사양은 2쓰레드 / 여유있으면 4쓰레드")
+                새_쓰레드 = str(input("변경할 쓰레드 수를 입력하세요: "))
+                # TODO: 입력된 값을 쓰레드 변수에 적용
+                with open(쓰레드_파일_경로, "w") as thread_file:
+                    thread_file.write(새_쓰레드)
+                print("쓰레드 수가 변경되었습니다.")
+        
+            elif 값2 == "2":
+                재탐색_주기_파일_경로 = os.path.join(script_directory, 'time_sleep.txt')
+                with open(재탐색_주기_파일_경로, "r") as time_sleep_file:
+                    재탐색_주기 = time_sleep_file.readline().strip()
+                print(f"현재 방송 재탐색 주기는 {재탐색_주기}초 입니다.")
+                새_재탐색_주기 = str(input("변경할 재탐색 주기를 입력하세요 (초 단위): "))
+                with open(재탐색_주기_파일_경로, "w") as time_sleep_file:
+                    time_sleep_file.write(새_재탐색_주기)
+                print("방송 재탐색 주기가 변경되었습니다.")
+        
+            elif 값2 == "3":
+                해상도_파일_경로 = os.path.join(script_directory, 'resolution.txt')
+                with open(해상도_파일_경로, "r") as resolution_file:
+                    해상도 = resolution_file.readline().strip()
+                print(f"현재 녹화파일 해상도는 {해상도}입니다.")
+                새_해상도 = str(input("변경할 해상도를 입력하세요 (예: best, 720p, 1080p): "))
+                # TODO: 입력된 값을 해상도 변수에 적용
+                with open(해상도_파일_경로, "w") as resolution_file:
+                    resolution_file.write(새_해상도)
+                print("녹화파일 해상도가 변경되었습니다.")
+        
+            elif 값2 == "4":
+                print("메뉴로 돌아갑니다")
+                break
+            
+            else:
+                print("다시 입력해주세요./이전 메뉴로 돌아갑니다.\n")
+                time.sleep(1)
+        
+        else:
+            print("다시 입력해주세요./이전 메뉴로 돌아갑니다.\n")
+            time.sleep(1)
+                
+            
     elif 값 == "3":
         print("test")
     elif 값 == "4":

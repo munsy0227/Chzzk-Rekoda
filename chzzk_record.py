@@ -41,6 +41,11 @@ with open(time_file_path, "r") as time_file:
     timeout_str = time_file.readline().strip()
     timeout = int(timeout_str)
 
+# thread.txt에서 값 불러오기
+thread_file_path = os.path.join(script_directory, 'thread.txt')
+with open(thread_file_path, "r") as thread_file:
+    threads_str = thread_file.readline().strip()
+    stream_segment_threads = int(threads_str) if threads_str.isdigit() else 2  # 기본값은 2로 설정합니다.
 
 # 채널 정보
 channels_file_path = os.path.join(script_directory, 'channels.json')
@@ -71,6 +76,10 @@ def get_session_cookies():
 
     return cookies
 
+# resolution.txt에서 값 불러오기
+resolution_file_path = os.path.join(script_directory, 'resolution.txt')
+with open(resolution_file_path, "r") as resolution_file:
+    resolution = resolution_file.readline().strip()
 
 # 방송정보 불러오기
 def get_live_info(channel, headers):
@@ -117,9 +126,9 @@ def record_stream(channel, headers):
                         [
                             streamlink_path,
                             stream_url,
-                            "best",   # 녹화본 해상도 설정(720p, 1080p, best(설정상 최고화질)
+                            resolution,   # 녹화본 해상도 설정(720p, 1080p, best(설정상 최고화질)
                             "--hls-live-restart",
-                            "--stream-segment-threads", "2", 
+                            "--stream-segment-threads", str(stream_segment_threads),  # 쓰레드 수를 설정합니다.
                             "--stream-segment-timeout", "5", 
                             "--stream-segment-attempts", "5",
                             "-o",
