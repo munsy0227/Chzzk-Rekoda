@@ -20,5 +20,4 @@ cd Chzzk-Auto-Recorder-for-Linux
 #설정
 ./settings
 ```
-## 수정 예정 사항
-- 치지직 파일당 9시간 제한 해결
+
