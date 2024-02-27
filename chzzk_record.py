@@ -105,8 +105,6 @@ def record_stream(channel, headers):
         print(f"{channel['name']} 채널은 비활성화되어 있습니다. 녹화를 실행하지 않습니다.")
         return
 
-    last_token_refresh = time.time()
-
     while True:
         live_info = get_live_info(channel, headers)
 
@@ -150,11 +148,6 @@ def record_stream(channel, headers):
         else:
             print(f"{channel['name']} 채널은 현재 방송중이 아닙니다.")
 
-        # 3시간마다 토큰을 새로고침합니다.
-        if time.time() - last_token_refresh >= 10800:
-            headers = get_auth_headers(get_session_cookies())
-            last_token_refresh = time.time()
-
         time.sleep(timeout)  # 방송상태 감지 주기(초) 30~120초 권장
 
 
@@ -174,4 +167,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
