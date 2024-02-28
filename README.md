@@ -7,7 +7,8 @@
 sudo apt install ffmpeg
 #arch linux
 sudo pacman -S ffmpeg
-#공통사항
+#Termux는 공통 사항대로 하면 되고 파이썬과 ffmpeg가 같이 설치됩니다.
+#공통 사항
 git clone https://github.com/munsy0227/Chzzk-Auto-Recorder-for-Linux.git
 cd Chzzk-Auto-Recorder-for-Linux
 ./install
