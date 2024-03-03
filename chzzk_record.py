@@ -4,8 +4,6 @@ import time
 import re
 import os
 import requests
-import signal
-import asyncio
 import logging
 from threading import Thread
 
@@ -22,7 +20,6 @@ THREAD_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'thr
 CHANNELS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'channels.json')
 DELAYS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'delays.json')
 COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.json')
-RESOLUTION_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'resolution.txt')
 
 # Load Configuration
 def load_json(file_path):
@@ -35,11 +32,6 @@ thread_file_content = load_json(THREAD_FILE_PATH)
 STREAM_SEGMENT_THREADS = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
 CHANNELS = load_json(CHANNELS_FILE_PATH)
 DELAYS = load_json(DELAYS_FILE_PATH)
-try:
-    resolution_data = load_json(RESOLUTION_FILE_PATH)
-    RESOLUTION = resolution_data.get("resolution", "1080p")
-except json.decoder.JSONDecodeError:
-    RESOLUTION = "1080p"  # Default resolution
 
 # Helper Functions
 def get_auth_headers(cookies):
@@ -87,7 +79,7 @@ def record_stream(channel, headers):
                 if stream_url:
                     try:
                         process = subprocess.Popen([
-                            STREAMLINK_PATH, stream_url, RESOLUTION, "--hls-live-restart",
+                            STREAMLINK_PATH, stream_url, "best", "--hls-live-restart",
                             "--stream-segment-threads", str(STREAM_SEGMENT_THREADS), "-o",
                             os.path.join(channel['output_dir'], output_file), "--ffmpeg-ffmpeg",
                             FFMPEG_PATH, "--ffmpeg-copyts"
@@ -127,3 +119,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
