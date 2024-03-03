@@ -79,28 +79,33 @@ def record_stream(channel, headers):
             current_time = time.strftime("%Y-%m-%d_%H:%M:%S")
 
             output_file = f"[{current_time}] {channel_name} {live_title}.ts"
-            stream_url = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [{}])[0].get("path", "")
+            live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [])
 
-            if stream_url:
-                try:
-                    process = subprocess.Popen([
-                        STREAMLINK_PATH, stream_url, RESOLUTION, "--hls-live-restart",
-                        "--stream-segment-threads", str(STREAM_SEGMENT_THREADS), "-o",
-                        os.path.join(channel['output_dir'], output_file), "--ffmpeg-ffmpeg",
-                        FFMPEG_PATH, "--ffmpeg-copyts"
-                    ], stdout=subprocess.PIPE, universal_newlines=True)
+            if live_playback_json:
+                stream_url = live_playback_json[0].get("path", "")
 
-                    # 출력을 터미널에 표시
-                    for line in iter(process.stdout.readline, ''):
-                        print(line, end='')
+                if stream_url:
+                    try:
+                        process = subprocess.Popen([
+                            STREAMLINK_PATH, stream_url, RESOLUTION, "--hls-live-restart",
+                            "--stream-segment-threads", str(STREAM_SEGMENT_THREADS), "-o",
+                            os.path.join(channel['output_dir'], output_file), "--ffmpeg-ffmpeg",
+                            FFMPEG_PATH, "--ffmpeg-copyts"
+                        ], stdout=subprocess.PIPE, universal_newlines=True)
 
-                    process.stdout.close()
-                    return_code = process.wait()
+                        # Display standard output in the terminal
+                        for line in iter(process.stdout.readline, ''):
+                            print(line, end='')
 
-                    if return_code != 0:
-                        logger.error(f"Error occurred while recording {channel['name']}: subprocess returned non-zero exit code {return_code}")
-                except Exception as e:
-                    logger.error(f"Error occurred while recording {channel['name']}: {e}")
+                        process.stdout.close()
+                        return_code = process.wait()
+
+                        if return_code != 0:
+                            logger.error(f"Error occurred while recording {channel['name']}: subprocess returned non-zero exit code {return_code}")
+                    except Exception as e:
+                        logger.error(f"Error occurred while recording {channel['name']}: {e}")
+            else:
+                logger.info(f"{channel['name']} channel has no media information. Assuming the broadcast has ended.")
         else:
             logger.info(f"{channel['name']} channel is not live.")
 
