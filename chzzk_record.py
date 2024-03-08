@@ -1,11 +1,25 @@
 import json
-import subprocess
+import asyncio
+import aiohttp
 import time
 import re
 import os
 import requests
 import logging
+import hashlib
 from threading import Thread
+
+MAX_FILENAME_BYTES = 254  # Maximum number of bytes for filename
+
+def shorten_filename(filename):
+    if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
+        hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
+        name, extension = os.path.splitext(filename)
+        shortened_name = f"{name[:MAX_FILENAME_BYTES - 20]}_{hash_value}{extension}"
+        logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
+        return shortened_name
+    else:
+        return filename
 
 # Logging Configuration
 logging.basicConfig(level=logging.INFO)
@@ -22,16 +36,17 @@ DELAYS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'del
 COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.json')
 
 # Load Configuration
-def load_json(file_path):
+def load_setting(file_path):
     with open(file_path, "r") as file:
-        return json.load(file)
+        return file.read().strip()
 
-time_file_content = load_json(TIME_FILE_PATH)
-TIMEOUT = time_file_content if isinstance(time_file_content, int) else int(time_file_content.get("timeout", 60))
-thread_file_content = load_json(THREAD_FILE_PATH)
-STREAM_SEGMENT_THREADS = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
-CHANNELS = load_json(CHANNELS_FILE_PATH)
-DELAYS = load_json(DELAYS_FILE_PATH)
+time_file_content = load_setting(TIME_FILE_PATH)
+TIMEOUT = int(time_file_content) if time_file_content.isdigit() else 60
+thread_file_content = load_setting(THREAD_FILE_PATH)
+STREAM_SEGMENT_THREADS = int(thread_file_content) if thread_file_content.isdigit() else 2
+with open(CHANNELS_FILE_PATH, 'r') as channels_file:
+    CHANNELS = json.load(channels_file)
+DELAYS = json.load(open(DELAYS_FILE_PATH))
 
 # Helper Functions
 def get_auth_headers(cookies):
@@ -44,79 +59,95 @@ def get_session_cookies():
     with open(COOKIE_FILE_PATH, 'r') as cookie_file:
         return json.load(cookie_file)
 
-def get_live_info(channel, headers):
+async def get_live_info(channel, headers):
     try:
-        response = requests.get(LIVE_DETAIL_API.format(channel_id=channel["id"]), headers=headers)
-        response.raise_for_status()
-        return response.json().get("content", {})
-    except requests.RequestException as e:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(LIVE_DETAIL_API.format(channel_id=channel["id"]), headers=headers) as response:
+                response.raise_for_status()
+                data = await response.json()
+                return data.get("content", {})
+    except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
         return None
 
+async def fetch_stream_url(channel, headers):
+    live_info = await get_live_info(channel, headers)
+    live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [])
+    if live_playback_json:
+        return live_playback_json[0].get("path", "")
+    else:
+        return None
+
 # Main Recording Function
-def record_stream(channel, headers):
+async def record_stream(channel, headers):
     delay = DELAYS.get(channel.get("identifier"), 0)
-    time.sleep(delay)
+    await asyncio.sleep(delay)
 
     if channel.get("active", "on") == "off":
         logger.info(f"{channel['name']} channel is inactive. Skipping recording.")
         return
 
     while True:
-        live_info = get_live_info(channel, headers)
+        stream_url = await fetch_stream_url(channel, headers)
+        
+        if stream_url:
+            try:
+                current_time = time.strftime("%Y-%m-%d_%H:%M:%S")
+                channel_name = channel.get("name", "Unknown")
+                output_dir = channel.get("output_dir", "./recordings")
+                output_file = shorten_filename(f"[{current_time}] {channel_name}.ts")
+                
+                # Ensure output directory exists
+                os.makedirs(output_dir, exist_ok=True)
 
-        if live_info and live_info.get("status") == "OPEN":
-            channel_name = live_info.get("channel", {}).get("channelName")
-            live_title = re.sub(r"[^\uAC00-\uD7A30-9a-zA-Z\s]", '', live_info.get("liveTitle").rstrip())
-            current_time = time.strftime("%Y-%m-%d_%H:%M:%S")
+                ffmpeg_command = [
+                    FFMPEG_PATH,
+                    "-i", stream_url,
+                    "-c", "copy",
+                    os.path.join(output_dir, output_file)
+                ]
 
-            output_file = f"[{current_time}] {channel_name} {live_title}.ts"
-            live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [])
+                process = await asyncio.create_subprocess_exec(
+                    *ffmpeg_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
 
-            if live_playback_json:
-                stream_url = live_playback_json[0].get("path", "")
+                # Display standard output in the terminal
+                async for line in process.stdout:
+                    print(line.decode().strip())
 
-                if stream_url:
-                    try:
-                        process = subprocess.Popen([
-                            STREAMLINK_PATH, stream_url, "best", "--hls-live-restart",
-                            "--stream-segment-threads", str(STREAM_SEGMENT_THREADS), "-o",
-                            os.path.join(channel['output_dir'], output_file), "--ffmpeg-ffmpeg",
-                            FFMPEG_PATH, "--ffmpeg-copyts"
-                        ], stdout=subprocess.PIPE, universal_newlines=True)
+                await process.communicate()
 
-                        # Display standard output in the terminal
-                        for line in iter(process.stdout.readline, ''):
-                            print(line, end='')
-
-                        process.stdout.close()
-                        return_code = process.wait()
-
-                        if return_code != 0:
-                            logger.error(f"Error occurred while recording {channel['name']}: subprocess returned non-zero exit code {return_code}")
-                    except Exception as e:
-                        logger.error(f"Error occurred while recording {channel['name']}: {e}")
-            else:
-                logger.info(f"{channel['name']} channel has no media information. Assuming the broadcast has ended.")
+                if process.returncode != 0:
+                    logger.error(f"Error occurred while recording {channel_name}: subprocess returned non-zero exit code {process.returncode}")
+            except Exception as e:
+                logger.error(f"Error occurred while recording {channel_name}: {e}")
         else:
-            logger.info(f"{channel['name']} channel is not live.")
+            logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
 
-        time.sleep(TIMEOUT)
+        await asyncio.sleep(TIMEOUT)
+
+async def monitor_stream_url(channel, headers):
+    while True:
+        stream_url = await fetch_stream_url(channel, headers)
+        if stream_url:
+            logger.info(f"New stream URL for {channel.get('name', 'Unknown')}: {stream_url}")
+        else:
+            logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
+        await asyncio.sleep(21600)  # Refresh URL
 
 # Main Function
-def main():
+async def main():
     headers = get_auth_headers(get_session_cookies())
-    threads = [Thread(target=record_stream, args=(channel, headers)) for channel in CHANNELS]
+    tasks = [record_stream(channel, headers) for channel in CHANNELS]
+    monitor_tasks = [monitor_stream_url(channel, headers) for channel in CHANNELS]
 
     try:
-        for thread in threads:
-            thread.start()
-
-        for thread in threads:
-            thread.join()
+        await asyncio.gather(*tasks, *monitor_tasks)
     except KeyboardInterrupt:
         logger.info("Recording stopped by user.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 

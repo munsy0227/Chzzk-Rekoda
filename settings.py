@@ -155,7 +155,7 @@ while True:
 
     elif choice == "2":
         while True:
-            print("\n1. Set Recording Threads\n2. Set Broadcast Rescan Interval\n3. Set Recording File Resolution\n4. Go Back")
+            print("\n1. Set Recording Threads\n2. Set Broadcast Rescan Interval\n3. Go Back")
             choice2 = str(input("Enter the number you want to execute: "))
         
             if choice2 == "1":
@@ -181,17 +181,6 @@ while True:
                 print("The broadcast rescan interval has been changed.")
         
             elif choice2 == "3":
-                resolution_file_path = os.path.join(script_directory, 'resolution.txt')
-                with open(resolution_file_path, "r") as resolution_file:
-                    resolution = resolution_file.readline().strip()
-                print(f"The current recording file resolution is {resolution}.")
-                new_resolution = str(input("Enter the resolution to change (e.g., best, 720p, 1080p): "))
-                # TODO: Apply the entered value to the resolution variable
-                with open(resolution_file_path, "w") as resolution_file:
-                    resolution_file.write(new_resolution)
-                print("The recording file resolution has been changed.")
-        
-            elif choice2 == "4":
                 print("Returning to the menu")
                 time.sleep(1)
                 break
