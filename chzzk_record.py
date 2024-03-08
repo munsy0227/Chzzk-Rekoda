@@ -25,6 +25,11 @@ def shorten_filename(filename):
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# File Handler for Logging
+file_handler = logging.FileHandler('log.log')
+file_handler.setLevel(logging.INFO)
+logger.addHandler(file_handler)
+
 # Constants
 STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
 FFMPEG_PATH = "/usr/bin/ffmpeg"
@@ -41,7 +46,7 @@ def load_setting(file_path):
         return file.read().strip()
 
 time_file_content = load_setting(TIME_FILE_PATH)
-TIMEOUT = int(time_file_content) if time_file_content.isdigit() else 60
+TIMEOUT = int(time_file_content) if time_file_content.isdigit() else 21600  # 6 hours
 thread_file_content = load_setting(THREAD_FILE_PATH)
 STREAM_SEGMENT_THREADS = int(thread_file_content) if thread_file_content.isdigit() else 2
 with open(CHANNELS_FILE_PATH, 'r') as channels_file:
@@ -87,6 +92,10 @@ async def record_stream(channel, headers):
         logger.info(f"{channel['name']} channel is inactive. Skipping recording.")
         return
 
+    current_output_file = None
+    process = None
+    current_stream_url = None
+
     while True:
         stream_url = await fetch_stream_url(channel, headers)
         
@@ -94,24 +103,36 @@ async def record_stream(channel, headers):
             try:
                 current_time = time.strftime("%Y-%m-%d_%H:%M:%S")
                 channel_name = channel.get("name", "Unknown")
+                live_info = await get_live_info(channel, headers)
+                live_title = re.sub(r"[^\uAC00-\uD7A30-9a-zA-Z\s]", '', live_info.get("liveTitle", "").rstrip())
                 output_dir = channel.get("output_dir", "./recordings")
-                output_file = shorten_filename(f"[{current_time}] {channel_name}.ts")
+                output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
                 
                 # Ensure output directory exists
                 os.makedirs(output_dir, exist_ok=True)
 
-                ffmpeg_command = [
-                    FFMPEG_PATH,
-                    "-i", stream_url,
-                    "-c", "copy",
-                    os.path.join(output_dir, output_file)
-                ]
+                if stream_url != current_stream_url or current_output_file is None:
+                    current_output_file = os.path.join(output_dir, output_file)
+                    ffmpeg_command = [
+                        FFMPEG_PATH,
+                        "-i", stream_url,
+                        "-c", "copy",
+                        current_output_file
+                    ]
 
-                process = await asyncio.create_subprocess_exec(
-                    *ffmpeg_command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
+                    if process is not None:
+                        logger.info(f"Stopping recording for {channel_name}.")
+                        process.terminate()
+                        await process.wait()
+                        process = None
+
+                    process = await asyncio.create_subprocess_exec(
+                        *ffmpeg_command,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
+                    )
+
+                    logger.info(f"Recording started for {channel_name} at {current_time}.")
 
                 # Display standard output in the terminal
                 async for line in process.stdout:
@@ -135,7 +156,7 @@ async def monitor_stream_url(channel, headers):
             logger.info(f"New stream URL for {channel.get('name', 'Unknown')}: {stream_url}")
         else:
             logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
-        await asyncio.sleep(21600)  # Refresh URL
+        await asyncio.sleep(21600)  # Refresh every 21600 seconds
 
 # Main Function
 async def main():
