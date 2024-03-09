@@ -73,10 +73,14 @@ async def get_live_info(channel, headers):
                 return data.get("content", {})
     except aiohttp.ClientError as e:
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
-        return None
+        return {}  # Return an empty dictionary instead of None
 
 async def fetch_stream_url(channel, headers):
     live_info = await get_live_info(channel, headers)
+    if not live_info:  # Check if live_info is empty
+        logger.error(f"Failed to fetch live info for {channel['name']}.")
+        return None
+
     live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [])
     if live_playback_json:
         return live_playback_json[0].get("path", "")
