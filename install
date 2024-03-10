@@ -17,7 +17,7 @@ fi
 echo "Installing required components"
 $py -m venv venv
 source venv/bin/activate
-pip install --upgrade -y requests streamlink aiohttp
+pip install --upgrade requests streamlink aiohttp
 deactivate
 echo "Required components installation completed!"
 
