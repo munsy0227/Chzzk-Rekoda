@@ -6,23 +6,23 @@ if command -v python3 > /dev/null 2>&1; then
     echo "Using python3"
 else
     if python --version | grep -q 3.; then
-py=$(which python)
-echo "Using python"
+        py=$(which python)
+        echo "Using python"
     else
-echo "Please install Python3 or 3.11 manually."
-exit 1
+        echo "Please install Python3 or 3.11 manually."
+        exit 1
     fi
 fi
 
-echo "필수 구성 요소를 설치합니다"
+echo "Installing required components"
 $py -m venv venv
 source venv/bin/activate
-pip install requests streamlink
+pip install --upgrade -y requests streamlink aiohttp
 deactivate
-echo "필수 구성요소 설치가 완료되었습니다!"
+echo "Required components installation completed!"
 
-echo "설정을 시작합니다"
+echo "Starting configuration"
 bash settings
-echo "설정이 완료 되었습니다!"
-echo "설정을 다시 하고 싶으면 \"settings\" 스크립트를 직접 실행하세요"
+echo "Configuration completed!"
+echo "If you want to reconfigure, please run the \"settings\" script directly"
 exit 0

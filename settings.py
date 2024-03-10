@@ -1,5 +1,4 @@
 import os
-import time
 import json
 
 # File path settings
@@ -39,7 +38,6 @@ else:
 
 def try_again():
         print("Please try again.\n")
-        time.sleep(1)
 
 while True:
     print("Chzzk Auto-Recording Settings")
@@ -80,7 +78,6 @@ while True:
                         break
                     elif answer == "N":
                         print("Then please enter it again")
-                        time.sleep(1)
                         break
                     else:
                         try_again()
@@ -147,7 +144,6 @@ while True:
             
             elif choice1 == "4":
                 print("Returning to the menu")
-                time.sleep(1)
                 break
                 
             else:
@@ -182,7 +178,6 @@ while True:
         
             elif choice2 == "3":
                 print("Returning to the menu")
-                time.sleep(1)
                 break
             
             else:
@@ -198,5 +193,4 @@ while True:
         break
     else:
         print("Please try again.\n")
-        time.sleep(1)
 

@@ -1,33 +1,36 @@
 import json
 import asyncio
-import aiohttp
-import time
-import re
 import os
 import requests
 import logging
+import re
+import aiohttp
+import time
+import subprocess
 import hashlib
 from threading import Thread
 
-MAX_FILENAME_BYTES = 254  # Maximum number of bytes for filename
-
-def shorten_filename(filename):
-    if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
-        hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
-        name, extension = os.path.splitext(filename)
-        shortened_name = f"{name[:MAX_FILENAME_BYTES - 20]}_{hash_value}{extension}"
-        logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
-        return shortened_name
-    else:
-        return filename
-
 # Logging Configuration
-logging.basicConfig(level=logging.INFO)
+# Set logging level to DEBUG to display all logs
+logging.basicConfig(level=logging.DEBUG)
+# Get logger for the current module
 logger = logging.getLogger(__name__)
+# Set logger's level to DEBUG
+logger.setLevel(logging.DEBUG)
 
-# File Handler for Logging
+# Add a file handler to save logs to a file
 file_handler = logging.FileHandler('log.log')
-file_handler.setLevel(logging.INFO)
+# Set file handler's level to DEBUG
+file_handler.setLevel(logging.DEBUG)
+# Define log message format
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Set formatter for the file handler
+file_handler.setFormatter(formatter)
+
+# Add the file handler to the logger
+logger.addHandler(file_handler)
+
+# Add file handler to logger
 logger.addHandler(file_handler)
 
 # Constants
@@ -40,18 +43,19 @@ CHANNELS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'c
 DELAYS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'delays.json')
 COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.json')
 
-# Load Configuration
-def load_setting(file_path):
-    with open(file_path, "r") as file:
-        return file.read().strip()
+MAX_FILENAME_BYTES = 254  # Maximum number of bytes for filename
 
-time_file_content = load_setting(TIME_FILE_PATH)
-TIMEOUT = int(time_file_content) if time_file_content.isdigit() else 21600  # 6 hours
-thread_file_content = load_setting(THREAD_FILE_PATH)
-STREAM_SEGMENT_THREADS = int(thread_file_content) if thread_file_content.isdigit() else 2
-with open(CHANNELS_FILE_PATH, 'r') as channels_file:
-    CHANNELS = json.load(channels_file)
-DELAYS = json.load(open(DELAYS_FILE_PATH))
+# Load Configuration
+def load_json(file_path):
+    with open(file_path, "r") as file:
+        return json.load(file)
+
+time_file_content = load_json(TIME_FILE_PATH)
+TIMEOUT = time_file_content if isinstance(time_file_content, int) else int(time_file_content.get("timeout", 60))
+thread_file_content = load_json(THREAD_FILE_PATH)
+STREAM_SEGMENT_THREADS = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
+CHANNELS = load_json(CHANNELS_FILE_PATH)
+DELAYS = load_json(DELAYS_FILE_PATH)
 
 # Helper Functions
 def get_auth_headers(cookies):
@@ -87,7 +91,16 @@ async def fetch_stream_url(channel, headers):
     else:
         return None
 
-# Main Recording Function
+def shorten_filename(filename):
+    if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
+        hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
+        name, extension = os.path.splitext(filename)
+        shortened_name = f"{name[:MAX_FILENAME_BYTES - 20]}_{hash_value}{extension}"
+        logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
+        return shortened_name
+    else:
+        return filename
+
 async def record_stream(channel, headers):
     delay = DELAYS.get(channel.get("identifier"), 0)
     await asyncio.sleep(delay)
@@ -96,9 +109,7 @@ async def record_stream(channel, headers):
         logger.info(f"{channel['name']} channel is inactive. Skipping recording.")
         return
 
-    current_output_file = None
-    process = None
-    current_stream_url = None
+    recording_started = False
 
     while True:
         stream_url = await fetch_stream_url(channel, headers)
@@ -111,65 +122,51 @@ async def record_stream(channel, headers):
                 live_title = re.sub(r"[^\uAC00-\uD7A30-9a-zA-Z\s]", '', live_info.get("liveTitle", "").rstrip())
                 output_dir = channel.get("output_dir", "./recordings")
                 output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
+                output_path = os.path.join(output_dir, output_file)
                 
                 # Ensure output directory exists
                 os.makedirs(output_dir, exist_ok=True)
 
-                if stream_url != current_stream_url or current_output_file is None:
-                    current_output_file = os.path.join(output_dir, output_file)
-                    ffmpeg_command = [
-                        FFMPEG_PATH,
-                        "-i", stream_url,
-                        "-c", "copy",
-                        current_output_file
-                    ]
-
-                    if process is not None:
-                        logger.info(f"Stopping recording for {channel_name}.")
-                        process.terminate()
-                        await process.wait()
-                        process = None
-
-                    process = await asyncio.create_subprocess_exec(
-                        *ffmpeg_command,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-
+                if not recording_started:
                     logger.info(f"Recording started for {channel_name} at {current_time}.")
+                    recording_started = True
 
-                # Display standard output in the terminal
-                async for line in process.stdout:
-                    print(line.decode().strip())
+                process = await asyncio.create_subprocess_exec(
+                    STREAMLINK_PATH, stream_url, "best", "-o", output_path, "--hls-live-restart",
+                    "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
+                    "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                )
 
-                await process.communicate()
-
+                stdout, stderr = await process.communicate()
                 if process.returncode != 0:
                     logger.error(f"Error occurred while recording {channel_name}: subprocess returned non-zero exit code {process.returncode}")
+                    if stdout:
+                        logger.error(f"STDOUT: {stdout.decode().strip()}")
+                    if stderr:
+                        logger.error(f"STDERR: {stderr.decode().strip()}")
+                    logger.info(f"Recording stopped for {channel_name}.")
+                    recording_started = False
+
             except Exception as e:
                 logger.error(f"Error occurred while recording {channel_name}: {e}")
+                logger.info(f"Recording stopped for {channel_name}.")
+                recording_started = False
+
         else:
             logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
+            if recording_started:
+                logger.info(f"Recording stopped for {channel_name}.")
+                recording_started = False
 
         await asyncio.sleep(TIMEOUT)
 
-async def monitor_stream_url(channel, headers):
-    while True:
-        stream_url = await fetch_stream_url(channel, headers)
-        if stream_url:
-            logger.info(f"New stream URL for {channel.get('name', 'Unknown')}: {stream_url}")
-        else:
-            logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
-        await asyncio.sleep(21600)  # Refresh every 21600 seconds
-
-# Main Function
 async def main():
     headers = get_auth_headers(get_session_cookies())
     tasks = [record_stream(channel, headers) for channel in CHANNELS]
-    monitor_tasks = [monitor_stream_url(channel, headers) for channel in CHANNELS]
 
     try:
-        await asyncio.gather(*tasks, *monitor_tasks)
+        await asyncio.gather(*tasks)
     except KeyboardInterrupt:
         logger.info("Recording stopped by user.")
 
