@@ -110,6 +110,7 @@ async def record_stream(channel, headers):
         return
 
     recording_started = False
+    stream_process = None
 
     while True:
         stream_url = await fetch_stream_url(channel, headers)
@@ -131,20 +132,20 @@ async def record_stream(channel, headers):
                     logger.info(f"Recording started for {channel_name} at {current_time}.")
                     recording_started = True
 
-                process = await asyncio.create_subprocess_exec(
+                if stream_process:
+                    stream_process.kill()  # Ends the previous streaming process
+
+                stream_process = await asyncio.create_subprocess_exec(
                     STREAMLINK_PATH, stream_url, "best", "-o", output_path, "--hls-live-restart",
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE
                 )
 
-                stdout, stderr = await process.communicate()
-                if process.returncode != 0:
-                    logger.error(f"Error occurred while recording {channel_name}: subprocess returned non-zero exit code {process.returncode}")
-                    if stdout:
-                        logger.error(f"STDOUT: {stdout.decode().strip()}")
-                    if stderr:
-                        logger.error(f"STDERR: {stderr.decode().strip()}")
+                await stream_process.wait()  # Wait for streaming to end
+
+                logger.info(f"streamlink process exited for {channel_name}.")
+                if recording_started:
                     logger.info(f"Recording stopped for {channel_name}.")
                     recording_started = False
 
@@ -152,14 +153,14 @@ async def record_stream(channel, headers):
                 logger.error(f"Error occurred while recording {channel_name}: {e}")
                 logger.info(f"Recording stopped for {channel_name}.")
                 recording_started = False
-
         else:
             logger.info(f"No stream URL available for {channel.get('name', 'Unknown')}")
             if recording_started:
                 logger.info(f"Recording stopped for {channel_name}.")
                 recording_started = False
 
-        await asyncio.sleep(TIMEOUT)
+        await asyncio.sleep(TIMEOUT)  # Wait for streaming to restart
+
 
 async def main():
     headers = get_auth_headers(get_session_cookies())
