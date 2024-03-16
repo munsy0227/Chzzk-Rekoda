@@ -85,11 +85,15 @@ async def fetch_stream_url(channel, headers):
         logger.error(f"Failed to fetch live info for {channel['name']}.")
         return None
 
-    live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}").get("media", [])
-    if live_playback_json:
-        return live_playback_json[0].get("path", "")
-    else:
-        return None
+    live_playback_json = json.loads(live_info.get("livePlaybackJson") or "{}")
+    media_list = live_playback_json.get("media", [])
+    
+    for media in media_list:
+        stream_url = media.get("path", "")
+        if stream_url:
+            return stream_url
+
+    return None
 
 def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
@@ -160,7 +164,6 @@ async def record_stream(channel, headers):
                 recording_started = False
 
         await asyncio.sleep(TIMEOUT)  # Wait for streaming to restart
-
 
 async def main():
     headers = get_auth_headers(get_session_cookies())
