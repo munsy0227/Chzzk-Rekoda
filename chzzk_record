@@ -25,7 +25,7 @@ else
 fi
 
 # Execute your Python script
-$py chzzk_record.py
+"$VENV_DIR/bin/python" chzzk_record.py
 
 exit 0
 

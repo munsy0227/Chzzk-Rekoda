@@ -30,7 +30,7 @@ else
 fi
 
 # Install required Python packages
-pip install --upgrade streamlink aiohttp aiofiles orjson
+"$VENV_DIR/bin/pip" install --upgrade streamlink aiohttp aiofiles orjson
 
 # Deactivate the virtual environment
 deactivate
