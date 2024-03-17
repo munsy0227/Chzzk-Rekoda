@@ -137,7 +137,14 @@ async def record_stream(channel, headers):
                     recording_started = True
 
                 if stream_process:
-                    stream_process.kill()  # Ends the previous streaming process
+                    # Check if the process has already terminated
+                    if stream_process.returncode is None:
+                        stream_process.kill()  # Ends the previous streaming process
+                        await stream_process.wait()  # Ensure the process is fully terminated
+                        logger.info("Stream process killed successfully.")
+                    else:
+                        # Process has already terminated
+                        logger.info(f"Streaming process for {channel_name} already terminated with return code {stream_process.returncode}.")
 
                 stream_process = await asyncio.create_subprocess_exec(
                     STREAMLINK_PATH, stream_url, "best", "-o", output_path, "--hls-live-restart",
