@@ -1,11 +1,12 @@
 #!/bin/bash
 
-echo "Checking if python exists"
+echo "Checking if Python exists"
+# Check for Python 3 and assign its path to a variable
 if command -v python3 > /dev/null 2>&1; then
     py=$(which python3)
     echo "Using python3"
 else
-    if python --version | grep -q 3.; then
+    if python --version 2>&1 | grep -q '3.'; then
         py=$(which python)
         echo "Using python"
     else
@@ -15,14 +16,31 @@ else
 fi
 
 echo "Installing required components"
+# Create a virtual environment in the current directory
 $py -m venv venv
-source venv/bin/activate
+
+# Dynamically get the current directory's virtual environment activation script
+VENV_DIR="$PWD/venv"
+if [ -d "$VENV_DIR" ]; then
+    echo "Activating virtual environment in $VENV_DIR"
+    source "$VENV_DIR/bin/activate"
+else
+    echo "Virtual environment not found in $VENV_DIR"
+    exit 1
+fi
+
+# Install required Python packages
 pip install --upgrade streamlink aiohttp aiofiles orjson
+
+# Deactivate the virtual environment
 deactivate
 echo "Required components installation completed!"
 
 echo "Starting configuration"
+# Execute the settings script
 bash settings
 echo "Configuration completed!"
 echo "If you want to reconfigure, please run the \"settings\" script directly"
+
 exit 0
+
