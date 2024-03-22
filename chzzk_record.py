@@ -35,7 +35,6 @@ os_name = platform.system()
 
 if os_name == "Windows":
     # Code for Windows
-    script_dir = os.path.dirname(os.path.abspath(__file__))
     STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "streamlink.exe")
     FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
     print("Running on Windows.")
