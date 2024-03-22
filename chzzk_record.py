@@ -30,9 +30,7 @@ console_handler.setFormatter(formatter)  # You can use the same formatter or a d
 logger.addHandler(console_handler)
 
 # Constants
-STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "streamlink.exe")
-FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
-
+# Check your current operating system
 os_name = platform.system()
 
 if os_name == "Windows":
