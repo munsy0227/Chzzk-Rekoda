@@ -5,6 +5,7 @@
 ```bash
 #windows:
 Python 3.12 미설치 시 Microsoft Store에서 설치
+git clone https://github.com/munsy0227/Chzzk-Auto-Recorder-for-Linux.git
 install.bat을 실행
 #ubuntu:
 sudo apt install ffmpeg
