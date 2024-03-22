@@ -2,6 +2,7 @@ import asyncio
 import orjson
 import json
 import os
+import platform
 import logging
 import re
 import aiohttp
@@ -29,8 +30,28 @@ console_handler.setFormatter(formatter)  # You can use the same formatter or a d
 logger.addHandler(console_handler)
 
 # Constants
-STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
-FFMPEG_PATH = "/usr/bin/ffmpeg"
+STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "streamlink.exe")
+FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
+
+os_name = platform.system()
+
+if os_name == "Windows":
+    # Code for Windows
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "streamlink.exe")
+    FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
+    print("Running on Windows.")
+elif os_name == "Linux":
+    # Linux for Linux
+    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
+    FFMPEG_PATH = "/usr/bin/ffmpeg"
+    print("Running on Linux.")
+else:
+    # Code for other operating systems
+    print(f"Running on {os_name}. The program will now exit.")
+    time.sleep(5)
+    exit()
+
 LIVE_DETAIL_API = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
 TIME_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_sleep.txt')
 THREAD_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'thread.txt')
@@ -133,7 +154,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
         if stream_url:
             logger.debug(f"Found stream URL for channel: {channel['name']}")
             try:
-                current_time = time.strftime("%Y-%m-%d_%H:%M:%S")
+                current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
                 channel_name = channel.get("name", "Unknown")
                 live_info = await get_live_info(channel, headers, session)
                 live_title = special_chars_remover.sub('', live_info.get("liveTitle", "").rstrip())
