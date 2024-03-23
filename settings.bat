@@ -1,25 +1,34 @@
 @echo off
-echo Checking if python exists
+setlocal EnableDelayedExpansion
 
-REM Trying to find python3 first
-where python3 >nul 2>&1
+echo Checking for an installed Python version...
+
+REM Check for Python 3 and capture the version output
+for /f "delims=" %%i in ('python --version 2^>^&1') do set pyversion=%%i
+
+REM Check if the version string contains "Python 3"
+echo !pyversion! | findstr /C:"Python 3" > nul
 if %errorlevel% == 0 (
-    set py=python3
-    echo Using python3
+    echo Found installed Python: !pyversion!
+    set py=python
 ) else (
-    REM Falling back to python if python3 is not found
-    python --version 2>nul | findstr /R "3." >nul
+    REM If Python 3 is not found, try finding python3 explicitly
+    where python3 >nul 2>&1
     if %errorlevel% == 0 (
-        set py=python
-        echo Using python
+        set py=python3
+        echo Using python3 as fallback
     ) else (
-        echo Please install Python3 or 3.11 manually.
+        echo Python 3 is not installed. Please install Python 3.
         exit /b 1
     )
 )
 
+echo Activating the virtual environment...
 call venv\Scripts\activate
-%py% settings.py
 
+echo Executing the settings script...
+!py! settings.py
+
+echo Script execution completed.
 exit /b 0
 

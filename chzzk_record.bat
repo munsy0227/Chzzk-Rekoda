@@ -1,20 +1,16 @@
 @echo off
-echo Checking if python exists
+echo Checking for an installed Python version...
 
-REM Check for Python 3 and assign its path to a variable
-where python3 >nul 2>&1
+REM Check for Python 3 and capture the version output
+for /f "delims=" %%i in ('python --version 2^>^&1') do set pyversion=%%i
+
+REM Check if the version string contains "Python 3"
+echo %pyversion% | findstr /C:"Python 3" > nul
 if %errorlevel% == 0 (
-    set py=python3
-    echo Using python3
+    echo Found installed Python: %pyversion%
 ) else (
-    python --version 2>&1 | findstr "3." >nul
-    if %errorlevel% == 0 (
-        set py=python
-        echo Using python
-    ) else (
-        echo Please install Python3 or 3.11 manually.
-        exit /b 1
-    )
+    echo Python 3 is not installed. Please install Python 3.
+    exit /b 1
 )
 
 REM Detect the current directory and activate the virtual environment
@@ -28,6 +24,6 @@ if exist "%VENV_DIR%" (
 )
 
 REM Execute your Python script
-"%VENV_DIR%\Scripts\python" chzzk_record.py
+python chzzk_record.py
 
 exit /b 0

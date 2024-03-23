@@ -1,35 +1,32 @@
 @echo off
 setlocal EnableDelayedExpansion
 
-echo Checking if Python exists
+echo Checking for an installed Python version...
 
-REM Check for Python 3 and assign its path to a variable
-where python3 >nul 2>&1
+REM Check for Python 3 and capture the version output
+for /f "delims=" %%i in ('python --version 2^>^&1') do set pyversion=%%i
+
+REM Check if the version string contains "Python 3"
+echo !pyversion! | findstr /C:"Python 3" > nul
 if %errorlevel% == 0 (
-    set py=python3
-    echo Using python3
+    echo Found installed Python: !pyversion!
+    set py=python
 ) else (
-    python --version 2>&1 | findstr /R "3." >nul
-    if %errorlevel% == 0 (
-        set py=python
-        echo Using python
-    ) else (
-        echo Please install Python3 or 3.11 manually.
-        exit /b 1
-    )
+    echo Python 3 is not installed. Please install Python 3.
+    exit /b 1
 )
 
 echo Installing required components
 REM Create a virtual environment in the current directory
-%py% -m venv venv
+!py! -m venv venv
 
 REM Dynamically get the current directory's virtual environment activation script
 set VENV_DIR=%CD%\venv
-if exist "%VENV_DIR%" (
-    echo Activating virtual environment in %VENV_DIR%
-    call "%VENV_DIR%\Scripts\activate"
+if exist "!VENV_DIR!" (
+    echo Activating virtual environment in !VENV_DIR!
+    call "!VENV_DIR!\Scripts\activate"
 ) else (
-    echo Virtual environment not found in %VENV_DIR%
+    echo Virtual environment not found in !VENV_DIR!
     exit /b 1
 )
 
@@ -64,5 +61,8 @@ REM Execute the settings script
 call settings.bat
 echo Configuration completed!
 echo If you want to reconfigure, please run the "settings.bat" script directly
+
+REM Pause execution to allow the user to read the output
+pause
 
 exit /b 0
