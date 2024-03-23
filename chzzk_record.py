@@ -10,7 +10,7 @@ import aiofiles
 import hashlib
 import time
 
-print("Chzzk 자동녹화 Linux CLI")
+print("Chzzk Rekoda made by munsy0227")
 
 # Define logger
 logger = logging.getLogger(__name__)

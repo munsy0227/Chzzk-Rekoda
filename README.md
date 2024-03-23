@@ -4,7 +4,7 @@
 ## 설치 방법
 ```bash
 #windows:
-Python 3.12 미설치 시 Microsoft Store에서 설치
+Python 3.10~3.12를 사용해 주세요. 미설치시 따로 설치해 주세요.
 git clone https://github.com/munsy0227/Chzzk-Rekoda.git 아니면 웹사이트에서 ZIP 다운로드
 Chzzk-Rekoda 디렉터리로 들어가세요
 install.bat을 실행
