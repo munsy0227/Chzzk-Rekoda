@@ -125,6 +125,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
         if stream_url:
             logger.debug(f"Found stream URL for channel: {channel['name']}")
             try:
+                cookies = await get_session_cookies()
                 current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
                 channel_name = channel.get("name", "Unknown")
                 live_info = await get_live_info(channel, headers, session)
@@ -151,6 +152,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     STREAMLINK_PATH, stream_url, "best", "-o", output_path, "--hls-live-restart",
                     "--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
+                    "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
