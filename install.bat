@@ -16,6 +16,29 @@ if %errorlevel% == 0 (
     exit /b 1
 )
 
+REM Check if the "plugins" directory exists and create it if it doesn't
+if not exist ".\plugins\" mkdir ".\plugins"
+
+echo Checking for the chzzk.py plugin...
+
+REM Calculate the checksum of the existing file if it exists
+if exist ".\plugins\chzzk.py" (
+    powershell -Command "$current = (Get-FileHash .\plugins\chzzk.py -Algorithm MD5).Hash; $remote = (Invoke-WebRequest -Uri https://raw.githubusercontent.com/fml09/streamlink/c29ab4040b56511b4fd4915954b8b0796b72ad40/src/streamlink/plugins/chzzk.py -UseBasicParsing | Get-FileHash -Algorithm MD5).Hash; if ($current -ne $remote) { Write-Output 'different' } else { Write-Output 'same' }" > checksum.txt
+    set /p filestatus=<checksum.txt
+    if "!filestatus!"=="different" (
+        echo Existing chzzk.py plugin is outdated. Updating...
+        powershell -Command "Invoke-WebRequest -Uri https://raw.githubusercontent.com/fml09/streamlink/c29ab4040b56511b4fd4915954b8b0796b72ad40/src/streamlink/plugins/chzzk.py -OutFile .\plugins\chzzk.py"
+    ) else (
+        echo Existing chzzk.py plugin is up-to-date.
+    )
+) else (
+    echo Downloading chzzk.py plugin...
+    powershell -Command "Invoke-WebRequest -Uri https://raw.githubusercontent.com/fml09/streamlink/c29ab4040b56511b4fd4915954b8b0796b72ad40/src/streamlink/plugins/chzzk.py -OutFile .\plugins\chzzk.py"
+)
+
+REM Delete the checksum file if it exists
+if exist checksum.txt del checksum.txt
+
 echo Installing required components
 REM Create a virtual environment in the current directory
 !py! -m venv venv
