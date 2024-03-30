@@ -57,7 +57,7 @@ DELAYS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'del
 COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.json')
 PLUGIN_DIR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugin')
 
-MAX_FILENAME_BYTES = 255  # Maximum number of bytes for filename
+MAX_FILENAME_BYTES = 150  # Maximum number of bytes for filename
 
 # Compiled regex for reuse, improves performance
 special_chars_remover = re.compile(r"[^\uAC00-\uD7A30-9a-zA-Z\s]")
@@ -103,7 +103,7 @@ def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
         hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
         name, extension = os.path.splitext(filename)
-        shortened_name = f"{name[:MAX_FILENAME_BYTES - 40]}_{hash_value}{extension}"
+        shortened_name = f"{name[:MAX_FILENAME_BYTES - 75]}_{hash_value}{extension}"
         logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
         return shortened_name
     else:
