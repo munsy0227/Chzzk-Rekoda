@@ -1,5 +1,5 @@
 #  Chzzk-Rekoda
-[내맘대로 치지직chzzk 자동녹화](https://gall.dcinside.com/stellive/1150701) 기반으로 만들어진 리눅스 및 원도우용 치지직 자동녹화 프로그램입니다.
+[내맘대로 치지직chzzk 자동녹화](https://gall.dcinside.com/stellive/1150701)를 참고해서 만들어진 리눅스 및 원도우용 치지직 자동녹화 프로그램입니다.
 
 ## 설치 방법
 ```bash
