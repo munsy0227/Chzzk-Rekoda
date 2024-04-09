@@ -39,10 +39,15 @@ if os_name == "Windows":
     FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
     print("Running on Windows.")
 elif os_name == "Linux":
-    # Linux for Linux
+    # Code for Linux
     STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
     FFMPEG_PATH = "/usr/bin/ffmpeg"
     print("Running on Linux.")
+elif os_name == "Darwin":
+    # Code for macOS
+    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
+    FFMPEG_PATH = "/usr/local/bin/ffmpeg"
+    print("Running on macOS.")
 else:
     # Code for other operating systems
     print(f"Running on {os_name}. The program will now exit.")
