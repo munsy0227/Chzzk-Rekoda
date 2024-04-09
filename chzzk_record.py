@@ -47,7 +47,7 @@ elif os_name == "Darwin":
     # Code for macOS
     STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
     FFMPEG_PATH = "/usr/local/bin/ffmpeg"
-    print("Running on Linux.")
+    print("Running on macOS.")
 else:
     # Code for other operating systems
     print(f"Running on {os_name}. The program will now exit.")
