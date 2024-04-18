@@ -85,7 +85,7 @@ async def load_settings():
 # Helper Functions
 def get_auth_headers(cookies):
     return {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64)',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
         'Cookie': f'NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}'
     }
 
@@ -158,6 +158,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     "--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
+                    "--http-header", 'User-Agent=Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                 )
