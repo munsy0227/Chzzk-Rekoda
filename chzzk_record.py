@@ -9,6 +9,7 @@ import aiohttp
 import aiofiles
 import hashlib
 import time
+from pathlib import Path
 
 print("Chzzk Rekoda made by munsy0227")
 
@@ -30,29 +31,40 @@ console_handler.setFormatter(formatter)  # You can use the same formatter or a d
 logger.addHandler(console_handler)
 
 # Constants
-# Check your current operating system
-os_name = platform.system()
+async def setup_paths():
+    global STREAMLINK_PATH, FFMPEG_PATH
+    os_name = platform.system()
+    base_dir = Path(__file__).parent
 
-if os_name == "Windows":
-    # Code for Windows
-    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "Scripts", "streamlink.exe")
-    FFMPEG_PATH = os.path.join(os.path.dirname(__file__), "ffmpeg", "bin", "ffmpeg.exe")
-    print("Running on Windows.")
-elif os_name == "Linux":
-    # Code for Linux
-    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
-    FFMPEG_PATH = "/usr/bin/ffmpeg"
-    print("Running on Linux.")
-elif os_name == "Darwin":
-    # Code for macOS
-    STREAMLINK_PATH = os.path.join(os.path.dirname(__file__), "venv", "bin", "streamlink")
-    FFMPEG_PATH = "/usr/local/bin/ffmpeg"
-    print("Running on macOS.")
-else:
-    # Code for other operating systems
-    print(f"Running on {os_name}. The program will now exit.")
-    time.sleep(5)
-    exit()
+    if os_name == "Windows":
+        STREAMLINK_PATH = base_dir / "venv/Scripts/streamlink.exe"
+        FFMPEG_PATH = base_dir / "ffmpeg/bin/ffmpeg.exe"
+        logger.info("Running on Windows.")
+    elif os_name in ["Linux", "Darwin"]:
+        STREAMLINK_PATH = base_dir / "venv/bin/streamlink"
+        ffmpeg_command = "which ffmpeg"
+        try:
+            process = await asyncio.create_subprocess_shell(
+                ffmpeg_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE)
+            stdout, stderr = await process.communicate()
+
+            if process.returncode == 0:
+                FFMPEG_PATH = stdout.decode().strip()
+                logger.info(f"Running on {os_name}. ffmpeg found at: {FFMPEG_PATH}")
+            else:
+                logger.error(f"ffmpeg not found in PATH on {os_name}.")
+                FFMPEG_PATH = None
+        except Exception as e:
+            logger.error(f"Error finding ffmpeg on {os_name}: {e}")
+            FFMPEG_PATH = None
+    else:
+        logger.error(f"Unsupported OS: {os_name}. Exiting.")
+        await asyncio.sleep(5)
+        exit()
+
+    return STREAMLINK_PATH, FFMPEG_PATH
 
 LIVE_DETAIL_API = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
 TIME_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'time_sleep.txt')
@@ -100,9 +112,11 @@ async def get_live_info(channel, headers, session):
             data = await response.json()
             logger.debug(f"Successfully fetched live info for channel: {channel['name']}, data: {data}")
             return data.get("content", {})
+    except aiohttp.ClientError as e:
+        logger.error(f"HTTP error occurred while fetching live info for {channel['name']}: {e}")
     except Exception as e:
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
-        return {}
+    return {}
 
 def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
@@ -195,4 +209,6 @@ async def main():
             logger.info("Recording stopped by user.")
 
 if __name__ == "__main__":
+    asyncio.run(setup_paths())
     asyncio.run(main())
+
