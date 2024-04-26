@@ -137,7 +137,8 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
         return
 
     recording_started = False
-    stream_process = None  # Initialize stream_process variable
+    stream_process = None
+    ffmpeg_process = None
 
     while True:
         stream_url = f"https://chzzk.naver.com/live/{channel['id']}"
@@ -158,30 +159,57 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                 if not recording_started:
                     logger.info(f"Recording started for {channel_name} at {current_time}.")
                     recording_started = True
-
+                    
                 if stream_process is not None:  # Check if the process has been initialized
                     # Attempt to kill existing stream process before starting a new one
                     if stream_process.returncode is None:
                         stream_process.kill()
                         await stream_process.wait()
                         logger.info("Existing stream process killed successfully.")
-
-                # Start a new stream process
+                        
+                if ffmpeg_process is not None:  # Check if the process has been initialized
+                    # Attempt to kill existing stream process before starting a new one
+                    if ffmpeg_process.returncode is None:
+                        ffmpeg_process.kill()
+                        await ffmpeg_process.wait()
+                        logger.info("Existing ffmpeg process killed successfully.")
+                
+                # Create a pipe for connecting streamlink to ffmpeg
+                rpipe, wpipe = os.pipe()
+                
+                # Start the streamlink process
                 stream_process = await asyncio.create_subprocess_exec(
-                    STREAMLINK_PATH, stream_url, "best", "-o", output_path, "--hls-live-restart",
+                    STREAMLINK_PATH, "--stdout", stream_url, "best", "--hls-live-restart",
                     "--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
-                    "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    "--hls-segment-stream-data",
+                    stdout=wpipe
                 )
+                os.close(wpipe)  # Close the write end of the pipe in the parent
 
-                await stream_process.wait()
-                logger.info(f"Stream recording process for {channel_name} exited with return code {stream_process.returncode}.")
+                # Start the ffmpeg process
+                ffmpeg_process = await asyncio.create_subprocess_exec(
+                    FFMPEG_PATH, "-i", "pipe:0", "-c", "copy", "-y", output_path,
+                    stdin=rpipe,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+                os.close(rpipe)  # Close the read end of the pipe in the parent
+
+                # Wait for ffmpeg to finish
+                stdout, stderr = await ffmpeg_process.communicate()
+                if stderr:
+                    logger.error(f"ffmpeg stderr: {stderr.decode()}")
+
+                logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
                 if recording_started:
                     logger.info(f"Recording stopped for {channel_name}.")
                     recording_started = False
+
+                await stream_process.wait()
+                logger.info(f"Stream recording process for {channel_name} exited with return code {stream_process.returncode}.")
 
             except Exception as e:
                 logger.exception(f"Error occurred while recording {channel_name}: {e}")
