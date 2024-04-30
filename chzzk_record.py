@@ -11,7 +11,7 @@ import hashlib
 import time
 from pathlib import Path
 
-print("Chzzk Rekoda made by munsy0227\n##################################################################################################\n#If you encounter any bugs or errors, please report them on the Radiyu Shelther or GitHub issues!#\n#               버그나 에러가 발생하면 라디유 쉘터나 깃허브 이슈에 제보해 주세요!                #\n##################################################################################################")
+print("Chzzk Rekoda made by munsy0227\nIf you encounter any bugs or errors, please report them on the Radiyu Shelter or GitHub issues!\n버그나 에러가 발생하면 라디유 쉘터나 깃허브 이슈에 제보해 주세요!")
 
 # Define logger
 logger = logging.getLogger(__name__)
@@ -98,7 +98,12 @@ async def load_settings():
 def get_auth_headers(cookies):
     return {
         'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
-        'Cookie': f'NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}'
+        'Cookie': f'NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
+        'Origin': 'https://chzzk.naver.com',
+        'DNT': '1',
+        'Sec-GPC': '1',
+        'Connection': 'keep-alive',
+        'Referer': 'https://chzzk.naver.com/'
     }
 
 async def get_session_cookies():
@@ -133,15 +138,20 @@ async def fetch_stream_url(channel, headers, session):
 
         media_list = live_playback_json.get("media", [])
         logger.debug(f"Media list: {media_list}")
-        if media_list:
-            stream_url = media_list[0].get("path", "")
-            logger.debug(f"Selected stream URL: {stream_url}")
+        
+        llhls_media = next((item for item in media_list if item.get("latency") == "lowLatency"), None)
+        if llhls_media:
+            stream_url = llhls_media.get("path", "")
+            logger.info(f"Selected LLHLS stream URL: {stream_url}")
             if stream_url:
                 return stream_url
-            else:
-                logger.error(f"No stream URL found in live info for {channel['name']}.")
         else:
-            logger.error(f"No media info found in live info for {channel['name']}.")
+            logger.debug("No LLHLS stream found, falling back to default.")
+            if media_list:
+                stream_url = media_list[0].get("path", "")
+                logger.info(f"Selected default stream URL: {stream_url}")
+            else:
+                logger.error(f"No media info found in live info for {channel['name']}.")
     except Exception as e:
         logger.exception(f"Error parsing live playback JSON for {channel['name']}: {e}")
 
@@ -211,6 +221,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
+                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=https://chzzk.naver.com/",
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
                 )
@@ -218,7 +229,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
 
                 # Start the ffmpeg process
                 ffmpeg_process = await asyncio.create_subprocess_exec(
-                    FFMPEG_PATH, "-i", "pipe:0", "-c", "copy", "-y", output_path,
+                    FFMPEG_PATH, "-hwaccel", "auto", "-i", "pipe:0", "-c", "copy", "-copy_unknown", "-map_metadata:s:a", "0:g", "-fps_mode", "2", "-y", output_path,
                     stdin=rpipe,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
@@ -266,4 +277,3 @@ async def main():
 if __name__ == "__main__":
     asyncio.run(setup_paths())
     asyncio.run(main())
-
