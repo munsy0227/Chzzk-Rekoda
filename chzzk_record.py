@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)  # Set the logger to the lowest level
 
 # File Handler for logging to a file
-file_handler = logging.FileHandler('log.log')
+file_handler = logging.FileHandler('log.log', encoding='utf-8')
 file_handler.setLevel(logging.DEBUG)  # Log every level to the file
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 file_handler.setFormatter(formatter)
