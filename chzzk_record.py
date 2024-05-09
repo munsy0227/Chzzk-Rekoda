@@ -97,7 +97,7 @@ async def load_settings():
 # Helper Functions
 def get_auth_headers(cookies):
     return {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
+        'User-Agent': 'Mozilla/5.0 (X11; Unix x86_64)',
         'Cookie': f'NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
         'Origin': 'https://chzzk.naver.com',
         'DNT': '1',
@@ -220,7 +220,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     #"--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
-                    "--http-header", 'User-Agent=Mozilla/5.0 (X11; Linux x86_64; rv:126.0) Gecko/20100101 Firefox/126.0',
+                    "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
                     "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=https://chzzk.naver.com/",
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
