@@ -103,7 +103,7 @@ def get_auth_headers(cookies):
         'DNT': '1',
         'Sec-GPC': '1',
         'Connection': 'keep-alive',
-        'Referer': 'https://chzzk.naver.com/'
+        'Referer': ''
     }
 
 async def get_session_cookies():
@@ -132,9 +132,9 @@ async def fetch_stream_url(channel, headers, session):
 
     try:
         live_playback_json_str = live_info.get('livePlaybackJson', '{}')
-        logger.debug(f"livePlaybackJson string before parsing: {live_playback_json_str}")
+        #logger.debug(f"livePlaybackJson string before parsing: {live_playback_json_str}")
         live_playback_json = json.loads(live_playback_json_str)
-        logger.debug(f"Parsed livePlaybackJson: {live_playback_json}")
+        #logger.debug(f"Parsed livePlaybackJson: {live_playback_json}")
 
         media_list = live_playback_json.get("media", [])
         logger.debug(f"Media list: {media_list}")
@@ -221,7 +221,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
-                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=https://chzzk.naver.com/",
+                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=",
                     "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
                 )
