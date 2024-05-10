@@ -1,3 +1,4 @@
+chcp 65001
 @echo off
 echo Checking for an installed Python version...
 
@@ -22,6 +23,9 @@ if exist "%VENV_DIR%" (
     echo Virtual environment not found in %VENV_DIR%
     exit /b 1
 )
+
+REM Set the environment variable to force UTF-8 encoding
+set PYTHONUTF8=1
 
 REM Execute your Python script
 python chzzk_record.py

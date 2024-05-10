@@ -1,3 +1,4 @@
+chcp 65001
 @echo off
 setlocal EnableDelayedExpansion
 
@@ -26,9 +27,13 @@ if %errorlevel% == 0 (
 echo Activating the virtual environment...
 call venv\Scripts\activate
 
+REM Set the environment variable to force UTF-8 encoding
+set PYTHONUTF8=1
+
 echo Executing the settings script...
 !py! settings.py
 
 echo Script execution completed.
 exit /b 0
+
 

@@ -1,3 +1,4 @@
+chcp 65001
 @echo off
 setlocal EnableDelayedExpansion
 
@@ -30,6 +31,9 @@ if exist "!VENV_DIR!" (
     exit /b 1
 )
 
+REM Set the environment variable to force UTF-8 encoding
+set PYTHONUTF8=1
+
 REM Install required Python packages
 "%VENV_DIR%\Scripts\pip" install --upgrade aiohttp aiofiles orjson
 "%VENV_DIR%\Scripts\pip" install --upgrade git+https://github.com/munsy0227/streamlink.git
@@ -50,7 +54,10 @@ echo Extracting ffmpeg-release-full.7z
 echo Finding the extracted ffmpeg directory
 for /D %%A in (ffmpeg-*) do (
     if exist "ffmpeg" (
-        echo Warning: "ffmpeg" directory already exists, not renaming "%%A".
+        echo Warning: "ffmpeg" directory already exists. Deleting existing "ffmpeg" directory.
+        rmdir /s /q "ffmpeg"
+        echo Renaming "%%A" to "ffmpeg"
+        rename "%%A" "ffmpeg"
     ) else (
         echo Renaming "%%A" to "ffmpeg"
         rename "%%A" "ffmpeg"
