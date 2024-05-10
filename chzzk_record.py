@@ -76,7 +76,7 @@ COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'coo
 MAX_FILENAME_BYTES = 150  # Maximum number of bytes for filename
 
 # Compiled regex for reuse, improves performance
-special_chars_remover = re.compile(r"[^\uAC00-\uD7A30-9a-zA-Z\s]")
+special_chars_remover = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
 
 # Use aiofiles for asynchronous file operations
 async def load_json_async(file_path):
@@ -195,7 +195,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
 
                 # Start the ffmpeg process
                 ffmpeg_process = await asyncio.create_subprocess_exec(
-                    FFMPEG_PATH, "-hwaccel", "auto", "-i", "pipe:0", "-c", "copy", "-copy_unknown", "-map_metadata:s:a", "0:g", "-fps_mode", "2", "-y", output_path,
+                    FFMPEG_PATH, "-hwaccel", "auto", "-i", "pipe:0", "-c", "copy", "-copy_unknown", "-map_metadata:s:a", "0:g", "-fps_mode", "2", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
                     stdin=rpipe,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
