@@ -30,39 +30,12 @@ else
 fi
 
 # Install required Python packages
-"$VENV_DIR/bin/pip" install --upgrade streamlink aiohttp aiofiles orjson
+"$VENV_DIR/bin/pip" install --upgrade aiohttp aiofiles orjson
+"$VENV_DIR/bin/pip" install --upgrade git+https://github.com/munsy0227/streamlink.git
 
 # Deactivate the virtual environment
 deactivate
 echo "Required components installation completed!"
-
-echo "Downloading chzzk.py plugin"
-# Create plugin directory if it doesn't exist
-PLUGIN_DIR="$PWD/plugin"
-mkdir -p "$PLUGIN_DIR"
-
-# Plugin URL
-PLUGIN_URL="https://raw.githubusercontent.com/fml09/streamlink/c29ab4040b56511b4fd4915954b8b0796b72ad40/src/streamlink/plugins/chzzk.py"
-PLUGIN_FILE="$PLUGIN_DIR/chzzk.py"
-
-# Download and update plugin if necessary
-if [ -f "$PLUGIN_FILE" ]; then
-    # Download file to a temporary location
-    TMP_FILE=$(mktemp)
-    wget -q -O "$TMP_FILE" "$PLUGIN_URL"
-    
-    # Check if the existing file is different from the new download
-    if ! cmp -s "$TMP_FILE" "$PLUGIN_FILE"; then
-        echo "Updating chzzk.py plugin"
-        mv "$TMP_FILE" "$PLUGIN_FILE"
-    else
-        echo "chzzk.py is up to date"
-        rm "$TMP_FILE"
-    fi
-else
-    echo "Downloading chzzk.py plugin"
-    wget -q -O "$PLUGIN_FILE" "$PLUGIN_URL"
-fi
 
 echo "Starting configuration"
 # Execute the settings script

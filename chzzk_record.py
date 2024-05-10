@@ -72,7 +72,6 @@ THREAD_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'thr
 CHANNELS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'channels.json')
 DELAYS_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'delays.json')
 COOKIE_FILE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cookie.json')
-#PLUGIN_DIR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'plugin')
 
 MAX_FILENAME_BYTES = 150  # Maximum number of bytes for filename
 
@@ -123,38 +122,6 @@ async def get_live_info(channel, headers, session):
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
     return {}
 
-async def fetch_stream_url(channel, headers, session):
-    logger.debug(f"Attempting to fetch stream URL for channel: {channel['name']}")
-    live_info = await get_live_info(channel, headers, session)
-    if not live_info:
-        logger.error(f"Failed to fetch live info for {channel['name']}.")
-        return None
-
-    try:
-        live_playback_json_str = live_info.get('livePlaybackJson', '{}')
-        #logger.debug(f"livePlaybackJson string before parsing: {live_playback_json_str}")
-        live_playback_json = json.loads(live_playback_json_str)
-        #logger.debug(f"Parsed livePlaybackJson: {live_playback_json}")
-
-        media_list = live_playback_json.get("media", [])
-        logger.debug(f"Media list: {media_list}")
-        
-        llhls_media = next((item for item in media_list if item.get("latency") == "lowLatency"), None)
-        if llhls_media:
-            stream_url = llhls_media.get("path", "")
-            logger.info(f"Selected LLHLS stream URL: {stream_url}")
-            if stream_url:
-                return stream_url
-        else:
-            logger.debug("No LLHLS stream found, falling back to default.")
-            if media_list:
-                stream_url = media_list[0].get("path", "")
-                logger.info(f"Selected default stream URL: {stream_url}")
-            else:
-                logger.error(f"No media info found in live info for {channel['name']}.")
-    except Exception as e:
-        logger.exception(f"Error parsing live playback JSON for {channel['name']}: {e}")
-
 def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
         hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
@@ -178,7 +145,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
     ffmpeg_process = None
 
     while True:
-        stream_url = await fetch_stream_url(channel, headers, session)
+        stream_url = f"https://chzzk.naver.com/live/{channel['id']}"
         if stream_url:
             logger.debug(f"Found stream URL for channel: {channel['name']}")
             try:
@@ -217,7 +184,6 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                 # Start the streamlink process
                 stream_process = await asyncio.create_subprocess_exec(
                     STREAMLINK_PATH, "--stdout", stream_url, "best", "--hls-live-restart",
-                    #"--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
