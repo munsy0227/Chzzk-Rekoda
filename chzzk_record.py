@@ -205,7 +205,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                 # Wait for ffmpeg to finish
                 stdout, stderr = await ffmpeg_process.communicate()
                 if stderr:
-                    logger.error(f"ffmpeg stderr: {stderr.decode()}")
+                    logger.debug(f"ffmpeg stderr: {stderr.decode()}")
 
                 logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
                 if recording_started:
