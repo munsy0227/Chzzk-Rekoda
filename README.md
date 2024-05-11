@@ -1,5 +1,5 @@
 #  Chzzk-Rekoda
-[내맘대로 치지직chzzk 자동녹화](https://gall.dcinside.com/stellive/1150701)를 참고해서 만들어진 Windows, macOS, Linux를 지원하는 지치지 자동녹화 프로그램입니다.
+[내맘대로 치지직chzzk 자동녹화](https://gall.dcinside.com/stellive/1150701)를 참고해서 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
 
 [안드로이드에서 Termux를 사용하여 녹화하는 튜토리얼(라디유 쉘터 가입필요)](https://shelter.id/radiyu5/id/419644)
 
