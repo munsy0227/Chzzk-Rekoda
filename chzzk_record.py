@@ -148,6 +148,11 @@ async def read_stream(stream, channel_name, stream_type):
         if not line:
             break
         line_str = line.decode().strip()
+        
+        # For the stderr stream, logs are recorded.
+        if stream_type == "stderr" and line_str:
+            logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+
         parts = line_str.split('=')
         if len(parts) == 2:
             key, value = parts
@@ -209,17 +214,19 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     logger.info(f"Recording started for {channel_name} at {current_time}.")
                     recording_started = True
                     
-                # Check if the previous stream process exists and terminate if necessary
-                if stream_process is not None and stream_process.returncode is None:
-                    stream_process.kill()
-                    await stream_process.wait()
-                    logger.info("Existing stream process killed successfully.")
+                if stream_process is not None:  # Check if the process has been initialized
+                    # Attempt to kill existing stream process before starting a new one
+                    if stream_process.returncode is None:
+                        stream_process.kill()
+                        await stream_process.wait()
+                        logger.info("Existing stream process killed successfully.")
                         
-                # Check if the previous ffmpeg process exists and terminate if necessary
-                if ffmpeg_process is not None and ffmpeg_process.returncode is None:
-                    ffmpeg_process.kill()
-                    await ffmpeg_process.wait()
-                    logger.info("Existing ffmpeg process killed successfully.")
+                if ffmpeg_process is not None:  # Check if the process has been initialized
+                    # Attempt to kill existing stream process before starting a new one
+                    if ffmpeg_process.returncode is None:
+                        ffmpeg_process.kill()
+                        await ffmpeg_process.wait()
+                        logger.info("Existing ffmpeg process killed successfully.")
                 
                 # Create a pipe to connect streamlink to ffmpeg
                 rpipe, wpipe = os.pipe()
@@ -231,14 +238,14 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
                     "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=",
-                    "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data", "--loglevel", "info",
+                    "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
                 )
                 os.close(wpipe)  # Close the write end of the pipe in the parent
 
                 # Start the ffmpeg process
                 ffmpeg_process = await asyncio.create_subprocess_exec(
-                    FFMPEG_PATH, "-hwaccel", "auto", "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g", "-fps_mode", "2", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
+                    FFMPEG_PATH, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
                     stdin=rpipe,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
@@ -249,8 +256,8 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                 stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
                 stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
 
-                await ffmpeg_process.wait()
                 await asyncio.gather(stdout_task, stderr_task)
+                await ffmpeg_process.wait()
 
                 logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
                 if recording_started:
