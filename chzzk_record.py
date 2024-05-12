@@ -140,18 +140,37 @@ def colorize_log(message, color_code):
 GREEN = 32
 RED = 31
 
+# Define the pattern for repeated messages
+repeated_message_pattern = re.compile(r"\[mpegts @ [0-9a-fx]+] Invalid DTS: \d+ PTS: \d+ in output stream 0:0, replacing by guess")
+
 async def read_stream(stream, channel_name, stream_type):
     """Asynchronously read stream data and record it in the log."""
     summary = {}
+    last_logged_time = {}  # Initialize as an empty dictionary
+    # Minimum interval between repeated messages (e.g., 10 seconds)
+    min_interval = 10
+    
     while True:
         line = await stream.readline()
         if not line:
             break
         line_str = line.decode().strip()
         
-        # For the stderr stream, logs are recorded.
+       # Filter specific repeated messages in the stderr stream
         if stream_type == "stderr" and line_str:
-            logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+            current_time = time.time()
+            match = repeated_message_pattern.match(line_str)
+            if match:
+                # Generate a generic message pattern ignoring specific numbers
+                generic_message = "Invalid DTS and PTS in output stream 0:0, replacing by guess"
+                # Check if the same type of message was logged recently
+                if (generic_message not in last_logged_time or
+                    current_time - last_logged_time[generic_message] > min_interval):
+                    logger.debug(f"{channel_name} ffmpeg stderr: {generic_message}")
+                    last_logged_time[generic_message] = current_time
+            else:
+                # Always log other messages
+                logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
 
         parts = line_str.split('=')
         if len(parts) == 2:
