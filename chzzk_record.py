@@ -132,7 +132,76 @@ def shorten_filename(filename):
     else:
         return filename
 
+# Function to add color to log messages
+def colorize_log(message, color_code):
+    return f"\033[{color_code}m{message}\033[0m"
+
+# ANSI color codes: 32 is green, 31 is red
+GREEN = 32
+RED = 31
+
+# Define the pattern for repeated messages
+repeated_message_pattern = re.compile(r"\[mpegts @ [0-9a-fx]+] Invalid DTS: \d+ PTS: \d+ in output stream 0:0, replacing by guess")
+
+async def read_stream(stream, channel_name, stream_type):
+    """Asynchronously read stream data and record it in the log."""
+    summary = {}
+    last_logged_time = {}  # Initialize as an empty dictionary
+    # Minimum interval between repeated messages (e.g., 10 seconds)
+    min_interval = 10
+    
+    while True:
+        line = await stream.readline()
+        if not line:
+            break
+        line_str = line.decode().strip()
+        
+       # Filter specific repeated messages in the stderr stream
+        if stream_type == "stderr" and line_str:
+            current_time = time.time()
+            match = repeated_message_pattern.match(line_str)
+            if match:
+                # Generate a generic message pattern ignoring specific numbers
+                generic_message = "Invalid DTS and PTS in output stream 0:0, replacing by guess"
+                # Check if the same type of message was logged recently
+                if (generic_message not in last_logged_time or
+                    current_time - last_logged_time[generic_message] > min_interval):
+                    logger.debug(f"{channel_name} ffmpeg stderr: {generic_message}")
+                    last_logged_time[generic_message] = current_time
+            else:
+                # Always log other messages
+                logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+
+        parts = line_str.split('=')
+        if len(parts) == 2:
+            key, value = parts
+            summary[key.strip()] = value.strip()
+        if 'progress' in summary:
+            # Convert total size to a human-readable format and colorize the log message
+            total_size = summary.get('total_size', '0')
+            total_size_formatted = format_size(int(total_size))
+            log_message = (f"Bitrate={summary.get('bitrate', 'N/A')} " +
+                           f"Total Size={total_size_formatted} " +
+                           f"Out Time={summary.get('out_time', 'N/A')} " +
+                           f"Speed={summary.get('speed', 'N/A')} " +
+                           f"Progress={summary.get('progress', 'N/A')}")
+            colored_message = colorize_log(log_message, GREEN)
+            logger.info(f"{channel_name} {stream_type}: {colored_message}")
+            summary.clear()
+
+def format_size(size_bytes):
+    """Convert the size in bytes to an appropriate unit (B, KB, MB, GB, TB)."""
+    if size_bytes < 0:
+        return "0 B"
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024
+        i += 1
+    return f"{size_bytes:.2f} {size_names[i]}"
+
 async def record_stream(channel, headers, session, delay, TIMEOUT):
+    """Main function to record stream based on channel information."""
     logger.info(f"Attempting to record stream for channel: {channel['name']}")
     await asyncio.sleep(delay)
     
@@ -178,7 +247,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                         await ffmpeg_process.wait()
                         logger.info("Existing ffmpeg process killed successfully.")
                 
-                # Create a pipe for connecting streamlink to ffmpeg
+                # Create a pipe to connect streamlink to ffmpeg
                 rpipe, wpipe = os.pipe()
                 
                 # Start the streamlink process
@@ -195,17 +264,19 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
 
                 # Start the ffmpeg process
                 ffmpeg_process = await asyncio.create_subprocess_exec(
-                    FFMPEG_PATH, "-hwaccel", "auto", "-i", "pipe:0", "-c", "copy", "-copy_unknown", "-map_metadata:s:a", "0:g", "-fps_mode", "2", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
+                    FFMPEG_PATH, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
                     stdin=rpipe,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
                 os.close(rpipe)  # Close the read end of the pipe in the parent
+                
+                # Asynchronously read stdout and stderr
+                stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
+                stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
 
-                # Wait for ffmpeg to finish
-                stdout, stderr = await ffmpeg_process.communicate()
-                if stderr:
-                    logger.debug(f"ffmpeg stderr: {stderr.decode()}")
+                await asyncio.gather(stdout_task, stderr_task)
+                await ffmpeg_process.wait()
 
                 logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
                 if recording_started:
