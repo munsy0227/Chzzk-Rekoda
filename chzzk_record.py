@@ -140,15 +140,10 @@ def colorize_log(message, color_code):
 GREEN = 32
 RED = 31
 
-# Define the pattern for repeated messages
-repeated_message_pattern = re.compile(r"\[mpegts @ [0-9a-fx]+] Invalid DTS: \d+ PTS: \d+ in output stream 0:0, replacing by guess")
-
 async def read_stream(stream, channel_name, stream_type):
-    """Asynchronously read stream data and record it in the log."""
+    """Asynchronously read stream data and record it in the log at 5-second intervals."""
     summary = {}
-    last_logged_time = {}  # Initialize as an empty dictionary
-    # Minimum interval between repeated messages (e.g., 10 seconds)
-    min_interval = 10
+    last_log_time = time.time()
     
     while True:
         line = await stream.readline()
@@ -156,27 +151,20 @@ async def read_stream(stream, channel_name, stream_type):
             break
         line_str = line.decode().strip()
         
-       # Filter specific repeated messages in the stderr stream
+        # For the stderr stream, logs are recorded.
         if stream_type == "stderr" and line_str:
-            current_time = time.time()
-            match = repeated_message_pattern.match(line_str)
-            if match:
-                # Generate a generic message pattern ignoring specific numbers
-                generic_message = "Invalid DTS and PTS in output stream 0:0, replacing by guess"
-                # Check if the same type of message was logged recently
-                if (generic_message not in last_logged_time or
-                    current_time - last_logged_time[generic_message] > min_interval):
-                    logger.debug(f"{channel_name} ffmpeg stderr: {generic_message}")
-                    last_logged_time[generic_message] = current_time
-            else:
-                # Always log other messages
-                logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+            if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
+                continue
+            logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
 
         parts = line_str.split('=')
         if len(parts) == 2:
             key, value = parts
             summary[key.strip()] = value.strip()
-        if 'progress' in summary:
+
+        # Check if 5 seconds have passed since the last log
+        current_time = time.time()
+        if 'progress' in summary and (current_time - last_log_time >= 5):
             # Convert total size to a human-readable format and colorize the log message
             total_size = summary.get('total_size', '0')
             total_size_formatted = format_size(int(total_size))
@@ -187,6 +175,7 @@ async def read_stream(stream, channel_name, stream_type):
                            f"Progress={summary.get('progress', 'N/A')}")
             colored_message = colorize_log(log_message, GREEN)
             logger.info(f"{channel_name} {stream_type}: {colored_message}")
+            last_log_time = current_time  # Update the last log time
             summary.clear()
 
 def format_size(size_bytes):
