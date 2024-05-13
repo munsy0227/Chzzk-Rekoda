@@ -151,6 +151,9 @@ async def read_stream(stream, channel_name, stream_type):
         
         # For the stderr stream, logs are recorded.
         if stream_type == "stderr" and line_str:
+            # Ignore specific ffmpeg errors
+            if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
+                continue
             logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
 
         parts = line_str.split('=')
