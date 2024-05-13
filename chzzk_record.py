@@ -141,8 +141,10 @@ GREEN = 32
 RED = 31
 
 async def read_stream(stream, channel_name, stream_type):
-    """Asynchronously read stream data and record it in the log."""
+    """Asynchronously read stream data and record it in the log at 5-second intervals."""
     summary = {}
+    last_log_time = time.time()
+    
     while True:
         line = await stream.readline()
         if not line:
@@ -151,7 +153,6 @@ async def read_stream(stream, channel_name, stream_type):
         
         # For the stderr stream, logs are recorded.
         if stream_type == "stderr" and line_str:
-            # Ignore specific ffmpeg errors
             if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
                 continue
             logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
@@ -160,7 +161,10 @@ async def read_stream(stream, channel_name, stream_type):
         if len(parts) == 2:
             key, value = parts
             summary[key.strip()] = value.strip()
-        if 'progress' in summary:
+
+        # Check if 5 seconds have passed since the last log
+        current_time = time.time()
+        if 'progress' in summary and (current_time - last_log_time >= 5):
             # Convert total size to a human-readable format and colorize the log message
             total_size = summary.get('total_size', '0')
             total_size_formatted = format_size(int(total_size))
@@ -171,6 +175,7 @@ async def read_stream(stream, channel_name, stream_type):
                            f"Progress={summary.get('progress', 'N/A')}")
             colored_message = colorize_log(log_message, GREEN)
             logger.info(f"{channel_name} {stream_type}: {colored_message}")
+            last_log_time = current_time  # Update the last log time
             summary.clear()
 
 def format_size(size_bytes):
