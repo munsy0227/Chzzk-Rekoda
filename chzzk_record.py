@@ -10,7 +10,11 @@ import hashlib
 import time
 from pathlib import Path
 
-print("Chzzk Rekoda made by munsy0227\nIf you encounter any bugs or errors, please report them on the Radiyu Shelter or GitHub issues!\n버그나 에러가 발생하면 라디유 쉘터나 깃허브 이슈에 제보해 주세요!")
+print(
+    "Chzzk Rekoda made by munsy0227\n"
+    "If you encounter any bugs or errors, please report them on the Radiyu Shelter or GitHub issues!\n"
+    "버그나 에러가 발생하면 라디유 쉘터나 깃허브 이슈에 제보해 주세요!"
+)
 
 # Logger setup
 logger = logging.getLogger(__name__)
@@ -35,6 +39,7 @@ DELAYS_FILE_PATH = 'delays.json'
 COOKIE_FILE_PATH = 'cookie.json'
 MAX_FILENAME_BYTES = 150
 special_chars_remover = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
+
 
 # Setup paths for executables
 async def setup_paths():
@@ -71,21 +76,24 @@ async def setup_paths():
 
     return streamlink_path, ffmpeg_path
 
+
 # Asynchronous JSON file loading
 async def load_json_async(file_path):
     async with aiofiles.open(file_path, "rb") as file:
         content = await file.read()
         return orjson.loads(content)
 
+
 # Load settings from JSON files
 async def load_settings():
     time_file_content = await load_json_async(TIME_FILE_PATH)
-    TIMEOUT = time_file_content if isinstance(time_file_content, int) else int(time_file_content.get("timeout", 60))
+    timeout = time_file_content if isinstance(time_file_content, int) else int(time_file_content.get("timeout", 60))
     thread_file_content = await load_json_async(THREAD_FILE_PATH)
-    STREAM_SEGMENT_THREADS = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
-    CHANNELS = await load_json_async(CHANNELS_FILE_PATH)
-    DELAYS = await load_json_async(DELAYS_FILE_PATH)
-    return TIMEOUT, STREAM_SEGMENT_THREADS, CHANNELS, DELAYS
+    stream_segment_threads = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
+    channels = await load_json_async(CHANNELS_FILE_PATH)
+    delays = await load_json_async(DELAYS_FILE_PATH)
+    return timeout, stream_segment_threads, channels, delays
+
 
 # Helper function to get authentication headers
 def get_auth_headers(cookies):
@@ -99,9 +107,11 @@ def get_auth_headers(cookies):
         'Referer': ''
     }
 
+
 # Asynchronously load session cookies
 async def get_session_cookies():
     return await load_json_async(COOKIE_FILE_PATH)
+
 
 # Fetch live information for a channel
 async def get_live_info(channel, headers, session):
@@ -118,6 +128,7 @@ async def get_live_info(channel, headers, session):
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
     return {}
 
+
 # Shorten filename if it exceeds the maximum allowed bytes
 def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
@@ -129,24 +140,27 @@ def shorten_filename(filename):
     else:
         return filename
 
+
 # Colorize log messages
 def colorize_log(message, color_code):
     return f"\033[{color_code}m{message}\033[0m"
 
+
 GREEN = 32
 RED = 31
+
 
 # Asynchronously read stream data and log it
 async def read_stream(stream, channel_name, stream_type):
     summary = {}
     last_log_time = time.time()
-    
+
     while True:
         line = await stream.readline()
         if not line:
             break
         line_str = line.decode().strip()
-        
+
         if stream_type == "stderr" and line_str:
             if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
                 continue
@@ -161,15 +175,18 @@ async def read_stream(stream, channel_name, stream_type):
         if 'progress' in summary and (current_time - last_log_time >= 5):
             total_size = summary.get('total_size', '0')
             total_size_formatted = format_size(int(total_size))
-            log_message = (f"Bitrate={summary.get('bitrate', 'N/A')} " +
-                           f"Total Size={total_size_formatted} " +
-                           f"Out Time={summary.get('out_time', 'N/A')} " +
-                           f"Speed={summary.get('speed', 'N/A')} " +
-                           f"Progress={summary.get('progress', 'N/A')}")
+            log_message = (
+                f"Bitrate={summary.get('bitrate', 'N/A')} "
+                f"Total Size={total_size_formatted} "
+                f"Out Time={summary.get('out_time', 'N/A')} "
+                f"Speed={summary.get('speed', 'N/A')} "
+                f"Progress={summary.get('progress', 'N/A')}"
+            )
             colored_message = colorize_log(log_message, GREEN)
             logger.info(f"{channel_name} {stream_type}: {colored_message}")
             last_log_time = current_time
             summary.clear()
+
 
 # Format size in bytes to a human-readable format
 def format_size(size_bytes):
@@ -182,11 +199,12 @@ def format_size(size_bytes):
         i += 1
     return f"{size_bytes:.2f} {size_names[i]}"
 
+
 # Record stream for a given channel
-async def record_stream(channel, headers, session, delay, TIMEOUT, STREAMLINK_PATH, FFMPEG_PATH, STREAM_SEGMENT_THREADS):
+async def record_stream(channel, headers, session, delay, timeout, streamlink_path, ffmpeg_path, stream_segment_threads):
     logger.info(f"Attempting to record stream for channel: {channel['name']}")
     await asyncio.sleep(delay)
-    
+
     if channel.get("active", "on") == "off":
         logger.info(f"{channel['name']} channel is inactive. Skipping recording.")
         return
@@ -208,46 +226,46 @@ async def record_stream(channel, headers, session, delay, TIMEOUT, STREAMLINK_PA
                 output_dir = channel.get("output_dir", "./recordings")
                 output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
                 output_path = os.path.join(output_dir, output_file)
-                
+
                 os.makedirs(output_dir, exist_ok=True)
 
                 if not recording_started:
                     logger.info(f"Recording started for {channel_name} at {current_time}.")
                     recording_started = True
-                    
-                if stream_process is not None:
-                    if stream_process.returncode is None:
-                        stream_process.kill()
-                        await stream_process.wait()
-                        logger.info("Existing stream process killed successfully.")
-                        
-                if ffmpeg_process is not None:
-                    if ffmpeg_process.returncode is None:
-                        ffmpeg_process.kill()
-                        await ffmpeg_process.wait()
-                        logger.info("Existing ffmpeg process killed successfully.")
-                
+
+                if stream_process is not None and stream_process.returncode is None:
+                    stream_process.kill()
+                    await stream_process.wait()
+                    logger.info("Existing stream process killed successfully.")
+
+                if ffmpeg_process is not None and ffmpeg_process.returncode is None:
+                    ffmpeg_process.kill()
+                    await ffmpeg_process.wait()
+                    logger.info("Existing ffmpeg process killed successfully.")
+
                 rpipe, wpipe = os.pipe()
-                
+
                 stream_process = await asyncio.create_subprocess_exec(
-                    STREAMLINK_PATH, "--stdout", stream_url, "best", "--hls-live-restart",
-                    "--stream-segment-threads", str(STREAM_SEGMENT_THREADS),
+                    streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
+                    "--stream-segment-threads", str(stream_segment_threads),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
-                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive", "--http-header", "Referer=",
-                    "--ffmpeg-ffmpeg", FFMPEG_PATH, "--ffmpeg-copyts", "--hls-segment-stream-data",
+                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1", "--http-header", "Sec-GPC=1",
+                    "--http-header", "Connection=keep-alive", "--http-header", "Referer=",
+                    "--ffmpeg-ffmpeg", ffmpeg_path, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
                 )
                 os.close(wpipe)
 
                 ffmpeg_process = await asyncio.create_subprocess_exec(
-                    FFMPEG_PATH, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
+                    ffmpeg_path, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g",
+                    "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
                     stdin=rpipe,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
                 os.close(rpipe)
-                
+
                 stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
                 stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
 
@@ -272,25 +290,25 @@ async def record_stream(channel, headers, session, delay, TIMEOUT, STREAMLINK_PA
                 logger.info(f"Recording stopped for {channel_name}.")
                 recording_started = False
 
-        await asyncio.sleep(TIMEOUT)
+        await asyncio.sleep(timeout)
+
 
 # Main entry point
 async def main():
-    global TIMEOUT, STREAM_SEGMENT_THREADS, CHANNELS, DELAYS
-    TIMEOUT, STREAM_SEGMENT_THREADS, CHANNELS, DELAYS = await load_settings()
+    timeout, stream_segment_threads, channels, delays = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
     streamlink_path, ffmpeg_path = await setup_paths()
     async with aiohttp.ClientSession() as session:
         tasks = [
-            record_stream(channel, headers, session, DELAYS.get(channel.get("identifier"), 0), TIMEOUT, streamlink_path, ffmpeg_path, STREAM_SEGMENT_THREADS)
-            for channel in CHANNELS
+            record_stream(channel, headers, session, delays.get(channel.get("identifier"), 0), timeout, streamlink_path, ffmpeg_path, stream_segment_threads)
+            for channel in channels
         ]
         try:
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
             logger.info("Recording stopped by user.")
 
+
 if __name__ == "__main__":
     asyncio.run(main())
-
