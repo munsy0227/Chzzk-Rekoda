@@ -183,7 +183,7 @@ def format_size(size_bytes):
     return f"{size_bytes:.2f} {size_names[i]}"
 
 # Record stream for a given channel
-async def record_stream(channel, headers, session, delay, TIMEOUT):
+async def record_stream(channel, headers, session, delay, TIMEOUT, STREAMLINK_PATH, FFMPEG_PATH, STREAM_SEGMENT_THREADS):
     logger.info(f"Attempting to record stream for channel: {channel['name']}")
     await asyncio.sleep(delay)
     
@@ -280,18 +280,17 @@ async def main():
     TIMEOUT, STREAM_SEGMENT_THREADS, CHANNELS, DELAYS = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
+    streamlink_path, ffmpeg_path = await setup_paths()
     async with aiohttp.ClientSession() as session:
-        tasks = [record_stream(channel, headers, session, DELAYS.get(channel.get("identifier"), 0), TIMEOUT) for channel in CHANNELS]
+        tasks = [
+            record_stream(channel, headers, session, DELAYS.get(channel.get("identifier"), 0), TIMEOUT, streamlink_path, ffmpeg_path, STREAM_SEGMENT_THREADS)
+            for channel in CHANNELS
+        ]
         try:
             await asyncio.gather(*tasks)
         except KeyboardInterrupt:
             logger.info("Recording stopped by user.")
 
 if __name__ == "__main__":
-    streamlink_path, ffmpeg_path = asyncio.run(setup_paths())
-    if streamlink_path and ffmpeg_path:
-        STREAMLINK_PATH = streamlink_path
-        FFMPEG_PATH = ffmpeg_path
-        asyncio.run(main())
-    else:
-        logger.error("Failed to setup paths for Streamlink or FFMPEG.")
+    asyncio.run(main())
+
