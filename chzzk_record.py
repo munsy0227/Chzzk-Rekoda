@@ -38,16 +38,15 @@ special_chars_remover = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F6
 
 # Setup paths for executables
 async def setup_paths():
-    global STREAMLINK_PATH, FFMPEG_PATH
     os_name = platform.system()
     base_dir = Path(__file__).parent
 
     if os_name == "Windows":
-        STREAMLINK_PATH = base_dir / "venv/Scripts/streamlink.exe"
-        FFMPEG_PATH = base_dir / "ffmpeg/bin/ffmpeg.exe"
+        streamlink_path = base_dir / "venv/Scripts/streamlink.exe"
+        ffmpeg_path = base_dir / "ffmpeg/bin/ffmpeg.exe"
         logger.info("Running on Windows.")
     elif os_name in ["Linux", "Darwin"]:
-        STREAMLINK_PATH = base_dir / "venv/bin/streamlink"
+        streamlink_path = base_dir / "venv/bin/streamlink"
         ffmpeg_command = "which ffmpeg"
         try:
             process = await asyncio.create_subprocess_shell(
@@ -57,20 +56,20 @@ async def setup_paths():
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
-                FFMPEG_PATH = stdout.decode().strip()
-                logger.info(f"Running on {os_name}. ffmpeg found at: {FFMPEG_PATH}")
+                ffmpeg_path = stdout.decode().strip()
+                logger.info(f"Running on {os_name}. ffmpeg found at: {ffmpeg_path}")
             else:
                 logger.error(f"ffmpeg not found in PATH on {os_name}.")
-                FFMPEG_PATH = None
+                ffmpeg_path = None
         except Exception as e:
             logger.error(f"Error finding ffmpeg on {os_name}: {e}")
-            FFMPEG_PATH = None
+            ffmpeg_path = None
     else:
         logger.error(f"Unsupported OS: {os_name}. Exiting.")
         await asyncio.sleep(5)
         exit()
 
-    return STREAMLINK_PATH, FFMPEG_PATH
+    return streamlink_path, ffmpeg_path
 
 # Asynchronous JSON file loading
 async def load_json_async(file_path):
@@ -252,8 +251,7 @@ async def record_stream(channel, headers, session, delay, TIMEOUT):
                 stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
                 stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
 
-                await asyncio.gather(stdout_task, stderr_task)
-                await ffmpeg_process.wait()
+                await asyncio.gather(stdout_task, stderr_task, ffmpeg_process.wait())
 
                 logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
                 if recording_started:
@@ -290,5 +288,10 @@ async def main():
             logger.info("Recording stopped by user.")
 
 if __name__ == "__main__":
-    asyncio.run(setup_paths())
-    asyncio.run(main())
+    streamlink_path, ffmpeg_path = asyncio.run(setup_paths())
+    if streamlink_path and ffmpeg_path:
+        STREAMLINK_PATH = streamlink_path
+        FFMPEG_PATH = ffmpeg_path
+        asyncio.run(main())
+    else:
+        logger.error("Failed to setup paths for Streamlink or FFMPEG.")
