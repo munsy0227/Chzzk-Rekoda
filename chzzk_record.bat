@@ -1,4 +1,3 @@
-chcp 65001
 @echo off
 echo Checking for an installed Python version...
 
