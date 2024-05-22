@@ -1,14 +1,15 @@
 import asyncio
-import orjson
+import hashlib
+import logging
 import os
 import platform
-import logging
 import re
-import aiohttp
-import aiofiles
-import hashlib
 import time
 from pathlib import Path
+
+import aiofiles
+import aiohttp
+import orjson
 
 print(
     "Chzzk Rekoda made by munsy0227\n"
@@ -40,7 +41,6 @@ COOKIE_FILE_PATH = 'cookie.json'
 MAX_FILENAME_BYTES = 150
 special_chars_remover = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
 
-
 # Setup paths for executables
 async def setup_paths():
     os_name = platform.system()
@@ -57,7 +57,8 @@ async def setup_paths():
             process = await asyncio.create_subprocess_shell(
                 ffmpeg_command,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE)
+                stderr=asyncio.subprocess.PIPE
+            )
             stdout, stderr = await process.communicate()
 
             if process.returncode == 0:
@@ -76,13 +77,11 @@ async def setup_paths():
 
     return streamlink_path, ffmpeg_path
 
-
 # Asynchronous JSON file loading
 async def load_json_async(file_path):
     async with aiofiles.open(file_path, "rb") as file:
         content = await file.read()
         return orjson.loads(content)
-
 
 # Load settings from JSON files
 async def load_settings():
@@ -93,7 +92,6 @@ async def load_settings():
     channels = await load_json_async(CHANNELS_FILE_PATH)
     delays = await load_json_async(DELAYS_FILE_PATH)
     return timeout, stream_segment_threads, channels, delays
-
 
 # Helper function to get authentication headers
 def get_auth_headers(cookies):
@@ -107,11 +105,9 @@ def get_auth_headers(cookies):
         'Referer': ''
     }
 
-
 # Asynchronously load session cookies
 async def get_session_cookies():
     return await load_json_async(COOKIE_FILE_PATH)
-
 
 # Fetch live information for a channel
 async def get_live_info(channel, headers, session):
@@ -128,7 +124,6 @@ async def get_live_info(channel, headers, session):
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
     return {}
 
-
 # Shorten filename if it exceeds the maximum allowed bytes
 def shorten_filename(filename):
     if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
@@ -137,18 +132,14 @@ def shorten_filename(filename):
         shortened_name = f"{name[:MAX_FILENAME_BYTES - 75]}_{hash_value}{extension}"
         logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
         return shortened_name
-    else:
-        return filename
-
+    return filename
 
 # Colorize log messages
 def colorize_log(message, color_code):
     return f"\033[{color_code}m{message}\033[0m"
 
-
 GREEN = 32
 RED = 31
-
 
 # Asynchronously read stream data and log it
 async def read_stream(stream, channel_name, stream_type):
@@ -187,7 +178,6 @@ async def read_stream(stream, channel_name, stream_type):
             last_log_time = current_time
             summary.clear()
 
-
 # Format size in bytes to a human-readable format
 def format_size(size_bytes):
     if size_bytes < 0:
@@ -198,7 +188,6 @@ def format_size(size_bytes):
         size_bytes /= 1024
         i += 1
     return f"{size_bytes:.2f} {size_names[i]}"
-
 
 # Record stream for a given channel
 async def record_stream(channel, headers, session, delay, timeout, streamlink_path, ffmpeg_path, stream_segment_threads):
@@ -244,6 +233,8 @@ async def record_stream(channel, headers, session, delay, timeout, streamlink_pa
                     logger.info("Existing ffmpeg process killed successfully.")
 
                 rpipe, wpipe = os.pipe()
+                rpipe = os.fdopen(rpipe, 'rb', buffering=0)
+                wpipe = os.fdopen(wpipe, 'wb', buffering=0)
 
                 stream_process = await asyncio.create_subprocess_exec(
                     streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
@@ -255,7 +246,6 @@ async def record_stream(channel, headers, session, delay, timeout, streamlink_pa
                     "--ffmpeg-ffmpeg", ffmpeg_path, "--ffmpeg-copyts", "--hls-segment-stream-data",
                     stdout=wpipe
                 )
-                os.close(wpipe)
 
                 ffmpeg_process = await asyncio.create_subprocess_exec(
                     ffmpeg_path, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown", "-map_metadata:s:a", "0:g",
@@ -264,7 +254,6 @@ async def record_stream(channel, headers, session, delay, timeout, streamlink_pa
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE
                 )
-                os.close(rpipe)
 
                 stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
                 stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
@@ -292,7 +281,6 @@ async def record_stream(channel, headers, session, delay, timeout, streamlink_pa
 
         await asyncio.sleep(timeout)
 
-
 # Main entry point
 async def main():
     timeout, stream_segment_threads, channels, delays = await load_settings()
@@ -309,6 +297,6 @@ async def main():
         except KeyboardInterrupt:
             logger.info("Recording stopped by user.")
 
-
 if __name__ == "__main__":
     asyncio.run(main())
+
