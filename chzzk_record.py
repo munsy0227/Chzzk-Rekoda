@@ -48,6 +48,7 @@ THREAD_FILE_PATH = Path('thread.txt')
 CHANNELS_FILE_PATH = Path('channels.json')
 DELAYS_FILE_PATH = Path('delays.json')
 COOKIE_FILE_PATH = Path('cookie.json')
+PLUGIN_DIR_PATH = Path('plugin')
 MAX_FILENAME_BYTES = 150
 SPECIAL_CHARS_REMOVER = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
 
@@ -245,6 +246,7 @@ async def record_stream(
 
                 stream_process = await asyncio.create_subprocess_exec(
                     streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
+                    "--plugin-dirs", PLUGIN_DIR_PATH,
                     "--stream-segment-threads", str(stream_segment_threads),
                     "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                     "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
