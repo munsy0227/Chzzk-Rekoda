@@ -11,10 +11,12 @@ from typing import Any, Dict, List, Tuple
 import aiofiles
 import aiohttp
 import orjson
-import uvloop
 
-# Use uvloop for better performance
-uvloop.install()
+if platform.system() != "Windows":
+    import uvloop
+
+    # Use uvloop for better performance
+    uvloop.install()
 
 def setup_logger() -> logging.Logger:
     logger = logging.getLogger(__name__)

@@ -34,7 +34,7 @@ REM Set the environment variable to force UTF-8 encoding
 set PYTHONUTF8=1
 
 REM Install required Python packages
-"%VENV_DIR%\Scripts\pip" install --upgrade streamlink aiohttp aiofiles orjson uvloop
+"%VENV_DIR%\Scripts\pip" install --upgrade streamlink aiohttp aiofiles orjson
 
 REM Deactivate the virtual environment
 call "%VENV_DIR%\Scripts\deactivate"
