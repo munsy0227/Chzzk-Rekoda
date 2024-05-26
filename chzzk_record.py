@@ -14,9 +14,7 @@ import orjson
 
 if platform.system() != "Windows":
     import uvloop
-
-    # Use uvloop for better performance
-    uvloop.install()
+    uvloop.install()  # Use uvloop for better performance
 
 def setup_logger() -> logging.Logger:
     logger = logging.getLogger(__name__)
@@ -224,100 +222,111 @@ async def record_stream(
     stream_process = None
     ffmpeg_process = None
 
-    while True:
-        stream_url = f"https://chzzk.naver.com/live/{channel['id']}"
-        if stream_url:
-            logger.debug(f"Found stream URL for channel: {channel['name']}")
-            try:
-                cookies = await get_session_cookies()
-                current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
-                channel_name = channel.get("name", "Unknown")
-                live_info = await get_live_info(channel, headers, session)
-                live_title = SPECIAL_CHARS_REMOVER.sub('', live_info.get("liveTitle", "").rstrip())
-                output_dir = Path(channel.get("output_dir", "./recordings"))
-                output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
-                output_path = output_dir / output_file
+    try:
+        while True:
+            stream_url = f"https://chzzk.naver.com/live/{channel['id']}"
+            if stream_url:
+                logger.debug(f"Found stream URL for channel: {channel['name']}")
+                try:
+                    cookies = await get_session_cookies()
+                    current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
+                    channel_name = channel.get("name", "Unknown")
+                    live_info = await get_live_info(channel, headers, session)
+                    live_title = SPECIAL_CHARS_REMOVER.sub('', live_info.get("liveTitle", "").rstrip())
+                    output_dir = Path(channel.get("output_dir", "./recordings"))
+                    output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
+                    output_path = output_dir / output_file
 
-                output_dir.mkdir(parents=True, exist_ok=True)
+                    output_dir.mkdir(parents=True, exist_ok=True)
 
-                if not recording_started:
-                    logger.info(f"Recording started for {channel_name} at {current_time}.")
-                    recording_started = True
+                    if not recording_started:
+                        logger.info(f"Recording started for {channel_name} at {current_time}.")
+                        recording_started = True
 
-                if stream_process is not None and stream_process.returncode is None:
-                    stream_process.kill()
+                    if stream_process is not None and stream_process.returncode is None:
+                        stream_process.kill()
+                        await stream_process.wait()
+                        logger.info("Existing stream process killed successfully.")
+
+                    if ffmpeg_process is not None and ffmpeg_process.returncode is None:
+                        ffmpeg_process.kill()
+                        await ffmpeg_process.wait()
+                        logger.info("Existing ffmpeg process killed successfully.")
+
+                    rpipe, wpipe = os.pipe()
+
+                    stream_process = await asyncio.create_subprocess_exec(
+                        streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
+                        "--plugin-dirs", PLUGIN_DIR_PATH,
+                        "--stream-segment-threads", str(stream_segment_threads),
+                        "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
+                        "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
+                        "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1",
+                        "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive",
+                        "--http-header", "Referer=", "--ffmpeg-ffmpeg", ffmpeg_path, "--ffmpeg-copyts", "--hls-segment-stream-data",
+                        stdout=wpipe
+                    )
+                    os.close(wpipe)
+
+                    ffmpeg_process = await asyncio.create_subprocess_exec(
+                        ffmpeg_path, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown",
+                        "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
+                        stdin=rpipe, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    os.close(rpipe)
+
+                    stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
+                    stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
+
+                    await asyncio.gather(stdout_task, stderr_task, ffmpeg_process.wait())
+
+                    logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
+                    if recording_started:
+                        logger.info(f"Recording stopped for {channel_name}.")
+                        recording_started = False
+
                     await stream_process.wait()
-                    logger.info("Existing stream process killed successfully.")
+                    logger.info(f"Stream recording process for {channel_name} exited with return code {stream_process.returncode}.")
 
-                if ffmpeg_process is not None and ffmpeg_process.returncode is None:
-                    ffmpeg_process.kill()
-                    await ffmpeg_process.wait()
-                    logger.info("Existing ffmpeg process killed successfully.")
-
-                rpipe, wpipe = os.pipe()
-
-                stream_process = await asyncio.create_subprocess_exec(
-                    streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
-                    "--plugin-dirs", PLUGIN_DIR_PATH,
-                    "--stream-segment-threads", str(stream_segment_threads),
-                    "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
-                    "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
-                    "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1",
-                    "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive",
-                    "--http-header", "Referer=", "--ffmpeg-ffmpeg", ffmpeg_path, "--ffmpeg-copyts", "--hls-segment-stream-data",
-                    stdout=wpipe
-                )
-                os.close(wpipe)
-
-                ffmpeg_process = await asyncio.create_subprocess_exec(
-                    ffmpeg_path, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown",
-                    "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
-                    stdin=rpipe, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                os.close(rpipe)
-
-                stdout_task = asyncio.create_task(read_stream(ffmpeg_process.stdout, channel_name, "stdout"))
-                stderr_task = asyncio.create_task(read_stream(ffmpeg_process.stderr, channel_name, "stderr"))
-
-                await asyncio.gather(stdout_task, stderr_task, ffmpeg_process.wait())
-
-                logger.info(f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}.")
+                except Exception as e:
+                    logger.exception(f"Error occurred while recording {channel_name}: {e}")
+                    if recording_started:
+                        logger.info(f"Recording stopped for {channel_name}.")
+                        recording_started = False
+            else:
+                logger.error(f"No stream URL available for {channel['name']}")
                 if recording_started:
                     logger.info(f"Recording stopped for {channel_name}.")
                     recording_started = False
 
-                await stream_process.wait()
-                logger.info(f"Stream recording process for {channel_name} exited with return code {stream_process.returncode}.")
+            await asyncio.sleep(timeout)
 
-            except Exception as e:
-                logger.exception(f"Error occurred while recording {channel_name}: {e}")
-                if recording_started:
-                    logger.info(f"Recording stopped for {channel_name}.")
-                    recording_started = False
-        else:
-            logger.error(f"No stream URL available for {channel['name']}")
-            if recording_started:
-                logger.info(f"Recording stopped for {channel_name}.")
-                recording_started = False
-
-        await asyncio.sleep(timeout)
+    finally:
+        if stream_process is not None and stream_process.returncode is None:
+            stream_process.kill()
+            await stream_process.wait()
+        if ffmpeg_process is not None and ffmpeg_process.returncode is None:
+            ffmpeg_process.kill()
+            await ffmpeg_process.wait()
 
 async def main() -> None:
-    timeout, stream_segment_threads, channels, delays = await load_settings()
-    cookies = await get_session_cookies()
-    headers = get_auth_headers(cookies)
-    streamlink_path, ffmpeg_path = await setup_paths()
-    async with aiohttp.ClientSession() as session:
-        tasks = [
-            record_stream(
-                channel, headers, session, delays.get(channel.get("identifier"), 0),
-                timeout, streamlink_path, ffmpeg_path, stream_segment_threads
-            ) for channel in channels
-        ]
-        try:
+    try:
+        timeout, stream_segment_threads, channels, delays = await load_settings()
+        cookies = await get_session_cookies()
+        headers = get_auth_headers(cookies)
+        streamlink_path, ffmpeg_path = await setup_paths()
+        async with aiohttp.ClientSession() as session:
+            tasks = [
+                record_stream(
+                    channel, headers, session, delays.get(channel.get("identifier"), 0),
+                    timeout, streamlink_path, ffmpeg_path, stream_segment_threads
+                ) for channel in channels
+            ]
             await asyncio.gather(*tasks)
-        except KeyboardInterrupt:
-            logger.info("Recording stopped by user.")
+    except KeyboardInterrupt:
+        logger.info("Recording stopped by user.")
+    except Exception as e:
+        logger.exception(f"An error occurred: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
