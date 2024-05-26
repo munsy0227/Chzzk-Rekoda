@@ -89,9 +89,13 @@ async def setup_paths() -> Tuple[Path, Path]:
     return streamlink_path, ffmpeg_path
 
 async def load_json_async(file_path: Path) -> Any:
-    async with aiofiles.open(file_path, "rb") as file:
-        content = await file.read()
-        return orjson.loads(content)
+    try:
+        async with aiofiles.open(file_path, "rb") as file:
+            content = await file.read()
+            return orjson.loads(content)
+    except Exception as e:
+        logger.error(f"Error loading JSON from {file_path}: {e}")
+        return None
 
 async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int]]:
     time_file_content = await load_json_async(TIME_FILE_PATH)
@@ -309,20 +313,57 @@ async def record_stream(
             ffmpeg_process.kill()
             await ffmpeg_process.wait()
 
+async def manage_recording_tasks():
+    active_tasks = {}
+    timeout, stream_segment_threads, channels, delays = await load_settings()
+    cookies = await get_session_cookies()
+    headers = get_auth_headers(cookies)
+    streamlink_path, ffmpeg_path = await setup_paths()
+
+    async with aiohttp.ClientSession() as session:
+        while True:
+            new_timeout, new_stream_segment_threads, new_channels, new_delays = await load_settings()
+            active_channels = 0
+
+            # 현재 작업 중인 채널 ID 목록
+            current_channel_ids = {channel.get("id") for channel in new_channels}
+
+            # 삭제된 채널 작업 취소
+            for channel_id in list(active_tasks.keys()):
+                if channel_id not in current_channel_ids:
+                    task = active_tasks.pop(channel_id)
+                    task.cancel()
+                    logger.info(f"Cancelled recording task for removed channel: {channel['name']}")
+
+            for channel in new_channels:
+                channel_id = channel.get("id")
+                if channel_id not in active_tasks:
+                    if channel.get("active", "on") == "on":
+                        task = asyncio.create_task(
+                            record_stream(
+                                channel, headers, session, new_delays.get(channel.get("identifier"), 0),
+                                new_timeout, streamlink_path, ffmpeg_path, new_stream_segment_threads
+                            )
+                        )
+                        active_tasks[channel_id] = task
+                        active_channels += 1
+                        logger.info(f"Started recording task for new active channel: {channel['name']}")
+                else:
+                    if channel.get("active", "on") == "off":
+                        task = active_tasks.pop(channel_id)
+                        task.cancel()
+                        logger.info(f"Cancelled recording task for deactivated channel: {channel['name']}")
+                    else:
+                        active_channels += 1
+
+            if active_channels == 0:
+                logger.info("All channels are inactive. No active recordings.")
+
+            await asyncio.sleep(10)  # Check for changes every 10 seconds
+
 async def main() -> None:
     try:
-        timeout, stream_segment_threads, channels, delays = await load_settings()
-        cookies = await get_session_cookies()
-        headers = get_auth_headers(cookies)
-        streamlink_path, ffmpeg_path = await setup_paths()
-        async with aiohttp.ClientSession() as session:
-            tasks = [
-                record_stream(
-                    channel, headers, session, delays.get(channel.get("identifier"), 0),
-                    timeout, streamlink_path, ffmpeg_path, stream_segment_threads
-                ) for channel in channels
-            ]
-            await asyncio.gather(*tasks)
+        await manage_recording_tasks()
     except KeyboardInterrupt:
         logger.info("Recording stopped by user.")
     except Exception as e:
