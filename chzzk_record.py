@@ -150,38 +150,48 @@ RED = 31
 async def read_stream(stream: asyncio.StreamReader, channel_name: str, stream_type: str) -> None:
     summary = {}
     last_log_time = time.time()
+    buffer = ""
 
     while True:
-        line = await stream.readline()
-        if not line:
+        try:
+            chunk = await stream.read(2048)
+            if not chunk:
+                break
+            buffer += chunk.decode()
+
+            # Process complete lines
+            while '\n' in buffer:
+                line, buffer = buffer.split('\n', 1)
+                line_str = line.strip()
+
+                if stream_type == "stderr" and line_str:
+                    if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
+                        continue
+                    logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+
+                parts = line_str.split('=')
+                if len(parts) == 2:
+                    key, value = parts
+                    summary[key.strip()] = value.strip()
+
+                current_time = time.time()
+                if 'progress' in summary and (current_time - last_log_time >= 5):
+                    total_size = summary.get('total_size', '0')
+                    total_size_formatted = format_size(int(total_size))
+                    log_message = (
+                        f"Bitrate={summary.get('bitrate', 'N/A')} "
+                        f"Total Size={total_size_formatted} "
+                        f"Out Time={summary.get('out_time', 'N/A')} "
+                        f"Speed={summary.get('speed', 'N/A')} "
+                        f"Progress={summary.get('progress', 'N/A')}"
+                    )
+                    colored_message = colorize_log(log_message, GREEN)
+                    logger.info(f"{channel_name} {stream_type}: {colored_message}")
+                    last_log_time = current_time
+                    summary.clear()
+        except Exception as e:
+            logger.error(f"Error occurred while reading stream for {channel_name}: {e}")
             break
-        line_str = line.decode().strip()
-
-        if stream_type == "stderr" and line_str:
-            if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
-                continue
-            logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
-
-        parts = line_str.split('=')
-        if len(parts) == 2:
-            key, value = parts
-            summary[key.strip()] = value.strip()
-
-        current_time = time.time()
-        if 'progress' in summary and (current_time - last_log_time >= 5):
-            total_size = summary.get('total_size', '0')
-            total_size_formatted = format_size(int(total_size))
-            log_message = (
-                f"Bitrate={summary.get('bitrate', 'N/A')} "
-                f"Total Size={total_size_formatted} "
-                f"Out Time={summary.get('out_time', 'N/A')} "
-                f"Speed={summary.get('speed', 'N/A')} "
-                f"Progress={summary.get('progress', 'N/A')}"
-            )
-            colored_message = colorize_log(log_message, GREEN)
-            logger.info(f"{channel_name} {stream_type}: {colored_message}")
-            last_log_time = current_time
-            summary.clear()
 
 def format_size(size_bytes: int) -> str:
     if size_bytes < 0:
