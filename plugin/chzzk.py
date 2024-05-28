@@ -10,7 +10,6 @@ from streamlink.stream.hls import HLSStream, HLSStreamReader, HLSStreamWorker, p
 
 log = logging.getLogger(__name__)
 
-
 class ChzzkHLSStreamWorker(HLSStreamWorker):
     """
     Custom HLS Stream Worker for Chzzk.
@@ -127,6 +126,13 @@ class ChzzkAPI:
                     validate.all(
                         {
                             "code": 200,
+                            "content": None,
+                        },
+                        validate.transform(lambda _: ("success", None)),
+                    ),
+                    validate.all(
+                        {
+                            "code": 200,
                             "content": dict,
                         },
                         validate.get("content"),
@@ -207,7 +213,9 @@ class Chzzk(Plugin):
         datatype, data = self._api.get_live_detail(channel_id)
         if datatype == "error":
             log.error(data)
-            return None
+            return
+        if data is None:
+            return
 
         media, status, self.id, self.author, self.category, self.title, adult = data
         if status != self._STATUS_OPEN:
