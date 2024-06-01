@@ -14,23 +14,24 @@ import orjson
 
 if platform.system() != "Windows":
     import uvloop
-    uvloop.install()  # Use uvloop for better performance
+    uvloop.install()
 
+# Logger setup
 def setup_logger() -> logging.Logger:
     logger = logging.getLogger(__name__)
     logger.setLevel(logging.DEBUG)
-    
+
     file_handler = logging.FileHandler('log.log', encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-    
+
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(formatter)
     logger.addHandler(console_handler)
-    
+
     return logger
 
 logger = setup_logger()
@@ -52,39 +53,30 @@ PLUGIN_DIR_PATH = Path('plugin')
 MAX_FILENAME_BYTES = 150
 SPECIAL_CHARS_REMOVER = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
 
+# Helper functions
 async def setup_paths() -> Tuple[Path, Path]:
-    os_name = platform.system()
     base_dir = Path(__file__).parent
-
-    match os_name:
-        case "Windows":
-            streamlink_path = base_dir / "venv/Scripts/streamlink.exe"
-            ffmpeg_path = base_dir / "ffmpeg/bin/ffmpeg.exe"
-            logger.info("Running on Windows.")
-        case "Linux" | "Darwin":
-            streamlink_path = base_dir / "venv/bin/streamlink"
-            ffmpeg_command = "which ffmpeg"
-            try:
-                process = await asyncio.create_subprocess_shell(
-                    ffmpeg_command,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE
-                )
-                stdout, stderr = await process.communicate()
-
-                if process.returncode == 0:
-                    ffmpeg_path = Path(stdout.decode().strip())
-                    logger.info(f"Running on {os_name}. ffmpeg found at: {ffmpeg_path}")
-                else:
-                    logger.error(f"ffmpeg not found in PATH on {os_name}.")
-                    ffmpeg_path = None
-            except Exception as e:
-                logger.error(f"Error finding ffmpeg on {os_name}: {e}")
-                ffmpeg_path = None
-        case _:
-            logger.error(f"Unsupported OS: {os_name}. Exiting.")
-            await asyncio.sleep(5)
-            exit()
+    os_name = platform.system()
+    
+    if os_name == "Windows":
+        streamlink_path = base_dir / "venv/Scripts/streamlink.exe"
+        ffmpeg_path = base_dir / "ffmpeg/bin/ffmpeg.exe"
+        logger.info("Running on Windows.")
+    else:
+        streamlink_path = base_dir / "venv/bin/streamlink"
+        ffmpeg_command = "which ffmpeg"
+        try:
+            process = await asyncio.create_subprocess_shell(
+                ffmpeg_command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await process.communicate()
+            ffmpeg_path = Path(stdout.decode().strip()) if process.returncode == 0 else None
+            logger.info(f"Running on {os_name}. ffmpeg found at: {ffmpeg_path}")
+        except Exception as e:
+            logger.error(f"Error finding ffmpeg on {os_name}: {e}")
+            ffmpeg_path = None
 
     return streamlink_path, ffmpeg_path
 
@@ -98,12 +90,18 @@ async def load_json_async(file_path: Path) -> Any:
         return None
 
 async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int]]:
-    time_file_content = await load_json_async(TIME_FILE_PATH)
-    timeout = time_file_content if isinstance(time_file_content, int) else int(time_file_content.get("timeout", 60))
-    thread_file_content = await load_json_async(THREAD_FILE_PATH)
-    stream_segment_threads = thread_file_content if isinstance(thread_file_content, int) else int(thread_file_content.get("threads", 2))
-    channels = await load_json_async(CHANNELS_FILE_PATH)
-    delays = await load_json_async(DELAYS_FILE_PATH)
+    settings = await asyncio.gather(
+        load_json_async(TIME_FILE_PATH),
+        load_json_async(THREAD_FILE_PATH),
+        load_json_async(CHANNELS_FILE_PATH),
+        load_json_async(DELAYS_FILE_PATH)
+    )
+    
+    timeout = settings[0] if isinstance(settings[0], int) else int(settings[0].get("timeout", 60))
+    stream_segment_threads = settings[1] if isinstance(settings[1], int) else int(settings[1].get("threads", 2))
+    channels = settings[2]
+    delays = settings[3]
+    
     return timeout, stream_segment_threads, channels, delays
 
 def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
@@ -146,9 +144,6 @@ def shorten_filename(filename: str) -> str:
 def colorize_log(message: str, color_code: int) -> str:
     return f"\033[{color_code}m{message}\033[0m"
 
-GREEN = 32
-RED = 31
-
 async def read_stream(stream: asyncio.StreamReader, channel_name: str, stream_type: str) -> None:
     summary = {}
     last_log_time = time.time()
@@ -161,7 +156,6 @@ async def read_stream(stream: asyncio.StreamReader, channel_name: str, stream_ty
                 break
             buffer += chunk.decode()
 
-            # Process complete lines
             while '\n' in buffer:
                 line, buffer = buffer.split('\n', 1)
                 line_str = line.strip()
@@ -187,7 +181,7 @@ async def read_stream(stream: asyncio.StreamReader, channel_name: str, stream_ty
                         f"Speed={summary.get('speed', 'N/A')} "
                         f"Progress={summary.get('progress', 'N/A')}"
                     )
-                    colored_message = colorize_log(log_message, GREEN)
+                    colored_message = colorize_log(log_message, 32)
                     logger.info(f"{channel_name} {stream_type}: {colored_message}")
                     last_log_time = current_time
                     summary.clear()
@@ -247,12 +241,12 @@ async def record_stream(
                         logger.info(f"Recording started for {channel_name} at {current_time}.")
                         recording_started = True
 
-                    if stream_process is not None and stream_process.returncode is None:
+                    if stream_process and stream_process.returncode is None:
                         stream_process.kill()
                         await stream_process.wait()
                         logger.info("Existing stream process killed successfully.")
 
-                    if ffmpeg_process is not None and ffmpeg_process.returncode is None:
+                    if ffmpeg_process and ffmpeg_process.returncode is None:
                         ffmpeg_process.kill()
                         await ffmpeg_process.wait()
                         logger.info("Existing ffmpeg process killed successfully.")
@@ -260,21 +254,21 @@ async def record_stream(
                     rpipe, wpipe = os.pipe()
 
                     stream_process = await asyncio.create_subprocess_exec(
-                        streamlink_path, "--stdout", stream_url, "best", "--hls-live-restart",
-                        "--plugin-dirs", PLUGIN_DIR_PATH,
+                        str(streamlink_path), "--stdout", stream_url, "best", "--hls-live-restart",
+                        "--plugin-dirs", str(PLUGIN_DIR_PATH),
                         "--stream-segment-threads", str(stream_segment_threads),
                         "--http-header", f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
                         "--http-header", 'User-Agent=Mozilla/5.0 (X11; Unix x86_64)',
                         "--http-header", "Origin=https://chzzk.naver.com", "--http-header", "DNT=1",
                         "--http-header", "Sec-GPC=1", "--http-header", "Connection=keep-alive",
-                        "--http-header", "Referer=", "--ffmpeg-ffmpeg", ffmpeg_path, "--ffmpeg-copyts", "--hls-segment-stream-data",
+                        "--http-header", "Referer=", "--ffmpeg-ffmpeg", str(ffmpeg_path), "--ffmpeg-copyts", "--hls-segment-stream-data",
                         stdout=wpipe
                     )
                     os.close(wpipe)
 
                     ffmpeg_process = await asyncio.create_subprocess_exec(
-                        ffmpeg_path, "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown",
-                        "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", output_path,
+                        str(ffmpeg_path), "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown",
+                        "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", str(output_path),
                         stdin=rpipe, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
                     )
                     os.close(rpipe)
@@ -306,15 +300,15 @@ async def record_stream(
             await asyncio.sleep(timeout)
 
     finally:
-        if stream_process is not None and stream_process.returncode is None:
+        if stream_process and stream_process.returncode is None:
             stream_process.kill()
             await stream_process.wait()
-        if ffmpeg_process is not None and ffmpeg_process.returncode is None:
+        if ffmpeg_process and ffmpeg_process.returncode is None:
             ffmpeg_process.kill()
             await ffmpeg_process.wait()
 
 async def manage_recording_tasks():
-    active_tasks = {}
+    active_tasks: Dict[str, asyncio.Task] = {}
     timeout, stream_segment_threads, channels, delays = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
@@ -325,15 +319,13 @@ async def manage_recording_tasks():
             new_timeout, new_stream_segment_threads, new_channels, new_delays = await load_settings()
             active_channels = 0
 
-            # 현재 작업 중인 채널 ID 목록
             current_channel_ids = {channel.get("id") for channel in new_channels}
 
-            # 삭제된 채널 작업 취소
             for channel_id in list(active_tasks.keys()):
                 if channel_id not in current_channel_ids:
                     task = active_tasks.pop(channel_id)
                     task.cancel()
-                    logger.info(f"Cancelled recording task for removed channel: {channel['name']}")
+                    logger.info(f"Cancelled recording task for removed channel: {channel_id}")
 
             for channel in new_channels:
                 channel_id = channel.get("id")
@@ -359,7 +351,7 @@ async def manage_recording_tasks():
             if active_channels == 0:
                 logger.info("All channels are inactive. No active recordings.")
 
-            await asyncio.sleep(10)  # Check for changes every 10 seconds
+            await asyncio.sleep(10)
 
 async def main() -> None:
     try:
