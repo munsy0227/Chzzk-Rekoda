@@ -51,7 +51,7 @@ DELAYS_FILE_PATH = Path('delays.json')
 COOKIE_FILE_PATH = Path('cookie.json')
 PLUGIN_DIR_PATH = Path('plugin')
 MAX_FILENAME_BYTES = 150
-SPECIAL_CHARS_REMOVER = re.compile(r"[\\/:*?\"<>|\u2600-\u26FF\u2700-\u27BF\u1F600-\u1F64F]")
+SPECIAL_CHARS_REMOVER = re.compile(r'[\\/:*?\"<>|]')
 
 # Helper functions
 async def setup_paths() -> Tuple[Path, Path]:
