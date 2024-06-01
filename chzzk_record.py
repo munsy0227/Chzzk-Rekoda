@@ -50,7 +50,6 @@ CHANNELS_FILE_PATH = Path('channels.json')
 DELAYS_FILE_PATH = Path('delays.json')
 COOKIE_FILE_PATH = Path('cookie.json')
 PLUGIN_DIR_PATH = Path('plugin')
-MAX_FILENAME_BYTES = 150
 SPECIAL_CHARS_REMOVER = re.compile(r'[\\/:*?\"<>|]')
 
 # Helper functions
@@ -133,12 +132,21 @@ async def get_live_info(channel: Dict[str, Any], headers: Dict[str, str], sessio
     return {}
 
 def shorten_filename(filename: str) -> str:
-    if len(filename.encode('utf-8')) > MAX_FILENAME_BYTES:
-        hash_value = hashlib.sha256(filename.encode()).hexdigest()[:8]
+    MAX_FILENAME_BYTES = 255
+    MAX_HASH_LENGTH = 8
+    RESERVED_BYTES = MAX_HASH_LENGTH + 1  # Hash length and one underscore
+
+    filename_bytes = filename.encode('utf-8')
+    if len(filename_bytes) > MAX_FILENAME_BYTES:
+        hash_value = hashlib.sha256(filename_bytes).hexdigest()[:MAX_HASH_LENGTH]
         name, extension = os.path.splitext(filename)
-        shortened_name = f"{name[:MAX_FILENAME_BYTES - 75]}_{hash_value}{extension}"
-        logger.warning(f"Filename {filename} is too long. Shortening to {shortened_name}.")
-        return shortened_name
+        max_name_length = MAX_FILENAME_BYTES - RESERVED_BYTES - len(extension.encode('utf-8'))
+
+        shortened_name = name.encode('utf-8')[:max_name_length].decode('utf-8', 'ignore')
+        shortened_filename = f"{shortened_name}_{hash_value}{extension}"
+        logger.warning(f"Filename {filename} is too long. Shortening to {shortened_filename}.")
+        return shortened_filename
+
     return filename
 
 def colorize_log(message: str, color_code: int) -> str:
