@@ -333,7 +333,7 @@ async def manage_recording_tasks():
                 if channel_id not in current_channel_ids:
                     task = active_tasks.pop(channel_id)
                     task.cancel()
-                    logger.info(f"Cancelled recording task for removed channel: {channel_id}")
+                    logger.info(f"Cancelled recording task for removed channel: {channel['name']}")
 
             for channel in new_channels:
                 channel_id = channel.get("id")
