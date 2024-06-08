@@ -1,7 +1,8 @@
 import logging
 import re
 import time
-from typing import Any, Dict, Tuple, Union
+from typing import Any, Dict, Tuple, Union, TypedDict
+from dataclasses import dataclass
 
 from streamlink.exceptions import StreamError
 from streamlink.plugin import Plugin, pluginmatcher
@@ -99,18 +100,25 @@ class ChzzkHLSStream(HLSStream):
             self.refresh_playlist()
         return self._url
 
+class LiveDetail(TypedDict):
+    status: str
+    liveId: int
+    liveTitle: Union[str, None]
+    liveCategory: Union[str, None]
+    adult: bool
+    channel: str
+    media: list[Dict[str, str]]
 
+@dataclass
 class ChzzkAPI:
     """
     API client for Chzzk.
     """
-    _CHANNELS_LIVE_DETAIL_URL = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
-
-    def __init__(self, session) -> None:
-        self._session = session
+    session: Any
+    _CHANNELS_LIVE_DETAIL_URL: str = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
 
     def _query_api(self, url: str, *schemas: validate.Schema) -> Tuple[str, Union[Dict[str, Any], str]]:
-        return self._session.http.get(
+        return self.session.http.get(
             url,
             acceptable_status=(200, 404),
             schema=validate.Schema(
@@ -143,7 +151,7 @@ class ChzzkAPI:
             ),
         )
 
-    def get_live_detail(self, channel_id: str) -> Tuple[str, Union[Dict[str, Any], str]]:
+    def get_live_detail(self, channel_id: str) -> Tuple[str, Union[LiveDetail, str]]:
         """
         Get live stream details for a given channel.
         """
@@ -192,7 +200,6 @@ class ChzzkAPI:
             ),
         )
 
-
 @pluginmatcher(
     name="live",
     pattern=re.compile(
@@ -237,5 +244,5 @@ class Chzzk(Plugin):
         if self.matches["live"]:
             return self._get_live(self.match["channel_id"])
 
-
 __plugin__ = Chzzk
+
