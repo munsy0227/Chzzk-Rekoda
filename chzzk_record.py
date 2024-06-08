@@ -275,9 +275,24 @@ async def record_stream(
                     os.close(wpipe)
 
                     ffmpeg_process = await asyncio.create_subprocess_exec(
-                        str(ffmpeg_path), "-i", "pipe:0", "-c", "copy", "-progress", "pipe:1", "-copy_unknown",
-                        "-map_metadata:s:a", "0:g", "-bsf", "setts=pts=PTS-STARTPTS", "-y", str(output_path),
-                        stdin=rpipe, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                        str(ffmpeg_path),
+                        "-i", "pipe:0",
+                        "-c", "copy",
+                        "-progress", "pipe:1",
+                        "-copy_unknown",
+                        "-map_metadata:s:a", "0:s:a",
+                        "-map_metadata:s:v", "0:s:v",
+                        "-bsf:v", "h264_mp4toannexb",
+                        "-bsf:a", "aac_adtstoasc",
+                        "-f", "mpegts",
+                        "-mpegts_flags", "resend_headers",
+                        "-bsf", "setts=pts=PTS-STARTPTS",
+                        "-fflags", "+genpts+discardcorrupt+nobuffer",
+                        "-avioflags", "direct",
+                        "-y", str(output_path),
+                        stdin=rpipe,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE
                     )
                     os.close(rpipe)
 
