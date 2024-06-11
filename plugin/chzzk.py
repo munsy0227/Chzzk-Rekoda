@@ -117,6 +117,11 @@ class ChzzkAPI:
     session: Any
     _CHANNELS_LIVE_DETAIL_URL: str = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
 
+    def __post_init__(self):
+        self.session.http.headers.update({
+            "Cookie": self.session.http.headers.get("Cookie")
+        })
+
     def _query_api(self, url: str, *schemas: validate.Schema) -> Tuple[str, Union[Dict[str, Any], str]]:
         return self.session.http.get(
             url,
