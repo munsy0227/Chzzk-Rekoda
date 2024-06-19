@@ -26,13 +26,11 @@ class ChzzkHLSStreamWorker(HLSStreamWorker):
                 log.debug(f"Force-reloading the channel playlist on error: {err}")
             raise err
 
-
 class ChzzkHLSStreamReader(HLSStreamReader):
     """
     Custom HLS Stream Reader for Chzzk.
     """
     __worker__ = ChzzkHLSStreamWorker
-
 
 class ChzzkHLSStream(HLSStream):
     """
@@ -52,7 +50,7 @@ class ChzzkHLSStream(HLSStream):
 
     def refresh_playlist(self) -> None:
         """
-        Refresh the stream URL to get a new token.
+        Refresh the stream URL to get a new token and handle domain change.
         """
         log.debug("Refreshing the stream URL to get a new token.")
         datatype, data = self._api.get_live_detail(self._channel_id)
@@ -61,28 +59,42 @@ class ChzzkHLSStream(HLSStream):
         media, status, *_ = data
         if status != "OPEN" or media is None:
             raise StreamError("Error occurred while refreshing the stream URL.")
-        for media_id, media_protocol, media_path in media:
-            if media_protocol == "HLS" and media_id == "HLS":
-                media_uri = self._get_media_uri(media_path)
-                self._replace_token_from(media_uri)
-                log.debug(f"Refreshed the stream URL to {self._url}")
-                break
+        for media_info in media:
+            if media_info[1] == "HLS" and media_info[0] == "HLS":
+                media_path = media_info[2]
+                media_path = self._update_domain(media_path)
+                res = self._fetch_variant_playlist(self.session, media_path)
+                m3u8 = parse_m3u8(res)
+                for playlist in m3u8.playlists:
+                    if playlist.stream_info:
+                        new_url = playlist.uri
+                        new_url = self._update_domain(new_url)
+                        self._replace_token(new_url)
+                        log.debug(f"Refreshed the stream URL to {self._url}")
+                        return
+        raise StreamError("No valid HLS stream found in the refreshed playlist.")
 
-    def _get_media_uri(self, media_path: str) -> str:
-        res = self._fetch_variant_playlist(self.session, media_path)
-        m3u8 = parse_m3u8(res)
-        for playlist in m3u8.playlists:
-            if playlist.stream_info:
-                return playlist.uri
-        raise StreamError("No valid stream found in playlist")
+    def _update_domain(self, url: str) -> str:
+        """
+        Update the domain of the given URL if it matches specific criteria.
+        """
+        if "livecloud.pstatic.net" in url:
+            return url.replace("livecloud.pstatic.net", "nlive-streaming.navercdn.com")
+        return url
 
-    def _get_token_from(self, path: str) -> str:
-        return path.split("/")[-2]
+    def _replace_token(self, new_url: str) -> None:
+        """
+        Replace the token in the current URL with the token from the new URL.
+        """
+        old_token = self._get_token(self._url)
+        new_token = self._get_token(new_url)
+        self._url = self._url.replace(old_token, new_token)
 
-    def _replace_token_from(self, media_uri: str) -> None:
-        prev_token = self._get_token_from(self._url)
-        current_token = self._get_token_from(media_uri)
-        self._url = self._url.replace(prev_token, current_token)
+    def _get_token(self, url: str) -> str:
+        """
+        Extract the token from the given URL.
+        """
+        return url.split("?hdnts=")[-1]
 
     def _should_refresh(self) -> bool:
         return self._expire is not None and time.time() >= self._expire - self._REFRESH_BEFORE
@@ -237,17 +249,25 @@ class Chzzk(Plugin):
             log.error(f"This stream is for {'adults only' if adult else 'unavailable'}")
             return None
 
-        for media_id, media_protocol, media_path in media:
-            if media_protocol == "HLS" and media_id == "HLS":
+        for media_info in media:
+            if media_info[1] == "HLS" and media_info[0] == "HLS":
+                media_path = self._update_domain(media_info[2])
                 return ChzzkHLSStream.parse_variant_playlist(
                     self.session,
                     media_path,
                     channel_id=channel_id,
                 )
 
+    def _update_domain(self, url: str) -> str:
+        """
+        Update the domain of the given URL if it matches specific criteria.
+        """
+        if "livecloud.pstatic.net" in url:
+            return url.replace("livecloud.pstatic.net", "nlive-streaming.navercdn.com")
+        return url
+
     def _get_streams(self) -> Union[None, HLSStream]:
         if self.matches["live"]:
             return self._get_live(self.match["channel_id"])
 
 __plugin__ = Chzzk
-

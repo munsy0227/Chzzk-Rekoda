@@ -117,19 +117,25 @@ def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
 async def get_session_cookies() -> Dict[str, str]:
     return await load_json_async(COOKIE_FILE_PATH)
 
-async def get_live_info(channel: Dict[str, Any], headers: Dict[str, str], session: aiohttp.ClientSession) -> Dict[str, Any]:
+async def get_live_info(channel: Dict[str, Any], headers: Dict[str, str], session: aiohttp.ClientSession) -> Tuple[str, Dict[str, Any]]:
     logger.debug(f"Fetching live info for channel: {channel['name']}")
     try:
         async with session.get(LIVE_DETAIL_API.format(channel_id=channel["id"]), headers=headers) as response:
             response.raise_for_status()
             data = await response.json()
             logger.debug(f"Successfully fetched live info for channel: {channel['name']}, data: {data}")
-            return data.get("content", {})
+
+            content = data.get("content", {})
+            status = content.get("status", "")
+            if status == "CLOSE":
+                logger.info(f"The channel '{channel['name']}' is not currently live.")
+                return status, {}
+            return status, content
     except aiohttp.ClientError as e:
         logger.error(f"HTTP error occurred while fetching live info for {channel['name']}: {e}")
     except Exception as e:
         logger.error(f"Failed to fetch live info for {channel['name']}: {e}")
-    return {}
+    return "", {}
 
 def shorten_filename(filename: str) -> str:
     MAX_FILENAME_BYTES = 255
@@ -235,9 +241,17 @@ async def record_stream(
                 logger.debug(f"Found stream URL for channel: {channel['name']}")
                 try:
                     cookies = await get_session_cookies()
+                    while True:
+                        status, live_info = await get_live_info(channel, headers, session)
+
+                        if status != "CLOSE":
+                            break
+
+                        logger.info(f"Waiting for the channel '{channel['name']}' to go live...")
+                        await asyncio.sleep(timeout)
+
                     current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
                     channel_name = channel.get("name", "Unknown")
-                    live_info = await get_live_info(channel, headers, session)
                     live_title = SPECIAL_CHARS_REMOVER.sub('', live_info.get("liveTitle", "").rstrip())
                     output_dir = Path(channel.get("output_dir", "./recordings"))
                     output_file = shorten_filename(f"[{current_time}] {channel_name} {live_title}.ts")
