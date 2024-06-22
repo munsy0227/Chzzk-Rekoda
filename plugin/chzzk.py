@@ -7,14 +7,21 @@ from dataclasses import dataclass
 from streamlink.exceptions import StreamError
 from streamlink.plugin import Plugin, pluginmatcher
 from streamlink.plugin.api import validate
-from streamlink.stream.hls import HLSStream, HLSStreamReader, HLSStreamWorker, parse_m3u8
+from streamlink.stream.hls import (
+    HLSStream,
+    HLSStreamReader,
+    HLSStreamWorker,
+    parse_m3u8,
+)
 
 log = logging.getLogger(__name__)
+
 
 class ChzzkHLSStreamWorker(HLSStreamWorker):
     """
     Custom HLS Stream Worker for Chzzk.
     """
+
     stream: "ChzzkHLSStream"
 
     def _fetch_playlist(self) -> Any:
@@ -26,16 +33,20 @@ class ChzzkHLSStreamWorker(HLSStreamWorker):
                 log.debug(f"Force-reloading the channel playlist on error: {err}")
             raise err
 
+
 class ChzzkHLSStreamReader(HLSStreamReader):
     """
     Custom HLS Stream Reader for Chzzk.
     """
+
     __worker__ = ChzzkHLSStreamWorker
+
 
 class ChzzkHLSStream(HLSStream):
     """
     Custom HLS Stream for Chzzk with token refresh capability.
     """
+
     __shortname__ = "hls-chzzk"
     __reader__ = ChzzkHLSStreamReader
 
@@ -97,7 +108,10 @@ class ChzzkHLSStream(HLSStream):
         return url.split("?hdnts=")[-1]
 
     def _should_refresh(self) -> bool:
-        return self._expire is not None and time.time() >= self._expire - self._REFRESH_BEFORE
+        return (
+            self._expire is not None
+            and time.time() >= self._expire - self._REFRESH_BEFORE
+        )
 
     @property
     def _expire(self) -> Union[int, None]:
@@ -112,6 +126,7 @@ class ChzzkHLSStream(HLSStream):
             self.refresh_playlist()
         return self._url
 
+
 class LiveDetail(TypedDict):
     status: str
     liveId: int
@@ -121,20 +136,26 @@ class LiveDetail(TypedDict):
     channel: str
     media: list[Dict[str, str]]
 
+
 @dataclass
 class ChzzkAPI:
     """
     API client for Chzzk.
     """
+
     session: Any
-    _CHANNELS_LIVE_DETAIL_URL: str = "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
+    _CHANNELS_LIVE_DETAIL_URL: str = (
+        "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
+    )
 
     def __post_init__(self):
-        self.session.http.headers.update({
-            "Cookie": self.session.http.headers.get("Cookie")
-        })
+        self.session.http.headers.update(
+            {"Cookie": self.session.http.headers.get("Cookie")}
+        )
 
-    def _query_api(self, url: str, *schemas: validate.Schema) -> Tuple[str, Union[Dict[str, Any], str]]:
+    def _query_api(
+        self, url: str, *schemas: validate.Schema
+    ) -> Tuple[str, Union[Dict[str, Any], str]]:
         return self.session.http.get(
             url,
             acceptable_status=(200, 404),
@@ -217,6 +238,7 @@ class ChzzkAPI:
             ),
         )
 
+
 @pluginmatcher(
     name="live",
     pattern=re.compile(
@@ -227,6 +249,7 @@ class Chzzk(Plugin):
     """
     Plugin for Chzzk live streams.
     """
+
     _STATUS_OPEN = "OPEN"
 
     def __init__(self, *args, **kwargs) -> None:
@@ -269,5 +292,6 @@ class Chzzk(Plugin):
     def _get_streams(self) -> Union[None, HLSStream]:
         if self.matches["live"]:
             return self._get_live(self.match["channel_id"])
+
 
 __plugin__ = Chzzk
