@@ -1,7 +1,7 @@
 #  Chzzk-Rekoda
 Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
 
-[안드로이드에서 Termux를 사용하여 녹화하는 튜토리얼(라디유 쉘터 가입필요)](https://shelter.id/radiyu5/id/419644)
+[안드로이드에서 Termux를 사용하여 녹화하는 튜토리얼](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 ## 설치 방법
 
