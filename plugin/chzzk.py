@@ -145,7 +145,7 @@ class ChzzkAPI:
 
     session: Any
     _CHANNELS_LIVE_DETAIL_URL: str = (
-        "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
+        "https://api.chzzk.naver.com/service/v3/channels/{channel_id}/live-detail"
     )
 
     def __post_init__(self):

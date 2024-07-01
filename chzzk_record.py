@@ -49,7 +49,7 @@ print(
 
 # Constants
 LIVE_DETAIL_API = (
-    "https://api.chzzk.naver.com/service/v2/channels/{channel_id}/live-detail"
+    "https://api.chzzk.naver.com/service/v3/channels/{channel_id}/live-detail"
 )
 TIME_FILE_PATH = Path("time_sleep.txt")
 THREAD_FILE_PATH = Path("thread.txt")
