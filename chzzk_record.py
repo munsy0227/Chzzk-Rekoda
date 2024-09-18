@@ -621,11 +621,21 @@ def handle_shutdown():
 async def main() -> None:
     # Register signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        loop.add_signal_handler(sig, handle_shutdown)
+    if platform.system() != "Windows":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, handle_shutdown)
+    else:
+        # On Windows, signals are not supported in the event loop.
+        # We'll handle KeyboardInterrupt exception instead.
+        pass
 
     try:
         await manage_recording_tasks()
+    except KeyboardInterrupt:
+        logger.info("Received KeyboardInterrupt. Shutting down...")
+        handle_shutdown()
+        # Wait a moment to allow tasks to clean up
+        await asyncio.sleep(0.1)
     except asyncio.CancelledError:
         logger.info("Main task was cancelled.")
     except Exception as e:
