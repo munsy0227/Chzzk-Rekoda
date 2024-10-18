@@ -336,7 +336,7 @@ async def record_stream(
                     live_title = SPECIAL_CHARS_REMOVER.sub(
                         "", live_info.get("liveTitle", "").rstrip()
                     )
-                    output_dir = Path(channel.get("output_dir", "./recordings"))
+                    output_dir = Path(channel.get("output_dir", "./recordings")).expanduser()
                     temp_output_file = shorten_filename(
                         f"[{current_time}] {channel_name} {live_title}.ts.part"
                     )
