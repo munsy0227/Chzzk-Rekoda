@@ -15,9 +15,9 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 ```bash
 git clone https://github.com/munsy0227/Chzzk-Rekoda.git
 ```
-2. Git이 없는 경우 아래 링크에서 다운로드하세요. [아니면 이걸 클릭하세요](https://github.com/munsy0227/Chzzk-Rekoda/archive/refs/heads/main.zip)
+2. Git이 없는 경우 아래 링크에서 다운로드하세요. [아니면 이걸 클릭하세요](https://github.com/Lennox333/Stream-Recorder/archive/refs/heads/main.zip)
 ```bash
-https://github.com/munsy0227/Chzzk-Rekoda/archive/refs/heads/main.zip
+https://github.com/Lennox333/Stream-Recorder/archive/refs/heads/main.zip
 ```
 #### 2. 설치하기
 1. install.bat을 실행합니다.
@@ -29,8 +29,8 @@ install.bat
 #### 1. 클론하기
 원하는 디렉터리로 가서 터미널을 실행하고 이 명령을 입력하세요.
 ```bash
-git clone https://github.com/munsy0227/Chzzk-Rekoda.git
-cd Chzzk-Rekoda
+git clone https://github.com/Lennox333/Stream-Recorder.git
+cd Stream-Recorder
 ```
 #### 2. ffmpeg 설치
 ffmpeg가 이미 설치되어 있으면 건너뜁니다.
