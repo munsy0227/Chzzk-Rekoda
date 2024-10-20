@@ -1,0 +1,2 @@
+py speedup.py
+pause

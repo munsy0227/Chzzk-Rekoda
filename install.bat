@@ -34,7 +34,7 @@ REM Set the environment variable to force UTF-8 encoding
 set PYTHONUTF8=1
 
 REM Install required Python packages
-"%VENV_DIR%\Scripts\pip" install --upgrade streamlink aiohttp aiofiles orjson
+"%VENV_DIR%\Scripts\pip" install --upgrade streamlink aiohttp aiofiles orjson python-dotenv
 
 REM Deactivate the virtual environment
 call "%VENV_DIR%\Scripts\deactivate"
@@ -61,6 +61,7 @@ for /D %%A in (ffmpeg-*) do (
         rename "%%A" "ffmpeg"
     )
 )
+
 
 echo Starting configuration
 REM Execute the settings script
