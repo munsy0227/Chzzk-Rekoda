@@ -27,6 +27,6 @@ REM Set the environment variable to force UTF-8 encoding
 set PYTHONUTF8=1
 
 REM Execute your Python script
-python record.py
-
+python src/record.py
+pause
 exit /b 0

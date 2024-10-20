@@ -6,7 +6,11 @@ import re
 
 parent_dir = os.getcwd()
 ffmpeg_dir = os.path.join(parent_dir, 'ffmpeg/bin/ffmpeg.exe')
+
 speedup_dir = os.path.join( parent_dir, 'speed up')
+os.makedirs(speedup_dir,exist_ok=True)
+
+input_cmd = [f"{ffmpeg_dir}"]
 
 def filter_complex():
     input_cmd.append("-filter_complex")
@@ -36,10 +40,10 @@ def concat() -> str:
 
 
 
-input_cmd = [f"{ffmpeg_dir}"]
+
 
 def checkdir(outputdir: str):
-    path = os.path.join(parent_dir, outputdir)
+    path = os.path.join(speedup_dir, outputdir)
     print(path)
     if not os.path.exists(path):
         os.makedirs(path)
