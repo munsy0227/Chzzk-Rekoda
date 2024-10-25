@@ -19,13 +19,44 @@ if platform.system() != "Windows":
 
     uvloop.install()
 
+# Import Rich library components
+from rich.console import Console, Group
+from rich.live import Live
+from rich.table import Table
+from rich.layout import Layout
+from rich.panel import Panel
+from rich.text import Text
+
+# Global console instance for Rich
+console = Console()
+
+# Shared data structure for channel progress
+channel_progress: Dict[str, Dict[str, Any]] = {}
+channel_progress_lock = asyncio.Lock()
+
+# Create a queue for log messages
+log_queue: asyncio.Queue = asyncio.Queue()
+
+# Custom logging handler to put log messages into the queue
+class QueueHandler(logging.Handler):
+    def __init__(self, queue: asyncio.Queue):
+        super().__init__()
+        self.queue = queue
+
+    def emit(self, record):
+        msg = self.format(record)
+        # Directly put the message into the queue
+        try:
+            self.queue.put_nowait(msg)
+        except asyncio.QueueFull:
+            pass  # Handle the case where the queue is full
 
 # Logger setup
 def setup_logger() -> logging.Logger:
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("Recorder")
     logger.setLevel(logging.DEBUG)
 
-    # Create formatter
+    # Create formatter for file handler
     formatter = logging.Formatter(
         "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
@@ -36,11 +67,12 @@ def setup_logger() -> logging.Logger:
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
 
-    # Console handler
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    # Queue handler for real-time log updates
+    queue_handler = QueueHandler(log_queue)
+    queue_handler.setLevel(logging.INFO)
+    # Include timestamp in the console logs
+    queue_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
+    logger.addHandler(queue_handler)
 
     # Avoid duplicate logs
     logger.propagate = False
@@ -75,7 +107,6 @@ RESERVED_BYTES = MAX_HASH_LENGTH + 1  # Hash length and one underscore
 
 # Global variables for graceful shutdown
 shutdown_event = asyncio.Event()
-
 
 # Helper functions
 async def setup_paths() -> Tuple[Optional[Path], Optional[Path]]:
@@ -219,16 +250,26 @@ def shorten_filename(filename: str) -> str:
     return filename
 
 
-def colorize_log(message: str, color_code: int) -> str:
-    return f"\033[{color_code}m{message}\033[0m"
+def format_size(size_bytes: float) -> str:
+    if size_bytes <= 0:
+        return "0 B"
+    size_names = ["B", "KB", "MB", "GB", "TB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    return f"{size_bytes:.2f} {size_names[i]}"
 
 
 async def read_stream(
-    stream: asyncio.StreamReader, channel_name: str, stream_type: str
+    stream: asyncio.StreamReader, channel_id: str, stream_type: str
 ) -> None:
     summary: Dict[str, str] = {}
     last_log_time = time.time()
     buffer = ""
+
+    prev_total_size = None
+    prev_time = None
 
     while not stream.at_eof():
         try:
@@ -244,7 +285,7 @@ async def read_stream(
                 if stream_type == "stderr" and line_str:
                     if "Invalid DTS" in line_str or "Invalid PTS" in line_str:
                         continue
-                    logger.debug(f"{channel_name} ffmpeg stderr: {line_str}")
+                    logger.debug(f"ffmpeg stderr [{channel_id}]: {line_str}")
 
                 parts = line_str.split("=")
                 if len(parts) == 2:
@@ -252,34 +293,44 @@ async def read_stream(
                     summary[key.strip()] = value.strip()
 
                 current_time = time.time()
-                if "progress" in summary and (current_time - last_log_time >= 5):
-                    total_size = summary.get("total_size", "0")
-                    total_size_formatted = format_size(int(total_size))
-                    log_message = (
-                        f"Bitrate={summary.get('bitrate', 'N/A')} "
-                        f"Total Size={total_size_formatted} "
-                        f"Out Time={summary.get('out_time', 'N/A')} "
-                        f"Speed={summary.get('speed', 'N/A')} "
-                        f"Progress={summary.get('progress', 'N/A')}"
-                    )
-                    colored_message = colorize_log(log_message, 32)
-                    logger.info(f"{channel_name} {stream_type}: {colored_message}")
+                if "progress" in summary and (current_time - last_log_time >= 1):
+                    total_size_str = summary.get("total_size", "0")
+                    try:
+                        total_size = int(total_size_str)
+                    except ValueError:
+                        total_size = 0
+
+                    total_size_formatted = format_size(total_size)
+
+                    if prev_total_size is not None and prev_time is not None:
+                        bytes_diff = total_size - prev_total_size
+                        time_diff = current_time - prev_time
+                        if time_diff > 0:
+                            download_speed = bytes_diff / time_diff  # Bytes per second
+                            download_speed_formatted = format_size(download_speed) + "/s"
+                        else:
+                            download_speed_formatted = "N/A"
+                    else:
+                        download_speed_formatted = "N/A"
+
+                    prev_total_size = total_size
+                    prev_time = current_time
+
+                    # Update shared progress data
+                    async with channel_progress_lock:
+                        if channel_id in channel_progress:
+                            channel_progress[channel_id].update({
+                                "bitrate": summary.get("bitrate", "N/A"),
+                                "download_speed": download_speed_formatted,
+                                "total_size": total_size_formatted,
+                                "out_time": summary.get("out_time", "N/A"),
+                            })
+
                     last_log_time = current_time
                     summary.clear()
         except Exception as e:
-            logger.error(f"Error occurred while reading stream for {channel_name}: {e}")
+            logger.error(f"Error occurred while reading stream for {channel_id}: {e}")
             break
-
-
-def format_size(size_bytes: int) -> str:
-    if size_bytes <= 0:
-        return "0 B"
-    size_names = ["B", "KB", "MB", "GB", "TB"]
-    i = 0
-    while size_bytes >= 1024 and i < len(size_names) - 1:
-        size_bytes /= 1024.0
-        i += 1
-    return f"{size_bytes:.2f} {size_names[i]}"
 
 
 async def record_stream(
@@ -293,6 +344,7 @@ async def record_stream(
     stream_segment_threads: int,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
+    channel_id = str(channel.get("id", "Unknown"))
     logger.info(f"Attempting to record stream for channel: {channel_name}")
     await asyncio.sleep(delay)
 
@@ -320,6 +372,9 @@ async def record_stream(
                             break
 
                         logger.info(
+                            f"The channel '{channel_name}' is not currently live."
+                        )
+                        logger.info(
                             f"Waiting for the channel '{channel_name}' to go live..."
                         )
                         try:
@@ -332,13 +387,15 @@ async def record_stream(
                     if shutdown_event.is_set():
                         break
 
-                    current_time = time.strftime("%Y-%m-%d_%H_%M_%S")
+                    current_time = time.strftime("%Y-%m-%d %H:%M:%S")
                     live_title = SPECIAL_CHARS_REMOVER.sub(
                         "", live_info.get("liveTitle", "").rstrip()
                     )
-                    output_dir = Path(channel.get("output_dir", "./recordings")).expanduser()
+                    output_dir = Path(
+                        channel.get("output_dir", "./recordings")
+                    ).expanduser()
                     temp_output_file = shorten_filename(
-                        f"[{current_time}] {channel_name} {live_title}.ts.part"
+                        f"[{current_time.replace(':', '_')}] {channel_name} {live_title}.ts.part"
                     )
                     final_output_file = temp_output_file[:-5]  # Remove '.part'
                     temp_output_path = output_dir / temp_output_file
@@ -351,6 +408,7 @@ async def record_stream(
                             f"Recording started for {channel_name} at {current_time}."
                         )
                         recording_started = True
+                        recording_start_time = current_time
 
                     if stream_process and stream_process.returncode is None:
                         stream_process.kill()
@@ -443,11 +501,22 @@ async def record_stream(
                         )
                         os.close(read_pipe)  # Close the read end in the parent
 
+                        # Initialize channel progress data
+                        async with channel_progress_lock:
+                            channel_progress[channel_id] = {
+                                "channel_name": channel_name,
+                                "bitrate": "N/A",
+                                "download_speed": "N/A",
+                                "total_size": "N/A",
+                                "out_time": "N/A",
+                                "recording_start_time": recording_start_time,
+                            }
+
                         stdout_task = asyncio.create_task(
-                            read_stream(ffmpeg_process.stdout, channel_name, "stdout")
+                            read_stream(ffmpeg_process.stdout, channel_id, "stdout")
                         )
                         stderr_task = asyncio.create_task(
-                            read_stream(ffmpeg_process.stderr, channel_name, "stderr")
+                            read_stream(ffmpeg_process.stderr, channel_id, "stderr")
                         )
                         ffmpeg_wait_task = asyncio.create_task(ffmpeg_process.wait())
 
@@ -482,6 +551,10 @@ async def record_stream(
                         if temp_output_path.exists():
                             temp_output_path.rename(final_output_path)
                             logger.info(f"Recording saved to {final_output_path}")
+
+                        # Remove progress data
+                        async with channel_progress_lock:
+                            channel_progress.pop(channel_id, None)
 
                     finally:
                         # Ensure pipes are closed
@@ -524,6 +597,9 @@ async def record_stream(
         if recording_started and temp_output_path.exists():
             temp_output_path.rename(final_output_path)
             logger.info(f"Recording saved to {final_output_path}")
+        # Remove progress data
+        async with channel_progress_lock:
+            channel_progress.pop(channel_id, None)
 
 
 async def manage_recording_tasks():
@@ -551,7 +627,7 @@ async def manage_recording_tasks():
                 ) = await load_settings()
                 active_channels = 0
 
-                current_channel_ids = {channel.get("id") for channel in new_channels}
+                current_channel_ids = {str(channel.get("id")) for channel in new_channels}
 
                 # Cancel tasks for removed or deactivated channels
                 for channel_id in list(active_tasks.keys()):
@@ -559,11 +635,14 @@ async def manage_recording_tasks():
                         task = active_tasks.pop(channel_id)
                         task.cancel()
                         logger.info(
-                            f"Cancelled recording task for removed channel ID: {channel_id}"
+                            f"Cancelled recording task for deactivated channel: {channel_id}"
                         )
+                        # Remove progress data
+                        async with channel_progress_lock:
+                            channel_progress.pop(channel_id, None)
 
                 for channel in new_channels:
-                    channel_id = channel.get("id")
+                    channel_id = str(channel.get("id"))
                     if not channel_id:
                         logger.warning("Channel ID is missing in configuration.")
                         continue
@@ -593,6 +672,9 @@ async def manage_recording_tasks():
                             logger.info(
                                 f"Cancelled recording task for deactivated channel: {channel.get('name', 'Unknown')}"
                             )
+                            # Remove progress data
+                            async with channel_progress_lock:
+                                channel_progress.pop(channel_id, None)
                         else:
                             active_channels += 1
 
@@ -618,6 +700,72 @@ def handle_shutdown():
     shutdown_event.set()
 
 
+async def display_progress():
+    layout = Layout()
+
+    # Fix the size of the upper layout to prevent it from disappearing
+    layout.split(
+        Layout(name="upper", size=15, ratio=1),
+        Layout(name="lower", ratio=3),
+    )
+
+    log_messages = []  # List of log messages
+
+    with Live(layout, console=console, refresh_per_second=10, screen=False):
+        while not shutdown_event.is_set() or not log_queue.empty():
+            # Create a list to hold individual channel panels
+            channel_panels = []
+
+            async with channel_progress_lock:
+                if channel_progress:
+                    for progress_data in channel_progress.values():
+                        # Create a table for each channel
+                        table = Table(show_header=True, header_style="bold magenta")
+                        table.add_column("Channel", style="cyan", no_wrap=True)
+                        table.add_column("Bitrate")
+                        table.add_column("Download Speed")
+                        table.add_column("Total Size")
+                        table.add_column("Out Time")
+                        table.add_column("Start Time")
+
+                        table.add_row(
+                            progress_data.get("channel_name", "Unknown"),
+                            progress_data.get("bitrate", "N/A"),
+                            progress_data.get("download_speed", "N/A"),
+                            progress_data.get("total_size", "N/A"),
+                            progress_data.get("out_time", "N/A"),
+                            progress_data.get("recording_start_time", "N/A"),
+                        )
+
+                        # Create a panel for each channel's table
+                        panel = Panel(table, title=progress_data.get("channel_name", "Unknown"))
+                        channel_panels.append(panel)
+                else:
+                    # If no channels are recording, display a message
+                    channel_panels.append(Panel("No active recordings.", title="Recording Progress"))
+
+            # Combine all channel panels into a single renderable
+            progress_display = Group(*channel_panels)
+
+            layout["lower"].update(progress_display)
+
+            # Read logs from the queue
+            try:
+                while True:
+                    msg = log_queue.get_nowait()
+                    log_messages.append(msg)
+                    # Keep only the last 15 messages
+                    log_messages = log_messages[-15:]
+            except asyncio.QueueEmpty:
+                pass
+
+            # Update the log panel
+            log_text = Text("\n".join(log_messages))
+            layout["upper"].update(Panel(log_text, title="Logs"))
+
+            await asyncio.sleep(0.1)
+
+
 async def main() -> None:
     # Register signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
@@ -628,6 +776,8 @@ async def main() -> None:
         # On Windows, signals are not supported in the event loop.
         # We'll handle KeyboardInterrupt exception instead.
         pass
+
+    display_task = asyncio.create_task(display_progress())
 
     try:
         await manage_recording_tasks()
@@ -641,6 +791,9 @@ async def main() -> None:
     except Exception as e:
         logger.exception(f"An error occurred: {e}")
     finally:
+        # Wait for display_progress to process remaining logs
+        shutdown_event.set()
+        await display_task
         logger.info("Recorder has been shut down.")
 
 
