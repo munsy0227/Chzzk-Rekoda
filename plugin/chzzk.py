@@ -72,11 +72,13 @@ class ChzzkHLSStream(HLSStream):
         datatype, data = self._api.get_live_detail(self._channel_id)
         if datatype == "error":
             raise StreamError(data)
+        if not data or len(data) < 2:
+            raise StreamError("Error occurred while refreshing the stream URL.")
         media, status, *_ = data
         if status != "OPEN" or media is None:
             raise StreamError("Error occurred while refreshing the stream URL.")
         for media_info in media:
-            if media_info[1] == "HLS" and media_info[0] == "HLS":
+            if len(media_info) >= 3 and media_info[1] == "HLS" and media_info[0] == "HLS":
                 media_path = self._update_domain(media_info[2])
                 res = self._fetch_variant_playlist(self.session, media_path)
                 m3u8 = parse_m3u8(res)
@@ -106,7 +108,8 @@ class ChzzkHLSStream(HLSStream):
         qs_old = parse_qs(parsed_old.query)
         qs_new = parse_qs(parsed_new.query)
         # Replace the 'hdnts' parameter with the new token
-        qs_old["hdnts"] = qs_new.get("hdnts", qs_old.get("hdnts"))
+        if "hdnts" in qs_new:
+            qs_old["hdnts"] = qs_new.get("hdnts")
         new_query = urlencode(qs_old, doseq=True)
         self._url = urlunparse(parsed_old._replace(query=new_query))
 
@@ -173,7 +176,7 @@ class ChzzkAPI:
                             "code": int,
                             "message": str,
                         },
-                        validate.transform(lambda data: ("error", data["message"])),
+                        validate.transform(lambda data: ("error", data["message"]))
                     ),
                     validate.all(
                         {
@@ -274,6 +277,10 @@ class Chzzk(Plugin):
         if data is None:
             return None
 
+        if len(data) < 7:
+            log.error("Incomplete data received from API.")
+            return None
+
         media, status, self.id, self.author, self.category, self.title, adult = data
         if status != self._STATUS_OPEN:
             log.error("The stream is unavailable")
@@ -284,7 +291,7 @@ class Chzzk(Plugin):
 
         streams = {}
         for media_info in media:
-            if media_info[1] == "HLS" and media_info[0] == "HLS":
+            if len(media_info) >= 3 and media_info[1] == "HLS" and media_info[0] == "HLS":
                 media_path = self._update_domain(media_info[2])
                 hls_streams = ChzzkHLSStream.parse_variant_playlist(
                     self.session,
