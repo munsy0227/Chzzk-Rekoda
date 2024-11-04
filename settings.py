@@ -87,9 +87,6 @@ while True:
                         # Add data to the file
                         with open(channels_file_path, "w") as f:
                             json.dump(channels, f, indent=2)
-                            f.write(
-                                "\n"
-                            )  # Add a newline character to save each channel as a separate line
                         print("The channels.json file has been modified.")
                         with open(delays_file_path, "w") as f:
                             json.dump(delays, f, indent=2)
@@ -105,64 +102,72 @@ while True:
 
             elif choice1 == "2":
                 # Delete channel
-                print("Current channel list:")
-                for channel in channels:
-                    print(f"id: {channel['id']}, name: {channel['name']}")
+                if len(channels) == 0:
+                    print("No channels to delete.")
+                    continue
 
-                channel_to_delete_ID = input("Enter the ID of the channel to delete: ")
-                channel_to_delete_index = -1
-                for index, channel in enumerate(channels):
-                    if channel["id"] == channel_to_delete_ID:
-                        channel_to_delete_index = index
-                        break
-                if channel_to_delete_index != -1:
-                    deleted_channel = channels.pop(channel_to_delete_index)
-                    print(
-                        f"The deleted channel: id: {deleted_channel['id']}, name: {deleted_channel['name']}"
+                print("Current channel list:")
+                for idx, channel in enumerate(channels, start=1):
+                    print(f"{idx}. id: {channel['id']}, name: {channel['name']}")
+
+                try:
+                    channel_to_delete_index = (
+                        int(input("Enter the number of the channel to delete: ")) - 1
                     )
-                    # Add data to the file
-                    with open(channels_file_path, "w") as f:
-                        json.dump(channels, f, indent=2)
-                        f.write(
-                            "\n"
-                        )  # Add a newline character to save each channel as a separate line
-                    print("The channels.json file has been modified.")
-                    # Modify channel_count
-                    channel_count -= 1
-                    with open(channel_count_file_path, "w") as f:
-                        f.write(str(channel_count))
-                    # Modify delays
-                    delays.pop(
-                        channel_to_delete_ID, None
-                    )  # Remove dictionary item corresponding to the deleted channel ID
-                    for idx, channel in enumerate(channels):
-                        channel["identifier"] = (
-                            f"ch{idx + 1}"  # Reorder channel numbers
+                    if 0 <= channel_to_delete_index < len(channels):
+                        deleted_channel = channels.pop(channel_to_delete_index)
+                        print(
+                            f"The deleted channel: id: {deleted_channel['id']}, name: {deleted_channel['name']}"
                         )
-                    with open(delays_file_path, "w") as f:
-                        delays_data = {f"ch{i+1}": i for i in range(len(channels))}
-                        json.dump(delays_data, f, indent=2)
-                    print("The delays.json file has been modified.")
-                    # Apply identifier changes in channels.json even after deleting the channel
-                    with open(channels_file_path, "w") as f:
-                        json.dump(channels, f, indent=2)
-                        f.write(
-                            "\n"
-                        )  # Add a newline character to save each channel as a separate line
-                    print("The channels.json file has been re-modified.")
-                else:
-                    print(f"The channel with ID {channel_to_delete_ID} does not exist.")
+                        # Add data to the file
+                        with open(channels_file_path, "w") as f:
+                            json.dump(channels, f, indent=2)
+                        print("The channels.json file has been modified.")
+                        # Modify channel_count
+                        channel_count -= 1
+                        with open(channel_count_file_path, "w") as f:
+                            f.write(str(channel_count))
+                        # Modify delays
+                        delays.pop(deleted_channel["identifier"], None)
+                        for idx, channel in enumerate(channels):
+                            channel["identifier"] = (
+                                f"ch{idx + 1}"  # Reorder channel numbers
+                            )
+                        with open(delays_file_path, "w") as f:
+                            delays_data = {f"ch{i+1}": i for i in range(len(channels))}
+                            json.dump(delays_data, f, indent=2)
+                        print("The delays.json file has been modified.")
+                        # Apply identifier changes in channels.json even after deleting the channel
+                        with open(channels_file_path, "w") as f:
+                            json.dump(channels, f, indent=2)
+                        print("The channels.json file has been re-modified.")
+                    else:
+                        print("Invalid channel number.")
+                except ValueError:
+                    print("Invalid input. Please enter a valid number.")
 
             elif choice1 == "3":
+                if len(channels) == 0:
+                    print("No channels available to toggle.")
+                    continue
+
                 print("Current channel list:")
-                for channel in channels:
+                for idx, channel in enumerate(channels, start=1):
                     print(
-                        f"id: {channel['id']}, name: {channel['name']}, recording status: {'On' if channel.get('active', True) == 'on' else 'Off'}"
+                        f"{idx}. id: {channel['id']}, name: {channel['name']}, recording status: {'On' if channel.get('active', True) == 'on' else 'Off'}"
                     )
 
-                channel_ID = input("Change the recording status of the channel ID:  ")
-                for channel in channels:
-                    if channel["id"] == channel_ID:
+                try:
+                    channel_index = (
+                        int(
+                            input(
+                                "Enter the number of the channel to toggle recording status: "
+                            )
+                        )
+                        - 1
+                    )
+                    if 0 <= channel_index < len(channels):
+                        channel = channels[channel_index]
                         current_state = channel.get("active", "on")
                         channel["active"] = "off" if current_state == "on" else "on"
                         print(
@@ -171,13 +176,11 @@ while True:
                         # Add data to the file
                         with open(channels_file_path, "w") as f:
                             json.dump(channels, f, indent=2)
-                            f.write(
-                                "\n"
-                            )  # Add a newline character to save each channel as a separate line
                         print("The channels.json file has been modified.")
-                        break
-                else:
-                    print(f"The channel with ID {channel_ID} could not be found.")
+                    else:
+                        print("Invalid channel number.")
+                except ValueError:
+                    print("Invalid input. Please enter a valid number.")
 
             elif choice1 == "4":
                 print("Returning to the menu")
@@ -202,7 +205,6 @@ while True:
                     "Recommended 2~4 threads, 2 threads for low-end systems / 4 threads for high-end systems"
                 )
                 new_threads = str(input("Enter the number of threads to change: "))
-                # TODO: Apply the entered value to the threads variable
                 with open(thread_file_path, "w") as thread_file:
                     thread_file.write(new_threads)
                 print("The number of threads has been changed.")
