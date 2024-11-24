@@ -85,8 +85,8 @@ logger = setup_logger()
 
 print(
     "Chzzk Rekoda made by munsy0227\n"
-    "If you encounter any bugs or errors, please report them on the Radiyu Shelter or GitHub issues!\n"
-    "버그나 에러가 발생하면 라디유 쉘터나 깃허브 이슈에 제보해 주세요!"
+    "If you encounter any bugs or errors, please report them on GitHub Issues!\n"
+    "버그나 에러가 발생하면 깃허브 이슈에 제보해 주세요!"
 )
 
 # Constants
