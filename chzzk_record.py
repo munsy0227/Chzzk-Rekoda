@@ -38,6 +38,26 @@ channel_progress_lock = asyncio.Lock()
 # Create a queue for log messages
 log_queue: asyncio.Queue = asyncio.Queue()
 
+# Helper function to load log_enabled
+def get_log_enabled() -> bool:
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
+    if os.path.exists(log_enabled_file_path):
+        with open(log_enabled_file_path, "r") as f:
+            return f.readline().strip().lower() == "true"
+    return True
+
+
+# Function to toggle log_enabled
+def toggle_log_enabled():
+    script_directory = os.path.dirname(os.path.abspath(__file__))
+    log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
+    current_state = get_log_enabled()
+    new_state = not current_state
+    with open(log_enabled_file_path, "w") as f:
+        f.write("true" if new_state else "false")
+    print(f"Logging has been {'enabled' if new_state else 'disabled'}.")
+
 
 # Custom logging handler to put log messages into the queue
 class QueueHandler(logging.Handler):
@@ -47,7 +67,6 @@ class QueueHandler(logging.Handler):
 
     def emit(self, record):
         msg = self.format(record)
-        # Directly put the message into the queue
         try:
             self.queue.put_nowait(msg)
         except asyncio.QueueFull:
@@ -59,23 +78,24 @@ def setup_logger() -> logging.Logger:
     logger = logging.getLogger("Recorder")
     logger.setLevel(logging.DEBUG)
 
-    # Set up file handler
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-    )
-    file_handler = logging.FileHandler("log.log", encoding="utf-8")
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(formatter)
-    logger.addHandler(file_handler)
+    # Check if logging is enabled
+    log_enabled = get_log_enabled()
 
-    # Use queue handler instead of console handler
+    if log_enabled:
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+        file_handler = logging.FileHandler("log.log", encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
+
+    # QueueHandler is always active (for UI display)
     queue_handler = QueueHandler(log_queue)
     queue_handler.setLevel(logging.INFO)
-    # Display timestamp in log messages
     queue_handler.setFormatter(logging.Formatter("%(asctime)s - %(message)s"))
     logger.addHandler(queue_handler)
 
-    # Prevent duplicate logs
     logger.propagate = False
 
     return logger
