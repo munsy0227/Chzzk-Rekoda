@@ -6,9 +6,17 @@ script_directory = os.path.dirname(os.path.abspath(__name__))
 channel_count_file_path = os.path.join(script_directory, "channel_count.txt")
 channels_file_path = os.path.join(script_directory, "channels.json")
 delays_file_path = os.path.join(script_directory, "delays.json")
+log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
 
 # Define channels list
 channels = []
+
+# Initialize log enabled setting
+if os.path.exists(log_enabled_file_path):
+    with open(log_enabled_file_path, "r") as f:
+        log_enabled = f.readline().strip().lower() == "true"
+else:
+    log_enabled = True  # Default to logging enabled
 
 
 # Save cookie info variable
@@ -40,10 +48,18 @@ def try_again():
     print("Please try again.\n")
 
 
+def toggle_logging():
+    global log_enabled
+    log_enabled = not log_enabled
+    with open(log_enabled_file_path, "w") as f:
+        f.write("true" if log_enabled else "false")
+    print(f"Logging has been {'enabled' if log_enabled else 'disabled'}.")
+
+
 while True:
     print("Chzzk Auto-Recording Settings")
     print(
-        "\n1. Channel Settings\n2. Recording Settings\n3. Cookie Settings (for adult verification)\n4. Quit"
+        "\n1. Channel Settings\n2. Recording Settings\n3. Cookie Settings (for adult verification)\n4. Toggle Logging\n5. Quit"
     )
     choice = str(input("Enter the number you want to execute: "))
     if choice == "1":
@@ -238,6 +254,9 @@ while True:
         save_cookie_info(SES, AUT)
 
     elif choice == "4":
+        toggle_logging()
+
+    elif choice == "5":
         print("Exiting the settings.")
         break
     else:
