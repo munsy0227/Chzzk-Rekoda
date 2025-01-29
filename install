@@ -1,40 +1,14 @@
 #!/bin/bash
 
-echo "Checking if Python exists"
-# Check for Python 3 and assign its path to a variable
-if command -v python3 > /dev/null 2>&1; then
-    py=$(which python3)
-    echo "Using python3"
-else
-    if python --version 2>&1 | grep -q '3.'; then
-        py=$(which python)
-        echo "Using python"
-    else
-        echo "Please install Python3 or 3.11 manually."
-        exit 1
-    fi
+echo "Check if uv is installed"
+if ! command -v uv > /dev/null 2>&1; then
+    echo "uv is not installed. Installing uv now..."
+    # Install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # After installing uv, reload environment variables to use uv immediately
+    source "$HOME/.local/bin/env"
+    echo "uv installed successfully. Now continuing..."
 fi
-
-echo "Installing required components"
-# Create a virtual environment in the current directory
-$py -m venv venv
-
-# Dynamically get the current directory's virtual environment activation script
-VENV_DIR="$PWD/venv"
-if [ -d "$VENV_DIR" ]; then
-    echo "Activating virtual environment in $VENV_DIR"
-    source "$VENV_DIR/bin/activate"
-else
-    echo "Virtual environment not found in $VENV_DIR"
-    exit 1
-fi
-
-# Install required Python packages
-"$VENV_DIR/bin/pip" install --upgrade streamlink aiohttp aiofiles orjson uvloop rich
-
-# Deactivate the virtual environment
-deactivate
-echo "Required components installation completed!"
 
 echo "Starting configuration"
 # Execute the settings script
