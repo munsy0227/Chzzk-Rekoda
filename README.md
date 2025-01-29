@@ -44,7 +44,8 @@ sudo apt install ffmpeg
 ```
 3. ArchLinux 일 경우
 ```bash
-sudo pacman -S ffmpeg
+# ArchLinux는 uv를 리포지토리에서 제공하므로 여기서 먼저 설치해야 합니다.
+sudo pacman -S ffmpeg uv
 ```
 #### 3. 설치하기
 ```bash
