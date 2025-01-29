@@ -8,7 +8,6 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 ## 설치 방법
 
 ### Windows
-설치를 진행하기 전에 Python 3.10~3.12가 설치되어있는지 확인해 주시기를 바랍니다.
 
 #### 1. 다운로드하기
 1. Git이 설치된 경우 이 방법을 사용하세요.
