@@ -17,7 +17,6 @@ import orjson
 
 if platform.system() != "Windows":
     import uvloop
-
     uvloop.install()
 
 # Import Rich library components
@@ -131,18 +130,15 @@ shutdown_event = asyncio.Event()
 
 
 # Helper functions
-async def setup_paths() -> Tuple[Optional[Path], Optional[Path]]:
+async def setup_paths() -> Optional[Path]:
     base_dir = Path(__file__).parent
     os_name = platform.system()
-    streamlink_path: Optional[Path] = None
     ffmpeg_path: Optional[Path] = None
 
     if os_name == "Windows":
-        streamlink_path = base_dir / "venv/Scripts/streamlink.exe"
         ffmpeg_path = base_dir / "ffmpeg/bin/ffmpeg.exe"
         logger.info("Running on Windows.")
     else:
-        streamlink_path = base_dir / "venv/bin/streamlink"
         try:
             process = await asyncio.create_subprocess_exec(
                 "which",
@@ -159,7 +155,7 @@ async def setup_paths() -> Tuple[Optional[Path], Optional[Path]]:
         except Exception as e:
             logger.error(f"Error finding ffmpeg on {os_name}: {e}")
 
-    return streamlink_path, ffmpeg_path
+    return ffmpeg_path
 
 
 async def load_json_async(file_path: Path) -> Any:
@@ -392,7 +388,6 @@ async def record_stream(
     session: aiohttp.ClientSession,
     delay: int,
     timeout: int,
-    streamlink_path: Path,
     ffmpeg_path: Path,
     stream_segment_threads: int,
 ) -> None:
@@ -420,7 +415,6 @@ async def record_stream(
                         status, live_info = await get_live_info(
                             channel, headers, session
                         )
-
                         if status != "CLOSE":
                             break
 
@@ -478,7 +472,7 @@ async def record_stream(
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
-                            str(streamlink_path),
+                            "streamlink",
                             "--stdout",
                             stream_url,
                             "best",
@@ -657,11 +651,8 @@ async def manage_recording_tasks():
     timeout, stream_segment_threads, channels, delays = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
-    streamlink_path, ffmpeg_path = await setup_paths()
+    ffmpeg_path = await setup_paths()
 
-    if not streamlink_path or not streamlink_path.exists():
-        logger.error("Streamlink executable not found. Exiting.")
-        return
     if not ffmpeg_path or not ffmpeg_path.exists():
         logger.error("ffmpeg executable not found. Exiting.")
         return
@@ -707,7 +698,6 @@ async def manage_recording_tasks():
                                     session,
                                     new_delays.get(channel.get("identifier"), 0),
                                     new_timeout,
-                                    streamlink_path,
                                     ffmpeg_path,
                                     new_stream_segment_threads,
                                 )
