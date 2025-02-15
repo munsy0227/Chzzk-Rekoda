@@ -17,6 +17,7 @@ import orjson
 
 if platform.system() != "Windows":
     import uvloop
+
     uvloop.install()
 
 # Import Rich library components
@@ -36,6 +37,7 @@ channel_progress_lock = asyncio.Lock()
 
 # Create a queue for log messages
 log_queue: asyncio.Queue = asyncio.Queue()
+
 
 # Helper function to load log_enabled
 def get_log_enabled() -> bool:
@@ -249,17 +251,22 @@ async def get_live_info(
 
 
 def shorten_filename(filename: str) -> str:
+    compound_ext = ""
+    if filename.endswith(".ts.part"):
+        compound_ext = ".ts.part"
+        name = filename[: -len(compound_ext)]
+    else:
+        name, compound_ext = os.path.splitext(filename)
+
     filename_bytes = filename.encode("utf-8")
     if len(filename_bytes) > MAX_FILENAME_BYTES:
         hash_value = hashlib.sha256(filename_bytes).hexdigest()[:MAX_HASH_LENGTH]
-        name, extension = os.path.splitext(filename)
-        max_name_length = (
-            MAX_FILENAME_BYTES - RESERVED_BYTES - len(extension.encode("utf-8"))
+        max_name_length = MAX_FILENAME_BYTES - (
+            len(compound_ext.encode("utf-8")) + MAX_HASH_LENGTH + 1
         )
-
         shortened_name_bytes = name.encode("utf-8")[:max_name_length]
         shortened_name = shortened_name_bytes.decode("utf-8", "ignore")
-        shortened_filename = f"{shortened_name}_{hash_value}{extension}"
+        shortened_filename = f"{shortened_name}_{hash_value}{compound_ext}"
         logger.warning(
             f"Filename '{filename}' is too long. Shortening to '{shortened_filename}'."
         )
