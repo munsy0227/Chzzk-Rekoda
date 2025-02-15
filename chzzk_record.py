@@ -75,6 +75,14 @@ class QueueHandler(logging.Handler):
 
 
 # Logger setup
+class FfmpegStderrFilter(logging.Filter):
+    def filter(self, record):
+        msg = record.getMessage()
+        if "ffmpeg stderr" in msg and "Invalid DTS" in msg:
+            return False
+        return True
+
+
 def setup_logger() -> logging.Logger:
     logger = logging.getLogger("Recorder")
     logger.setLevel(logging.DEBUG)
@@ -89,6 +97,7 @@ def setup_logger() -> logging.Logger:
         file_handler = logging.FileHandler("log.log", encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_handler.setFormatter(formatter)
+        file_handler.addFilter(FfmpegStderrFilter())
         logger.addHandler(file_handler)
 
     # QueueHandler is always active (for UI display)
