@@ -246,6 +246,10 @@ async def get_live_info(
                 logger.info(
                     f"The channel '{channel.get('name', 'Unknown')}' is not currently live."
                 )
+            if status == "BLOCK":
+                logger.info(
+                    f"The channel '{channel.get('name', 'Unknown')}' is blocked."
+                )
                 return status, {}
             return status, content
     except aiohttp.ClientError as e:
@@ -431,12 +435,9 @@ async def record_stream(
                         status, live_info = await get_live_info(
                             channel, headers, session
                         )
-                        if status != "CLOSE":
+                        if status == "OPEN":
                             break
 
-                        logger.info(
-                            f"The channel '{channel_name}' is not currently live."
-                        )
                         logger.info(
                             f"Waiting for the channel '{channel_name}' to go live..."
                         )
