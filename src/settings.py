@@ -2,7 +2,7 @@ import os
 import json
 
 # File path settings
-script_directory = os.path.dirname(os.path.abspath(__name__)) + "/files"
+script_directory =  os.path.dirname(os.path.abspath(__file__)) + "\\files"
 channel_count_file_path = os.path.join(script_directory, "channel_count.txt")
 channels_file_path = os.path.join(script_directory, "channels.json")
 delays_file_path = os.path.join(script_directory, "delays.json")
@@ -40,6 +40,7 @@ def add_channel(channel_count):
     print("""Available Platform is: 
             1. twitch
             2. chzzk
+            3. bilibili
           """)
     platform = int(input(": "))
     if platform == 1: 
@@ -49,6 +50,10 @@ def add_channel(channel_count):
     elif platform == 2: 
         platform = "chzzk"
         id = str(input("Enter the unique ID of the streamer channel you want to add: "))
+        name = str(input("Enter the streamer name:  "))
+    elif platform == 3: 
+        platform = "bilibili"
+        id = str(input("Enter the room ID of the streamer channel you want to add: "))
         name = str(input("Enter the streamer name:  "))
 
     while True:

@@ -16,8 +16,6 @@ async def setup_paths() -> Tuple[Path, Path]:
     if os_name == "Windows":
         streamlink_path = base_dir / "venv/Scripts/streamlink.exe"
         ffmpeg_path = base_dir / "ffmpeg/bin/ffmpeg.exe"
-        print(ffmpeg_path)
-
         log.info("Running on Windows.")
     else:
         streamlink_path = base_dir / "venv/bin/streamlink"

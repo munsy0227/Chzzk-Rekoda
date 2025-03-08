@@ -5,7 +5,7 @@
     "name": "SOHO123",
     "output_dir": "./recorded/SOHO123",
     "identifier": "ch1",
-    "active": "on"
+    "active": "off"
   },
   {
     "id": "7ce657c83550af156fd4b8155863df1b",
@@ -92,7 +92,7 @@
     "name": "qhrrb3409",
     "output_dir": "./recorded/qhrrb3409",
     "identifier": "ch12",
-    "active": "off"
+    "active": "on"
   },
   {
     "platform": "twitch",
@@ -100,7 +100,7 @@
     "name": "retty2706",
     "output_dir": "./recorded/retty2706",
     "identifier": "ch13",
-    "active": "off"
+    "active": "on"
   },
   {
     "platform": "twitch",
@@ -108,7 +108,7 @@
     "name": "orobou",
     "output_dir": "./recorded/orobou",
     "identifier": "ch14",
-    "active": "on"
+    "active": "off"
   },
   {
     "platform": "twitch",
@@ -132,7 +132,7 @@
     "name": "ynk1004fd",
     "output_dir": "./recorded/ynk1004fd",
     "identifier": "ch17",
-    "active": "on"
+    "active": "off"
   },
   {
     "platform": "twitch",
@@ -156,7 +156,7 @@
     "name": "\ub77c\uc6c0 \uc544\uce74\ub370\ubbf8",
     "output_dir": "./recorded/\ub77c\uc6c0 \uc544\uce74\ub370\ubbf8",
     "identifier": "ch20",
-    "active": "on"
+    "active": "off"
   },
   {
     "platform": "twitch",
@@ -164,7 +164,7 @@
     "name": "ddangbi",
     "output_dir": "./recorded/ddangbi",
     "identifier": "ch21",
-    "active": "on"
+    "active": "off"
   },
   {
     "platform": "chzzk",
@@ -172,11 +172,11 @@
     "name": "eo58",
     "output_dir": "./recorded/eo58",
     "identifier": "ch22",
-    "active": "on"
+    "active": "off"
   },
   {
-    "platform": "chzzk",
-    "id": "f98d8765a48fac60bcddd9b7fc866897",
+    "platform": "twitch",
+    "id": "eo58",
     "name": "eo58",
     "output_dir": "./recorded/eo58",
     "identifier": "ch23",
@@ -184,10 +184,130 @@
   },
   {
     "platform": "twitch",
-    "id": "eo58",
-    "name": "eo58",
-    "output_dir": "./recorded/eo58",
+    "id": "fztt_",
+    "name": "fztt_",
+    "output_dir": "./recorded/fztt_",
     "identifier": "ch24",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "ato1004fd",
+    "name": "ato1004fd",
+    "output_dir": "./recorded/ato1004fd",
+    "identifier": "ch25",
+    "active": "on"
+  },
+  {
+    "platform": "chzzk",
+    "id": "6f9a16acb16f5288b63ca457c732b8e5",
+    "name": "\uc0ac\ub098 SANA",
+    "output_dir": "./recorded/\uc0ac\ub098 SANA",
+    "identifier": "ch26",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "kimpring",
+    "name": "kimpring",
+    "output_dir": "./recorded/kimpring",
+    "identifier": "ch27",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "mery__s2_",
+    "name": "mery__s2_",
+    "output_dir": "./recorded/mery__s2_",
+    "identifier": "ch28",
+    "active": "off"
+  },
+  {
+    "platform": "twitch",
+    "id": "tmbgmi",
+    "name": "tmbgmi",
+    "output_dir": "./recorded/tmbgmi",
+    "identifier": "ch29",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "xixeong",
+    "name": "xixeong",
+    "output_dir": "./recorded/xixeong",
+    "identifier": "ch30",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "huhi_1211",
+    "name": "huhi_1211",
+    "output_dir": "./recorded/huhi_1211",
+    "identifier": "ch31",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "leviathann0902",
+    "name": "leviathann0902",
+    "output_dir": "./recorded/leviathann0902",
+    "identifier": "ch32",
+    "active": "off"
+  },
+  {
+    "platform": "twitch",
+    "id": "dyarikku",
+    "name": "dyarikku",
+    "output_dir": "./recorded/dyarikku",
+    "identifier": "ch33",
+    "active": "off"
+  },
+  {
+    "platform": "twitch",
+    "id": "miyukiiii_",
+    "name": "miyukiiii_",
+    "output_dir": "./recorded/miyukiiii_",
+    "identifier": "ch34",
+    "active": "on"
+  },
+  {
+    "platform": "bilibili",
+    "id": "22406972",
+    "name": "\u67e5\u7121\u4eba",
+    "output_dir": "./recorded/\u67e5\u7121\u4eba",
+    "identifier": "ch35",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "kunomd",
+    "name": "kunomd",
+    "output_dir": "./recorded/kunomd",
+    "identifier": "ch36",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "meltyrice",
+    "name": "meltyrice",
+    "output_dir": "./recorded/meltyrice",
+    "identifier": "ch37",
+    "active": "on"
+  },
+  {
+    "platform": "chzzk",
+    "id": "fa39b430665e23c408820633dde17917",
+    "name": "\uc9c0\ube75\uc785\ub2c8\ub2e4",
+    "output_dir": "./recorded/\uc9c0\ube75\uc785\ub2c8\ub2e4",
+    "identifier": "ch38",
+    "active": "on"
+  },
+  {
+    "platform": "twitch",
+    "id": "kuri0819",
+    "name": "kuri0819",
+    "output_dir": "./recorded/kuri0819",
+    "identifier": "ch39",
     "active": "on"
   }
 ]

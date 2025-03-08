@@ -1,198 +1,70 @@
-"""
-$description Chinese video sharing website based in Shanghai, themed around animation, comics, and games (ACG).
-$url live.bilibili.com
-$type live
-"""
 
-import logging
-import re
+from pathlib import Path
+from typing import Any, Dict, Tuple
+import aiohttp
+from logger import log
 
-from streamlink.exceptions import NoStreamsError
-from streamlink.plugin import Plugin, pluginmatcher
-from streamlink.plugin.api import validate
-from streamlink.stream import HTTPStream
-from streamlink.stream.hls import HLSStream
+class Bilibili:
+    def __init__(self, channel: Dict[str, Any]):
+        self.stream_url =  f"https://live.bilibili.com/{channel['id']}"
+        self.LIVE_DETAIL_API = 'https://api.live.bilibili.com/room/v1/Room/get_info'
 
+    async def get_live_status(   
+        self,
+        channel: Dict[str, Any], 
+        session: aiohttp.ClientSession
+    ) -> str:
+        log.debug(f"Fetching live info for channel: {channel['name']}")
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Referer": "https://www.bilibili.com/"}
+            
+            params = {"room_id": channel['id']}
 
-log = logging.getLogger(__name__)
+            async with session.get(
+                self.LIVE_DETAIL_API,
+                params=params,
+                headers=headers ) as r:
 
+                r.raise_for_status()
+                info = await r.json()  
+                if info['data']['live_status']:
+                    return "OPEN"
+                return "CLOSE"
+        except aiohttp.ClientError as e:
+            log.error(
+                f"HTTP error occurred while fetching live info for {channel['name']}: {e}"
+            )
+        except Exception as e:
+            log.error(f"Failed to fetch live info for {channel['name']}: {e}")
+        return "CLOSE"
+    
+    async def stream_process_arguments(     
+        self,
+        streamlink_path: Path, 
+        plugin_dir: Path, 
+        stream_segment_threads: int,
+        ffmpeg_path: Path,
+        wpipe: int,) -> Tuple:
 
-@pluginmatcher(re.compile(
-    r"https?://live\.bilibili\.com/(?P<channel>[^/?]+)",
-))
-class Bilibili(Plugin):
-    _URL_API_V1_PLAYURL = "https://api.live.bilibili.com/room/v1/Room/playUrl"
-    _URL_API_V2_PLAYINFO = "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo"
+        args = ( 
+            "streamlink",
+            self.stream_url, "best",
+            "--plugin-dir",
+            "C:\Apps\Macros\streamlink\src\plugin\reserved\bilibili.py", #teemp
+            "--stream-segment-threads", "10", 
+            "--ringbuffer-size", "256M", 
+            "--hls-playlist-reload-attempts", "10",
+            "--hls-live-restart" ,
+            "--hls-playlist-reload-time", "segment",
+            "--stream-segment-attempts", "10",
+            "--stream-segment-timeout", "240",
+            "--stdout",
+            "--http-header",
+            "Referer=",
+            "--ffmpeg-ffmpeg",
+            str(ffmpeg_path)
 
-    SHOW_STATUS_OFFLINE = 0
-    SHOW_STATUS_ONLINE = 1
-    SHOW_STATUS_ROUND = 2
-
-    @classmethod
-    def stream_weight(cls, stream):
-        offset = 1 if "_alt" in stream else 0
-        if stream.startswith("httpstream"):
-            return 4 - offset, stream
-        if stream.startswith("hls"):
-            return 2 - offset, stream
-        return super().stream_weight(stream)
-
-    def _get_api_v1_playurl(self, room_id):
-        return self.session.http.get(
-            self._URL_API_V1_PLAYURL,
-            params={
-                "cid": room_id,
-                "platform": "web",
-                "quality": "4",
-            },
-            schema=validate.Schema(
-                validate.parse_json(),
-                {
-                    "code": 0,
-                    "data": {
-                        "durl": [
-                            validate.all(
-                                {
-                                    "url": validate.url(),
-                                },
-                                validate.get("url"),
-                            ),
-                        ],
-                    },
-                },
-                validate.get(("data", "durl")),
-            ),
         )
-
-    @staticmethod
-    def _schema_v2_streams():
-        return validate.all(
-            [{
-                "protocol_name": str,
-                "format": validate.all(
-                    [{
-                        "format_name": str,
-                        "codec": validate.all(
-                            [{
-                                "codec_name": str,
-                                "base_url": str,
-                                "url_info": [{
-                                    "host": validate.url(),
-                                    "extra": str,
-                                }],
-                            }],
-                            validate.filter(lambda item: item["codec_name"] == "avc"),
-                        ),
-                    }],
-                    validate.filter(lambda item: item["format_name"] == "fmp4"),
-                ),
-            }],
-            validate.filter(lambda item: item["protocol_name"] == "http_hls"),
-        )
-
-    def _get_api_v2_playinfo(self, room_id):
-        return self.session.http.get(
-            self._URL_API_V2_PLAYINFO,
-            params={
-                "room_id": room_id,
-                "no_playurl": 0,
-                "mask": 1,
-                "qn": 0,
-                "platform": "web",
-                "protocol": "0,1",
-                "format": "0,1,2",
-                "codec": "0,1,2",
-                "dolby": 5,
-                "panorama": 1,
-            },
-            schema=validate.Schema(
-                validate.parse_json(),
-                {
-                    "code": 0,
-                    "data": {
-                        "playurl_info": {
-                            "playurl": {
-                                "stream": self._schema_v2_streams(),
-                            },
-                        },
-                    },
-                },
-                validate.get(("data", "playurl_info", "playurl", "stream")),
-            ),
-        )
-
-    def _get_page_playinfo(self):
-        data = self.session.http.get(
-            self.url,
-            schema=validate.Schema(
-                validate.parse_html(),
-                validate.xml_xpath_string(".//script[contains(text(),'window.__NEPTUNE_IS_MY_WAIFU__={')][1]/text()"),
-                validate.none_or_all(
-                    validate.transform(str.replace, "window.__NEPTUNE_IS_MY_WAIFU__=", ""),
-                    validate.parse_json(),
-                    {
-                        "roomInitRes": {
-                            "data": {
-                                "live_status": int,
-                                "playurl_info": {
-                                    "playurl": {
-                                        "stream": self._schema_v2_streams(),
-                                    },
-                                },
-                            },
-                        },
-                        "roomInfoRes": {
-                            "data": {
-                                "room_info": {
-                                    "live_id": int,
-                                    "title": str,
-                                    "area_name": str,
-                                },
-                                "anchor_info": {
-                                    "base_info": {
-                                        "uname": str,
-                                    },
-                                },
-                            },
-                        },
-                    },
-                    validate.union_get(
-                        ("roomInfoRes", "data", "room_info", "live_id"),
-                        ("roomInfoRes", "data", "anchor_info", "base_info", "uname"),
-                        ("roomInfoRes", "data", "room_info", "area_name"),
-                        ("roomInfoRes", "data", "room_info", "title"),
-                        ("roomInitRes", "data", "live_status"),
-                        ("roomInitRes", "data", "playurl_info", "playurl", "stream"),
-                    ),
-                ),
-            ),
-        )
-        if not data:
-            return
-
-        self.id, self.author, self.category, self.title, live_status, streams = data
-        if live_status != self.SHOW_STATUS_ONLINE:
-            log.info("Channel is offline")
-            raise NoStreamsError
-
-        return streams
-
-    def _get_streams(self):
-        http_streams = self._get_api_v1_playurl(self.match["channel"])
-        for http_stream in http_streams:
-            yield "httpstream", HTTPStream(self.session, http_stream)
-
-        hls_streams = self._get_page_playinfo()
-        if not hls_streams:
-            log.debug("Falling back to _get_api_v2_playinfo()")
-            hls_streams = self._get_api_v2_playinfo(self.match["channel"])
-
-        for hls_stream in hls_streams or []:
-            for stream_format in hls_stream["format"]:
-                for codec in stream_format["codec"]:
-                    for url_info in codec["url_info"]:
-                        url = f"{url_info['host']}{codec['base_url']}{url_info['extra']}"
-                        yield "hls", HLSStream(self.session, url)
-
-
-__plugin__ = Bilibili
+        return args

@@ -37,6 +37,7 @@ deactivate
 echo "Required components installation completed!"
 
 echo "Starting configuration"
+mv ".env.example" ".env"
 # Execute the settings script
 bash settings
 echo "Configuration completed!"

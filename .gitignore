@@ -14,3 +14,5 @@ venv
 speed up
 recorded
 src/__pycache__
+src/files/channels.json
+src/files/delays.json

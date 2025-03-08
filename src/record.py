@@ -1,14 +1,13 @@
 import asyncio
+import importlib
 import os
 import platform
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 import aiohttp
-from Chzzk import ChzzkClass
-from Twitch import TwitchClass
-
 
 from logger import log
 from utils import *
@@ -22,20 +21,34 @@ if platform.system() != "Windows":
 shutdown_event = asyncio.Event()
 
         
-
 async def create_instance(channel: Dict[str, Any]) -> object:
+    # Get platform name from the channel dictionary
+    plat_name = channel.get('platform')
 
-    platforms = {
-        "chzzk" : ChzzkClass,
-        "twitch" : TwitchClass
-    }
+    if plat_name is None:
+        raise ValueError("Platform name is missing in the channel data")
+    
+    # Add the plugin folder to sys.path if not already included
+    plugin_path = os.path.join(os.path.dirname(__file__), 'plugin')
+    if plugin_path not in sys.path:
+        sys.path.append(plugin_path)
 
+    try:
+        # Dynamically import the module corresponding to the platform name
+        module = importlib.import_module(f"{plat_name}")
 
-    platName = channel.get('platform')
-    platClass = platforms.get(platName)
+        # Get the class dynamically from the module
+        class_name = f"{plat_name.capitalize()}"
+        plat_class = getattr(module, class_name)
 
-    return platClass(channel)
-
+        # Create and return an instance of the class
+        return plat_class(channel)
+    except ModuleNotFoundError as e:
+        raise ImportError(f"Module for platform '{plat_name}' not found.") from e
+    except AttributeError as e:
+        raise ImportError(f"Class '{class_name}' not found in module '{plat_name}'.") from e
+    except Exception as e:
+        raise RuntimeError(f"An error occurred while creating the instance for platform '{plat_name}': {e}")
 
 # Constants
 base_directory = Path(__file__).resolve().parent / "files"
@@ -203,18 +216,34 @@ async def record_stream(
                         # "-hide_banner",
                         "-v", 
                         "info", 
-                        "-i", 
-                        "-", 
-                        "-c:v", 
-                        "libx265", 
-                        "-crf", 
-                        "23",
-                        "-b:v", "0", "-r", "25", "-an", output_path
-                                                ,"-progress",
-                        "pipe:1"
-
+                        "-i", "-", 
                     ]
-                    
+                    # ffmpeg_command += ["-c:v", "libx265", 
+                    #     "-crf", "23",
+                    #     "-b:v", "0",
+                    # ]
+                    ffmpeg_command += [
+                        "-c:v", "hevc_nvenc", 
+                        "-preset", "slow",            # Slow preset for higher quality encoding
+                        # "-cq", "30",                  # Constant quantizer value for quality control (lower is better)
+                        "-profile:v", "main",       # Use 8-bit color profile 
+                        "-tier", "high",              # Use high tier for better quality
+                        "-tune", "hq",                # Tune for high-quality output
+                        "-pix_fmt", "yuv420p",         # Set pixel format to 8-bit 
+                        "-b:v", "500k",               # Set target bitrate
+                        "-maxrate", "1M",           # Set maximum allowed bitrate
+                        "-bufsize", "10M",           # Set buffer size (controls bitrate fluctuations)
+                        "-rc", "vbr",             # Use constant quantizer rate control for consistent quality
+                        "-g", "250"                   # Set GOP size to 250 frames
+                    ]
+
+                    ffmpeg_command += [
+                        "-r", "25", 
+                        "-an",
+                          output_path
+                        ,"-progress",
+                        "pipe:1"
+                     ]
                     ffmpeg_process = await asyncio.create_subprocess_exec(
                         *ffmpeg_command,
                         stdin=rpipe,

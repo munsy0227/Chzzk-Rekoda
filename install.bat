@@ -63,6 +63,7 @@ for /D %%A in (ffmpeg-*) do (
 )
 
 
+rename ".env.example" ".env"
 echo Starting configuration
 REM Execute the settings script
 call settings.bat
