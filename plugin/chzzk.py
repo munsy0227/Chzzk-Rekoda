@@ -78,7 +78,11 @@ class ChzzkHLSStream(HLSStream):
         if status != "OPEN" or media is None:
             raise StreamError("Error occurred while refreshing the stream URL.")
         for media_info in media:
-            if len(media_info) >= 3 and media_info[1] == "HLS" and media_info[0] == "HLS":
+            if (
+                len(media_info) >= 3
+                and media_info[1] == "HLS"
+                and media_info[0] == "HLS"
+            ):
                 media_path = self._update_domain(media_info[2])
                 res = self._fetch_variant_playlist(self.session, media_path)
                 m3u8 = parse_m3u8(res)
@@ -176,7 +180,7 @@ class ChzzkAPI:
                             "code": int,
                             "message": str,
                         },
-                        validate.transform(lambda data: ("error", data["message"]))
+                        validate.transform(lambda data: ("error", data["message"])),
                     ),
                     validate.all(
                         {
@@ -291,7 +295,11 @@ class Chzzk(Plugin):
 
         streams = {}
         for media_info in media:
-            if len(media_info) >= 3 and media_info[1] == "HLS" and media_info[0] == "HLS":
+            if (
+                len(media_info) >= 3
+                and media_info[1] == "HLS"
+                and media_info[0] == "HLS"
+            ):
                 media_path = self._update_domain(media_info[2])
                 hls_streams = ChzzkHLSStream.parse_variant_playlist(
                     self.session,
