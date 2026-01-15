@@ -128,6 +128,7 @@ THREAD_FILE_PATH = Path("thread.txt")
 CHANNELS_FILE_PATH = Path("channels.json")
 DELAYS_FILE_PATH = Path("delays.json")
 COOKIE_FILE_PATH = Path("cookie.json")
+HEVC_FILE_PATH = Path("hevc.json")
 PLUGIN_DIR_PATH = Path("plugin")
 SPECIAL_CHARS_REMOVER = re.compile(r'[\\/:*?"<>|]')
 
@@ -191,6 +192,7 @@ async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int
         load_json_async(THREAD_FILE_PATH),
         load_json_async(CHANNELS_FILE_PATH),
         load_json_async(DELAYS_FILE_PATH),
+        load_json_async(HEVC_FILE_PATH),
     )
 
     # Validate and set defaults
@@ -198,8 +200,18 @@ async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int
     stream_segment_threads = settings[1] if isinstance(settings[1], int) else 2
     channels = settings[2] if isinstance(settings[2], list) else []
     delays = settings[3] if isinstance(settings[3], dict) else {}
+    hevc_settings = (
+        settings[4]
+        if isinstance(settings[4], dict)
+        else {
+            "enable": False,
+            "bitrate": "2500k",
+            "max_bitrate": "10000k",
+            "preset": "ultrafast",
+        }
+    )
 
-    return timeout, stream_segment_threads, channels, delays
+    return timeout, stream_segment_threads, channels, delays, hevc_settings
 
 
 def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
@@ -410,6 +422,7 @@ async def record_stream(
     timeout: int,
     ffmpeg_path: Path,
     stream_segment_threads: int,
+    hevc_settings: Dict[str, Any],
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
@@ -526,23 +539,75 @@ async def record_stream(
                         os.close(write_pipe)  # Close the write end in the parent
 
                         # Start ffmpeg process
-                        ffmpeg_cmd = [
-                            str(ffmpeg_path),
-                            "-i",
-                            "pipe:0",
-                            "-c",
-                            "copy",
+                        base_input_args = [str(ffmpeg_path), "-i", "pipe:0", "-y"]
+
+                        encoding_args = []
+
+                        enable_hevc = hevc_settings.get("enable", False)
+
+                        if enable_hevc:
+                            bitrate = hevc_settings.get("bitrate", "2500k")
+                            max_bitrate = hevc_settings.get("max_bitrate", "10000k")
+                            preset = hevc_settings.get("preset", "ultrafast")
+
+                            try:
+                                max_val = int(max_bitrate.lower().replace("k", ""))
+                                bufsize = f"{max_val * 2}k"
+                            except ValueError:
+                                bufsize = "16000k"
+
+                            x265_params = (
+                                "rc-lookahead=20:b-adapt=2:bframes=3:scenecut=40"
+                            )
+
+                            # Default HEVC Settings
+                            encoding_args = [
+                                "-c:v",
+                                "libx265",
+                                "-preset",
+                                preset,
+                                "-b:v",
+                                bitrate,
+                                "-maxrate",
+                                max_bitrate,
+                                "-bufsize",
+                                bufsize,
+                                "-tune",
+                                "zerolatency",
+                                "-tag:v",
+                                "hvc1",
+                                "-x265-params",
+                                x265_params,
+                                "-c:a",
+                                "copy",
+                                "-map_metadata:s:a",
+                                "0:s:a",
+                                "-map_metadata:s:v",
+                                "0:s:v",
+                                "-bsf:a",
+                                "aac_adtstoasc",
+                                "-bsf:v",
+                                "hevc_mp4toannexb",
+                            ]
+
+                        else:
+                            encoding_args = [
+                                "-c",
+                                "copy",
+                                "-map_metadata:s:a",
+                                "0:s:a",
+                                "-map_metadata:s:v",
+                                "0:s:v",
+                                "-bsf:v",
+                                "h264_mp4toannexb",
+                                "-bsf:a",
+                                "aac_adtstoasc",
+                            ]
+
+                        output_args = [
                             "-progress",
                             "pipe:2",
                             "-copy_unknown",
-                            "-map_metadata:s:a",
-                            "0:s:a",
-                            "-map_metadata:s:v",
-                            "0:s:v",
-                            "-bsf:v",
-                            "h264_mp4toannexb",
-                            "-bsf:a",
-                            "aac_adtstoasc",
                             "-f",
                             "mpegts",
                             "-mpegts_flags",
@@ -553,9 +618,10 @@ async def record_stream(
                             "+genpts+discardcorrupt+nobuffer",
                             "-avioflags",
                             "direct",
-                            "-y",
                             str(temp_output_path),
                         ]
+
+                        ffmpeg_cmd = base_input_args + encoding_args + output_args
 
                         ffmpeg_process = await asyncio.create_subprocess_exec(
                             *ffmpeg_cmd,
@@ -665,7 +731,9 @@ async def record_stream(
 
 async def manage_recording_tasks():
     active_tasks: Dict[str, asyncio.Task] = {}
-    timeout, stream_segment_threads, channels, delays = await load_settings()
+    timeout, stream_segment_threads, channels, delays, hevc_settings = (
+        await load_settings()
+    )
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
     ffmpeg_path = await setup_paths()
@@ -682,6 +750,7 @@ async def manage_recording_tasks():
                     new_stream_segment_threads,
                     new_channels,
                     new_delays,
+                    new_hevc_settings,
                 ) = await load_settings()
                 active_channels = 0
 
@@ -717,6 +786,7 @@ async def manage_recording_tasks():
                                     new_timeout,
                                     ffmpeg_path,
                                     new_stream_segment_threads,
+                                    new_hevc_settings,
                                 )
                             )
                             active_tasks[channel_id] = task
