@@ -132,13 +132,6 @@ HEVC_FILE_PATH = Path("hevc.json")
 PLUGIN_DIR_PATH = Path("plugin")
 SPECIAL_CHARS_REMOVER = re.compile(r'[\\/:*?"<>|]')
 
-# HEVC
-ENABLE_HEVC = True
-HEVC_ENCODER = "libx265"
-TARGET_BITRATE = "6000k"
-MAX_BITRATE = "6000k"
-BUF_SIZE = "12000k"
-
 # Max filename length constants
 MAX_FILENAME_BYTES = 255
 MAX_HASH_LENGTH = 8
@@ -213,7 +206,7 @@ async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int
         else {
             "enable": False,
             "bitrate": "2500k",
-            "max_bitrate": "8000k",
+            "max_bitrate": "10000k",
             "preset": "ultrafast",
         }
     )
@@ -552,9 +545,9 @@ async def record_stream(
 
                         enable_hevc = hevc_settings.get("enable", False)
 
-                        if ENABLE_HEVC:
+                        if enable_hevc:
                             bitrate = hevc_settings.get("bitrate", "2500k")
-                            max_bitrate = hevc_settings.get("max_bitrate", "8000k")
+                            max_bitrate = hevc_settings.get("max_bitrate", "10000k")
                             preset = hevc_settings.get("preset", "ultrafast")
 
                             try:

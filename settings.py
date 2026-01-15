@@ -49,7 +49,7 @@ def load_hevc_settings():
     default_settings = {
         "enable": False,
         "bitrate": "2500k",
-        "max_bitrate": "8000k",
+        "max_bitrate": "10000k",
         "preset": "ultrafast",
     }
     if os.path.exists(hevc_file_path):
@@ -315,7 +315,7 @@ while True:
                 save_hevc_settings(hevc_settings)
 
             elif choice3 == "3":
-                new_max = input("Enter max bitrate (e.g., 8000k): ")
+                new_max = input("Enter max bitrate (e.g., 10000k): ")
                 if not new_max.endswith("k"):
                     new_max += "k"
                 hevc_settings["max_bitrate"] = new_max
