@@ -7,6 +7,7 @@ channel_count_file_path = os.path.join(script_directory, "channel_count.txt")
 channels_file_path = os.path.join(script_directory, "channels.json")
 delays_file_path = os.path.join(script_directory, "delays.json")
 log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
+hevc_file_path = os.path.join(script_directory, "hevc.json")
 
 # Define channels list
 channels = []
@@ -44,6 +45,28 @@ else:
     delays = {}
 
 
+def load_hevc_settings():
+    default_settings = {
+        "enable": False,
+        "bitrate": "2500k",
+        "max_bitrate": "8000k",
+        "preset": "ultrafast",
+    }
+    if os.path.exists(hevc_file_path):
+        try:
+            with open(hevc_file_path, "r") as f:
+                return json.load(f)
+        except json.JSONDecodeError:
+            return default_settings
+    return default_settings
+
+
+def save_hevc_settings(settings):
+    with open(hevc_file_path, "w") as f:
+        json.dump(settings, f, indent=2)
+    print("HEVC settings have been saved.")
+
+
 def try_again():
     print("Please try again.\n")
 
@@ -59,9 +82,15 @@ def toggle_logging():
 while True:
     print("Chzzk Auto-Recording Settings")
     print(
-        "\n1. Channel Settings\n2. Recording Settings\n3. Cookie Settings (for adult verification)\n4. Toggle Logging\n5. Quit"
+        "\n1. Channel Settings"
+        "\n2. Recording Settings"
+        "\n3. HEVC Settings (High Efficiency Video Coding)"
+        "\n4. Cookie Settings (for adult verification)"
+        "\n5. Toggle Logging"
+        "\n6. Quit"
     )
     choice = str(input("Enter the number you want to execute: "))
+
     if choice == "1":
         while True:
             print(
@@ -214,8 +243,11 @@ while True:
 
             if choice2 == "1":
                 thread_file_path = os.path.join(script_directory, "thread.txt")
-                with open(thread_file_path, "r") as thread_file:
-                    threads = thread_file.readline().strip()
+                if os.path.exists(thread_file_path):
+                    with open(thread_file_path, "r") as thread_file:
+                        threads = thread_file.readline().strip()
+                else:
+                    threads = "2"
                 print(f"The current number of recording threads is {threads}.")
                 print(
                     "Recommended 2~4 threads, 2 threads for low-end systems / 4 threads for high-end systems"
@@ -229,8 +261,11 @@ while True:
                 rescan_interval_file_path = os.path.join(
                     script_directory, "time_sleep.txt"
                 )
-                with open(rescan_interval_file_path, "r") as time_sleep_file:
-                    rescan_interval = time_sleep_file.readline().strip()
+                if os.path.exists(rescan_interval_file_path):
+                    with open(rescan_interval_file_path, "r") as time_sleep_file:
+                        rescan_interval = time_sleep_file.readline().strip()
+                else:
+                    rescan_interval = "60"
                 print(
                     f"The current broadcast rescan interval is {rescan_interval} seconds."
                 )
@@ -249,14 +284,65 @@ while True:
                 try_again()
 
     elif choice == "3":
+        while True:
+            hevc_settings = load_hevc_settings()
+            print("\n--- HEVC (H.265) Settings ---")
+            print(f"Status: {'[Enabled]' if hevc_settings['enable'] else '[Disabled]'}")
+            print(f"Target Bitrate: {hevc_settings['bitrate']}")
+            print(f"Max Bitrate: {hevc_settings['max_bitrate']}")
+            print(f"Preset: {hevc_settings['preset']}")
+            print("-" * 30)
+            print("1. Toggle Enable/Disable")
+            print("2. Set Target Bitrate (e.g., 6000k)")
+            print("3. Set Max Bitrate (e.g., 8000k)")
+            print("4. Set Preset (ultrafast, superfast, etc.)")
+            print("5. Go Back")
+
+            choice3 = str(input("Enter the number you want to execute: "))
+
+            if choice3 == "1":
+                hevc_settings["enable"] = not hevc_settings["enable"]
+                save_hevc_settings(hevc_settings)
+                print(
+                    f"HEVC encoding has been {'enabled' if hevc_settings['enable'] else 'disabled'}."
+                )
+
+            elif choice3 == "2":
+                new_bitrate = input("Enter target bitrate (e.g., 6000k): ")
+                if not new_bitrate.endswith("k"):
+                    new_bitrate += "k"
+                hevc_settings["bitrate"] = new_bitrate
+                save_hevc_settings(hevc_settings)
+
+            elif choice3 == "3":
+                new_max = input("Enter max bitrate (e.g., 8000k): ")
+                if not new_max.endswith("k"):
+                    new_max += "k"
+                hevc_settings["max_bitrate"] = new_max
+                save_hevc_settings(hevc_settings)
+
+            elif choice3 == "4":
+                print(
+                    "Options: ultrafast (rec), superfast, veryfast, faster, fast, medium"
+                )
+                new_preset = input("Enter preset name: ")
+                hevc_settings["preset"] = new_preset
+                save_hevc_settings(hevc_settings)
+
+            elif choice3 == "5":
+                break
+            else:
+                try_again()
+
+    elif choice == "4":
         SES = str(input("Enter SES: "))
         AUT = str(input("Enter AUT: "))
         save_cookie_info(SES, AUT)
 
-    elif choice == "4":
+    elif choice == "5":
         toggle_logging()
 
-    elif choice == "5":
+    elif choice == "6":
         print("Exiting the settings.")
         break
     else:
