@@ -609,13 +609,14 @@ async def record_stream(
                                 ]
 
                             elif encoder == "hevc_nvenc":
-                                # Map 'ultrafast' etc to nvenc presets if possible, or use p1-p7
-                                nv_preset = "p4"  # default medium
+                                # Map 'ultrafast' etc to nvenc presets
+                                # NVENC presets: p1 (fastest) to p7 (slowest)
+                                nv_preset = "p4"  # Default to medium
                                 if "fast" in preset or "super" in preset or "ultra" in preset:
                                     nv_preset = "p1"
-                                if "slow" in preset:
+                                elif "slow" in preset:
                                     nv_preset = "p6"
-                                if (
+                                elif (
                                     preset.startswith("p")
                                     and len(preset) == 2
                                     and preset[1].isdigit()
@@ -634,8 +635,8 @@ async def record_stream(
                                     "-bufsize",
                                     bufsize,
                                     "-rc",
-                                    "vbr_hq",
-                                    "-zerolatency",
+                                    "vbr",
+                                    "-spatial-aq",
                                     "1",
                                     "-tag:v",
                                     "hvc1",
@@ -655,8 +656,6 @@ async def record_stream(
                                     max_bitrate,
                                     "-bufsize",
                                     bufsize,
-                                    "-load_plugin",
-                                    "hevc_hw",
                                     "-tag:v",
                                     "hvc1",
                                     "-c:a",
@@ -693,8 +692,6 @@ async def record_stream(
                                     "format=nv12,hwupload",
                                     "-c:v",
                                     "hevc_vaapi",
-                                    "-compression_level",
-                                    "1",
                                     "-b:v",
                                     bitrate,
                                     "-maxrate",
