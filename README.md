@@ -1,73 +1,123 @@
-#  Chzzk-Rekoda
+# 치지직 레코다 (Chzzk-Rekoda)
+
 Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
+
+또한 컴퓨터를 잘 모르는 분들도 쉽게 사용할 수 있는 **치지직 자동 녹화 프로그램**입니다.  
+방송이 켜지면 자동으로 녹화를 시작하고, 방송이 꺼지면 알아서 저장해줍니다.
 
 [[튜토리얼] 안드로이드 휴대폰에 프로그램 설치하기](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
 
-## 설치 방법
+---
 
-### Windows
+## 1. 설치하기 (다운로드)
 
-#### 1. 다운로드하기
-1. Git이 설치된 경우 이 방법을 사용하세요.
-```bash
-git clone https://github.com/munsy0227/Chzzk-Rekoda.git
-```
-2. Git이 없는 경우 아래 링크에서 다운로드하세요. [아니면 이걸 클릭하세요](https://github.com/munsy0227/Chzzk-Rekoda/archive/refs/heads/main.zip)
-```bash
-https://github.com/munsy0227/Chzzk-Rekoda/archive/refs/heads/main.zip
-```
-#### 2. 설치하기
-1. install.bat을 실행합니다.
-```bash
-install.bat
-```
-### macOS/Linux
+사용하고 계신 운영체제(윈도우, 맥, 리눅스)에 맞는 설명을 읽고 따라해주세요.
 
-#### 1. 클론하기
-원하는 디렉터리로 가서 터미널을 실행하고 이 명령을 입력하세요.
-```bash
-git clone https://github.com/munsy0227/Chzzk-Rekoda.git
-cd Chzzk-Rekoda
-```
-#### 2. ffmpeg 설치
-ffmpeg가 이미 설치되어 있으면 건너뜁니다.
-1. macOS 일 경우
-```bash
-brew install ffmpeg
-```
-2. ubuntu, 데비안 일 경우
-```bash
-sudo apt install ffmpeg
-```
-3. ArchLinux 일 경우
-```bash
-# ArchLinux는 uv를 리포지토리에서 제공하므로 여기서 먼저 설치해야 합니다.
-sudo pacman -S ffmpeg uv
-```
-#### 3. 설치하기
-```bash
-./install
-```
+### 🪟 윈도우 (Windows) 사용자
 
-## 사용 방법
-chzzk_record.bat 혹은 chzzk_record를 실행하여 녹화한다.
-### Windows
-```bash
-chzzk_record.bat
-```
-### macOS/Linux
+**1단계: 프로그램 다운로드**
+1. 이 페이지 위쪽에 있는 초록색 **[Code]** 버튼을 누르세요.
+2. 메뉴에서 **[Download ZIP]** 을 눌러 압축 파일을 다운받으세요.
+3. 다운로드한 파일의 압축을 풀어주세요. (찾기 쉬운 '바탕화면' 등을 추천합니다.)
+
+(Git을 사용하실 수 있다면 Git을 사용하세요.)
+
+**2단계: 설치 프로그램 실행**
+1. 압축을 푼 폴더 안으로 들어갑니다.
+2. `install.bat` 파일을 찾아 더블 클릭해서 실행하세요.
+3. 검은 창이 뜨고 필요한 파일들을 자동으로 설치합니다. 시간이 조금 걸릴 수 있으니 기다려주세요.
+4. 설치가 완료되면 자동으로 설정 화면이 나옵니다.
+
+---
+
+### 🍎 맥(macOS) / 🐧 리눅스(Linux) 사용자
+
+**1단계: 터미널 열기**
+- **Mac:** `Command` + `Space` 키를 누르고 "터미널"이라고 검색해서 실행하세요.
+- **Linux:** 사용하시는 터미널 앱을 실행하세요.
+
+**2단계: 명령어 입력하기**
+아래 명령어들을 한 줄씩 복사해서 터미널에 붙여넣고 엔터(Enter)를 누르세요.
+
+1. **프로그램 다운로드**
+   ```bash
+   git clone https://github.com/munsy0227/Chzzk-Rekoda.git
+   cd Chzzk-Rekoda
+   ```
+
+2. **FFmpeg 설치 (녹화에 꼭 필요해요)**
+   - **Mac 사용자 (Homebrew 필요):**
+     ```bash
+     brew install ffmpeg
+     ```
+   - **Ubuntu/Debian 사용자:**
+     ```bash
+     sudo apt install ffmpeg -y
+     ```
+   - **Arch Linux 사용자:**
+     ```bash
+     sudo pacman -S ffmpeg uv
+     ```
+
+3. **설치 스크립트 실행**
+   ```bash
+   ./install
+   ```
+
+---
+
+## 2. 설정하기 (채널 추가)
+
+녹화하고 싶은 스트리머를 등록해야 녹화가 됩니다.  
+설치 직후 설정 화면이 꺼졌다면 `settings.bat`(윈도우) 또는 `./settings`(맥/리눅스)를 실행하세요.
+
+1. 메뉴가 나오면 키보드 숫자를 눌러 선택합니다.
+   - **`1` 입력 후 엔터**: 채널 설정 (Channel Settings)
+   - **`1` 입력 후 엔터**: 채널 추가 (Add Channel)
+
+2. **스트리머 고유 ID**를 입력하세요.
+   - 치지직 방송국 주소의 맨 뒤에 있는 영어+숫자입니다.
+   - 예시: 주소가 `https://chzzk.naver.com/abc1234`라면 `abc1234`가 ID입니다.
+
+3. **스트리머 이름**을 입력하세요.
+   - 본인이 알아보기 쉬운 별명으로 지어도 됩니다.
+
+4. **저장 경로**를 입력하세요.
+   - 아무것도 입력하지 않고 엔터를 치면 프로그램 폴더에 저장됩니다.
+
+5. 입력한 정보가 맞다면 `Y`를 입력하세요.
+
+> **팁:** 성인 인증이 필요한 방송을 녹화하려면 설정 메뉴의 **4번 (Cookie Settings)** 에서 쿠키값(NID_AUT, NID_SES)을 입력해야 합니다.
+
+---
+
+## 3. 녹화 시작하기
+
+이제 프로그램을 켜두기만 하면 됩니다.
+
+### 🪟 윈도우
+폴더에 있는 `chzzk_record.bat` 파일을 더블 클릭하세요.
+
+### 🍎 맥 / 🐧 리눅스
+터미널에서 다음 명령어를 입력하세요.
 ```bash
 ./chzzk_record
 ```
 
-settings.bat 혹은 settings를 실행하여 설정한다.
-### Windows
-```bash
-settings.bat
-```
-### macOS/Linux
-```bash
-./settings
-```
+검은 창이 떠 있고 글자들이 나온다면 정상적으로 작동 중인 것입니다.  
+**이 창을 끄면 녹화가 멈추니 켜두세요!** (최소화 해두셔도 됩니다.)
+
+---
+
+## ❓ 자주 묻는 질문 (FAQ)
+
+**Q. 녹화된 파일은 어디에 있나요?**
+A. 설정할 때 저장 경로를 따로 지정하지 않았다면, 프로젝트 폴더 안에 저장됩니다.
+
+**Q. 프로그램을 끄려면 어떻게 하나요?**
+A. 실행 중인 검은 창(터미널)을 닫거나, 창을 클릭한 상태에서 키보드의 `Ctrl` + `C`를 누르면 종료됩니다.
+
+**Q. 오류가 발생해요!**
+A. [이곳(Issues)](https://github.com/munsy0227/Chzzk-Rekoda/issues)에 들어가서 증상을 알려주시면 도와드릴 수 있습니다.
