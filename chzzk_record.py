@@ -28,6 +28,9 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.text import Text
 
+# Global configuration path
+CONFIG_FILE_PATH = Path("config.json")
+
 # Global console instance for Rich
 console = Console()
 
@@ -41,23 +44,34 @@ log_queue: asyncio.Queue = asyncio.Queue()
 
 # Helper function to load log_enabled
 def get_log_enabled() -> bool:
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
-    if os.path.exists(log_enabled_file_path):
-        with open(log_enabled_file_path, "r") as f:
-            return f.readline().strip().lower() == "true"
+    if os.path.exists(CONFIG_FILE_PATH):
+        try:
+            with open(CONFIG_FILE_PATH, "rb") as f:
+                config = orjson.loads(f.read())
+                return config.get("log_enabled", True)
+        except Exception:
+            pass
     return True
 
 
 # Function to toggle log_enabled
 def toggle_log_enabled():
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    log_enabled_file_path = os.path.join(script_directory, "log_enabled.txt")
-    current_state = get_log_enabled()
-    new_state = not current_state
-    with open(log_enabled_file_path, "w") as f:
-        f.write("true" if new_state else "false")
-    print(f"Logging has been {'enabled' if new_state else 'disabled'}.")
+    try:
+        current_config = {}
+        if os.path.exists(CONFIG_FILE_PATH):
+            with open(CONFIG_FILE_PATH, "rb") as f:
+                current_config = orjson.loads(f.read())
+        
+        current_state = current_config.get("log_enabled", True)
+        new_state = not current_state
+        current_config["log_enabled"] = new_state
+        
+        with open(CONFIG_FILE_PATH, "wb") as f:
+            f.write(orjson.dumps(current_config, option=orjson.OPT_INDENT_2))
+            
+        print(f"Logging has been {'enabled' if new_state else 'disabled'}.")
+    except Exception as e:
+        print(f"Error toggling log: {e}")
 
 
 # Custom logging handler to put log messages into the queue
@@ -123,12 +137,6 @@ print(
 LIVE_DETAIL_API = (
     "https://api.chzzk.naver.com/service/v3/channels/{channel_id}/live-detail"
 )
-TIME_FILE_PATH = Path("time_sleep.txt")
-THREAD_FILE_PATH = Path("thread.txt")
-CHANNELS_FILE_PATH = Path("channels.json")
-DELAYS_FILE_PATH = Path("delays.json")
-COOKIE_FILE_PATH = Path("cookie.json")
-HEVC_FILE_PATH = Path("hevc.json")
 PLUGIN_DIR_PATH = Path("plugin")
 SPECIAL_CHARS_REMOVER = re.compile(r'[\\/:*?"<>|]')
 
@@ -172,7 +180,6 @@ async def setup_paths() -> Optional[Path]:
 
 async def load_json_async(file_path: Path) -> Any:
     if not file_path.exists():
-        logger.error(f"File not found: {file_path}")
         return None
     try:
         async with aiofiles.open(file_path, "rb") as file:
@@ -186,30 +193,27 @@ async def load_json_async(file_path: Path) -> Any:
         return None
 
 
-async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int]]:
-    settings = await asyncio.gather(
-        load_json_async(TIME_FILE_PATH),
-        load_json_async(THREAD_FILE_PATH),
-        load_json_async(CHANNELS_FILE_PATH),
-        load_json_async(DELAYS_FILE_PATH),
-        load_json_async(HEVC_FILE_PATH),
-    )
+async def load_config_async() -> Dict[str, Any]:
+    config = await load_json_async(CONFIG_FILE_PATH)
+    if not config:
+        return {}
+    return config
 
-    # Validate and set defaults
-    timeout = settings[0] if isinstance(settings[0], int) else 60
-    stream_segment_threads = settings[1] if isinstance(settings[1], int) else 2
-    channels = settings[2] if isinstance(settings[2], list) else []
-    delays = settings[3] if isinstance(settings[3], dict) else {}
-    hevc_settings = (
-        settings[4]
-        if isinstance(settings[4], dict)
-        else {
-            "enable": False,
-            "bitrate": "2500k",
-            "max_bitrate": "10000k",
-            "preset": "ultrafast",
-        }
-    )
+
+async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
+    config = await load_config_async()
+
+    timeout = config.get("timeout", 60)
+    stream_segment_threads = config.get("stream_segment_threads", 2)
+    channels = config.get("channels", [])
+    delays = config.get("delays", {})
+    hevc_settings = config.get("hevc_settings", {
+        "enable": False,
+        "encoder": "libx265",
+        "bitrate": "2500k",
+        "max_bitrate": "10000k",
+        "preset": "ultrafast",
+    })
 
     return timeout, stream_segment_threads, channels, delays, hevc_settings
 
@@ -229,13 +233,8 @@ def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
 
 
 async def get_session_cookies() -> Dict[str, str]:
-    cookies = await load_json_async(COOKIE_FILE_PATH)
-    if not cookies:
-        logger.error(
-            "No cookies found. Please ensure 'cookie.json' exists and is valid."
-        )
-        return {}
-    return cookies
+    config = await load_config_async()
+    return config.get("cookies", {})
 
 
 async def get_live_info(
