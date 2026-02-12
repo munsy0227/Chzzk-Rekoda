@@ -539,11 +539,27 @@ async def record_stream(
                         os.close(write_pipe)  # Close the write end in the parent
 
                         # Start ffmpeg process
-                        base_input_args = [str(ffmpeg_path), "-i", "pipe:0", "-y"]
-
+                        base_input_args = []
                         encoding_args = []
 
                         enable_hevc = hevc_settings.get("enable", False)
+                        encoder = hevc_settings.get("encoder", "libx265") if enable_hevc else None
+
+                        # Handle VAAPI initialization before input
+                        if enable_hevc and encoder == "hevc_vaapi":
+                            # Attempt to use the default render device
+                            base_input_args = [
+                                str(ffmpeg_path),
+                                "-init_hw_device",
+                                "vaapi=vaapi0:/dev/dri/renderD128",
+                                "-filter_hw_device",
+                                "vaapi0",
+                                "-i",
+                                "pipe:0",
+                                "-y",
+                            ]
+                        else:
+                            base_input_args = [str(ffmpeg_path), "-i", "pipe:0", "-y"]
 
                         if enable_hevc:
                             bitrate = hevc_settings.get("bitrate", "2500k")
@@ -556,30 +572,7 @@ async def record_stream(
                             except ValueError:
                                 bufsize = "16000k"
 
-                            x265_params = (
-                                "rc-lookahead=20:b-adapt=2:bframes=3:scenecut=40"
-                            )
-
-                            # Default HEVC Settings
-                            encoding_args = [
-                                "-c:v",
-                                "libx265",
-                                "-preset",
-                                preset,
-                                "-b:v",
-                                bitrate,
-                                "-maxrate",
-                                max_bitrate,
-                                "-bufsize",
-                                bufsize,
-                                "-tune",
-                                "zerolatency",
-                                "-tag:v",
-                                "hvc1",
-                                "-x265-params",
-                                x265_params,
-                                "-c:a",
-                                "copy",
+                            common_hevc_args = [
                                 "-map_metadata:s:a",
                                 "0:s:a",
                                 "-map_metadata:s:v",
@@ -589,6 +582,178 @@ async def record_stream(
                                 "-bsf:v",
                                 "hevc_mp4toannexb",
                             ]
+
+                            if encoder == "libx265":
+                                x265_params = (
+                                    "rc-lookahead=20:b-adapt=2:bframes=3:scenecut=40"
+                                )
+                                encoding_args = [
+                                    "-c:v",
+                                    "libx265",
+                                    "-preset",
+                                    preset,
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-tune",
+                                    "zerolatency",
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-x265-params",
+                                    x265_params,
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            elif encoder == "hevc_nvenc":
+                                # Map 'ultrafast' etc to nvenc presets if possible, or use p1-p7
+                                nv_preset = "p4"  # default medium
+                                if "fast" in preset or "super" in preset or "ultra" in preset:
+                                    nv_preset = "p1"
+                                if "slow" in preset:
+                                    nv_preset = "p6"
+                                if (
+                                    preset.startswith("p")
+                                    and len(preset) == 2
+                                    and preset[1].isdigit()
+                                ):
+                                    nv_preset = preset
+
+                                encoding_args = [
+                                    "-c:v",
+                                    "hevc_nvenc",
+                                    "-preset",
+                                    nv_preset,
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-rc",
+                                    "vbr_hq",
+                                    "-zerolatency",
+                                    "1",
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            elif encoder == "hevc_qsv":
+                                encoding_args = [
+                                    "-c:v",
+                                    "hevc_qsv",
+                                    "-preset",
+                                    preset,
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-load_plugin",
+                                    "hevc_hw",
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            elif encoder == "hevc_amf":
+                                encoding_args = [
+                                    "-c:v",
+                                    "hevc_amf",
+                                    "-usage",
+                                    "transcoding",
+                                    "-rc",
+                                    "vbr_peak",
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-c:a",
+                                    "copy",
+                                ]
+                                if "fast" in preset:
+                                    encoding_args.extend(["-quality", "speed"])
+                                else:
+                                    encoding_args.extend(["-quality", "balanced"])
+
+                            elif encoder == "hevc_vaapi":
+                                encoding_args = [
+                                    "-vf",
+                                    "format=nv12,hwupload",
+                                    "-c:v",
+                                    "hevc_vaapi",
+                                    "-compression_level",
+                                    "1",
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            elif encoder == "hevc_videotoolbox":
+                                encoding_args = [
+                                    "-c:v",
+                                    "hevc_videotoolbox",
+                                    "-allow_sw",
+                                    "1",
+                                    "-realtime",
+                                    "true",
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            else:
+                                # Fallback to libx265
+                                x265_params = (
+                                    "rc-lookahead=20:b-adapt=2:bframes=3:scenecut=40"
+                                )
+                                encoding_args = [
+                                    "-c:v",
+                                    "libx265",
+                                    "-preset",
+                                    preset,
+                                    "-b:v",
+                                    bitrate,
+                                    "-maxrate",
+                                    max_bitrate,
+                                    "-bufsize",
+                                    bufsize,
+                                    "-tune",
+                                    "zerolatency",
+                                    "-tag:v",
+                                    "hvc1",
+                                    "-x265-params",
+                                    x265_params,
+                                    "-c:a",
+                                    "copy",
+                                ]
+
+                            encoding_args.extend(common_hevc_args)
 
                         else:
                             encoding_args = [

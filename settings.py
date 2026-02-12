@@ -48,6 +48,7 @@ else:
 def load_hevc_settings():
     default_settings = {
         "enable": False,
+        "encoder": "libx265",
         "bitrate": "2500k",
         "max_bitrate": "10000k",
         "preset": "ultrafast",
@@ -55,7 +56,12 @@ def load_hevc_settings():
     if os.path.exists(hevc_file_path):
         try:
             with open(hevc_file_path, "r") as f:
-                return json.load(f)
+                loaded_settings = json.load(f)
+                # Ensure all default keys exist in loaded settings
+                for key, value in default_settings.items():
+                    if key not in loaded_settings:
+                        loaded_settings[key] = value
+                return loaded_settings
         except json.JSONDecodeError:
             return default_settings
     return default_settings
@@ -288,15 +294,17 @@ while True:
             hevc_settings = load_hevc_settings()
             print("\n--- HEVC (H.265) Settings ---")
             print(f"Status: {'[Enabled]' if hevc_settings['enable'] else '[Disabled]'}")
+            print(f"Encoder: {hevc_settings.get('encoder', 'libx265')}")
             print(f"Target Bitrate: {hevc_settings['bitrate']}")
             print(f"Max Bitrate: {hevc_settings['max_bitrate']}")
             print(f"Preset: {hevc_settings['preset']}")
             print("-" * 30)
             print("1. Toggle Enable/Disable")
-            print("2. Set Target Bitrate (e.g., 6000k)")
-            print("3. Set Max Bitrate (e.g., 8000k)")
-            print("4. Set Preset (ultrafast, superfast, etc.)")
-            print("5. Go Back")
+            print("2. Set Encoder (libx265, hevc_nvenc, hevc_qsv, etc.)")
+            print("3. Set Target Bitrate (e.g., 6000k)")
+            print("4. Set Max Bitrate (e.g., 8000k)")
+            print("5. Set Preset (ultrafast, superfast, etc.)")
+            print("6. Go Back")
 
             choice3 = str(input("Enter the number you want to execute: "))
 
@@ -308,28 +316,42 @@ while True:
                 )
 
             elif choice3 == "2":
+                print("\nAvailable Encoders:")
+                print(" - libx265 (CPU, Default)")
+                print(" - hevc_nvenc (NVIDIA GPU)")
+                print(" - hevc_qsv (Intel GPU)")
+                print(" - hevc_amf (AMD GPU)")
+                print(" - hevc_vaapi (Linux VAAPI)")
+                print(" - hevc_videotoolbox (macOS)")
+                new_encoder = input("Enter encoder name: ").strip()
+                if new_encoder:
+                    hevc_settings["encoder"] = new_encoder
+                    save_hevc_settings(hevc_settings)
+
+            elif choice3 == "3":
                 new_bitrate = input("Enter target bitrate (e.g., 6000k): ")
                 if not new_bitrate.endswith("k"):
                     new_bitrate += "k"
                 hevc_settings["bitrate"] = new_bitrate
                 save_hevc_settings(hevc_settings)
 
-            elif choice3 == "3":
+            elif choice3 == "4":
                 new_max = input("Enter max bitrate (e.g., 10000k): ")
                 if not new_max.endswith("k"):
                     new_max += "k"
                 hevc_settings["max_bitrate"] = new_max
                 save_hevc_settings(hevc_settings)
 
-            elif choice3 == "4":
+            elif choice3 == "5":
                 print(
                     "Options: ultrafast (rec), superfast, veryfast, faster, fast, medium"
                 )
+                print("Note: For NVENC, use p1-p7. For QSV, use veryfast-veryslow.")
                 new_preset = input("Enter preset name: ")
                 hevc_settings["preset"] = new_preset
                 save_hevc_settings(hevc_settings)
 
-            elif choice3 == "5":
+            elif choice3 == "6":
                 break
             else:
                 try_again()
