@@ -61,14 +61,14 @@ def toggle_log_enabled():
         if os.path.exists(CONFIG_FILE_PATH):
             with open(CONFIG_FILE_PATH, "rb") as f:
                 current_config = orjson.loads(f.read())
-        
+
         current_state = current_config.get("log_enabled", True)
         new_state = not current_state
         current_config["log_enabled"] = new_state
-        
+
         with open(CONFIG_FILE_PATH, "wb") as f:
             f.write(orjson.dumps(current_config, option=orjson.OPT_INDENT_2))
-            
+
         print(f"Logging has been {'enabled' if new_state else 'disabled'}.")
     except Exception as e:
         print(f"Error toggling log: {e}")
@@ -200,20 +200,25 @@ async def load_config_async() -> Dict[str, Any]:
     return config
 
 
-async def load_settings() -> Tuple[int, int, List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]:
+async def load_settings() -> (
+    Tuple[int, int, List[Dict[str, Any]], Dict[str, int], Dict[str, Any]]
+):
     config = await load_config_async()
 
     timeout = config.get("timeout", 60)
     stream_segment_threads = config.get("stream_segment_threads", 2)
     channels = config.get("channels", [])
     delays = config.get("delays", {})
-    hevc_settings = config.get("hevc_settings", {
-        "enable": False,
-        "encoder": "libx265",
-        "bitrate": "2500k",
-        "max_bitrate": "10000k",
-        "preset": "ultrafast",
-    })
+    hevc_settings = config.get(
+        "hevc_settings",
+        {
+            "enable": False,
+            "encoder": "libx265",
+            "bitrate": "2500k",
+            "max_bitrate": "10000k",
+            "preset": "ultrafast",
+        },
+    )
 
     return timeout, stream_segment_threads, channels, delays, hevc_settings
 
@@ -542,7 +547,11 @@ async def record_stream(
                         encoding_args = []
 
                         enable_hevc = hevc_settings.get("enable", False)
-                        encoder = hevc_settings.get("encoder", "libx265") if enable_hevc else None
+                        encoder = (
+                            hevc_settings.get("encoder", "libx265")
+                            if enable_hevc
+                            else None
+                        )
 
                         # Handle VAAPI initialization before input
                         if enable_hevc and encoder == "hevc_vaapi":
@@ -611,7 +620,11 @@ async def record_stream(
                                 # Map 'ultrafast' etc to nvenc presets
                                 # NVENC presets: p1 (fastest) to p7 (slowest)
                                 nv_preset = "p4"  # Default to medium
-                                if "fast" in preset or "super" in preset or "ultra" in preset:
+                                if (
+                                    "fast" in preset
+                                    or "super" in preset
+                                    or "ultra" in preset
+                                ):
                                     nv_preset = "p1"
                                 elif "slow" in preset:
                                     nv_preset = "p6"
