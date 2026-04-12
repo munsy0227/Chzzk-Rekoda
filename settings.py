@@ -169,7 +169,7 @@ while True:
                             f"id: {id}, name: {name}, storage path: {output_dir} Is this correct? (Y/N): "
                         )
                     )
-                    if answer == "Y":
+                    if answer == "Y" or answer == "y":
                         # Determine next channel identifier
                         current_count = len(config["channels"])
                         identifier = f"ch{current_count + 1}"
@@ -192,7 +192,7 @@ while True:
                         save_config(config)
                         print("Channel added and config saved.")
                         break
-                    elif answer == "N":
+                    elif answer == "N" or answer == "n":
                         print("Then please enter it again")
                         break
                     else:
