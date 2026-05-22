@@ -90,7 +90,7 @@ class ChzzkHLSStream(HLSStream):
                     if playlist.stream_info:
                         new_url = self._update_domain(playlist.uri)
                         self._replace_token(new_url)
-                        log.debug(f"Refreshed the stream URL to {self._url}")
+                        log.debug("Refreshed the stream URL.")
                         self._expire = self._get_expire_time(self._url)
                         return
         raise StreamError("No valid HLS stream found in the refreshed playlist.")
@@ -99,8 +99,9 @@ class ChzzkHLSStream(HLSStream):
         """
         Update the domain of the given URL if it matches specific criteria.
         """
-        if "livecloud.pstatic.net" in url:
-            return url.replace("livecloud.pstatic.net", "nlive-streaming.navercdn.com")
+        parsed = urlparse(url)
+        if parsed.hostname == "livecloud.pstatic.net":
+            return urlunparse(parsed._replace(netloc="nlive-streaming.navercdn.com"))
         return url
 
     def _replace_token(self, new_url: str) -> None:
@@ -256,7 +257,7 @@ class ChzzkAPI:
 @pluginmatcher(
     name="live",
     pattern=re.compile(
-        r"https?://chzzk\.naver\.com/live/(?P<channel_id>[^/?]+)",
+        r"https?://chzzk\.naver\.com/live/(?P<channel_id>[A-Za-z0-9_-]{1,128})",
     ),
 )
 class Chzzk(Plugin):
@@ -317,8 +318,9 @@ class Chzzk(Plugin):
         """
         Update the domain of the given URL if it matches specific criteria.
         """
-        if "livecloud.pstatic.net" in url:
-            return url.replace("livecloud.pstatic.net", "nlive-streaming.navercdn.com")
+        parsed = urlparse(url)
+        if parsed.hostname == "livecloud.pstatic.net":
+            return urlunparse(parsed._replace(netloc="nlive-streaming.navercdn.com"))
         return url
 
     def _get_streams(self) -> Optional[Dict[str, HLSStream]]:

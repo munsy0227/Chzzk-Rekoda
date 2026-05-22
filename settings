@@ -1,5 +1,5 @@
 #!/bin/bash
+set -e
+cd "$(dirname "$0")"
 
 uv run settings.py
-
-exit 0
