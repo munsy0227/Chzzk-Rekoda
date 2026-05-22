@@ -208,3 +208,10 @@ __marimo__/
 
 # Config File
 config.json
+
+#temp
+.ts
+.mp4
+.mkv
+.webm
+/ffmpeg
