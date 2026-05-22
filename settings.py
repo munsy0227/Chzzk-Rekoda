@@ -1,5 +1,8 @@
 import os
 import json
+import re
+import tempfile
+from copy import deepcopy
 
 # File path settings
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -23,22 +26,118 @@ default_config = {
 }
 
 
+SAFE_CHANNEL_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
+SAFE_FFMPEG_VALUE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
+SAFE_BITRATE = re.compile(r"^\d+[kKmM]?$")
+CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+ALLOWED_ENCODERS = {
+    "libx265",
+    "hevc_nvenc",
+    "hevc_qsv",
+    "hevc_amf",
+    "hevc_vaapi",
+    "hevc_videotoolbox",
+}
+
+
+def deep_merge_defaults(config, defaults):
+    merged = deepcopy(defaults)
+    if not isinstance(config, dict):
+        return merged
+    for key, value in config.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = deep_merge_defaults(value, merged[key])
+        else:
+            merged[key] = deepcopy(value)
+    return merged
+
+
+def clamp_int(value, default, min_value, max_value):
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(min_value, min(max_value, parsed))
+
+
+def sanitize_cookie(value):
+    return CONTROL_CHARS.sub("", str(value or "")).replace(";", "").strip()
+
+
+def normalize_bitrate(value, default):
+    text = str(value or default).strip()
+    if not SAFE_BITRATE.fullmatch(text):
+        return default
+    if text[-1].isdigit():
+        text += "k"
+    return text.lower()
+
+
+def normalize_config(config):
+    config = deep_merge_defaults(config, default_config)
+    config["timeout"] = clamp_int(config.get("timeout"), 60, 5, 3600)
+    config["stream_segment_threads"] = clamp_int(
+        config.get("stream_segment_threads"), 2, 1, 16
+    )
+
+    channels = []
+    for index, channel in enumerate(config.get("channels", []), start=1):
+        if not isinstance(channel, dict):
+            continue
+        channel_id = str(channel.get("id", "")).strip()
+        if not SAFE_CHANNEL_ID.fullmatch(channel_id):
+            print(f"Skipping invalid channel id: {channel_id}")
+            continue
+        channel["id"] = channel_id
+        channel["name"] = CONTROL_CHARS.sub("", str(channel.get("name") or channel_id)).strip()
+        channel["output_dir"] = str(channel.get("output_dir") or ".").strip() or "."
+        channel["identifier"] = str(channel.get("identifier") or f"ch{index}").strip()
+        channel["active"] = "off" if channel.get("active") == "off" else "on"
+        channels.append(channel)
+    config["channels"] = channels
+
+    delays = config.get("delays", {})
+    config["delays"] = {
+        str(key): clamp_int(value, 0, 0, 3600)
+        for key, value in delays.items()
+    } if isinstance(delays, dict) else {}
+
+    hevc = deep_merge_defaults(config.get("hevc_settings", {}), default_config["hevc_settings"])
+    hevc["enable"] = bool(hevc.get("enable"))
+    if hevc.get("encoder") not in ALLOWED_ENCODERS:
+        hevc["encoder"] = "libx265"
+    hevc["bitrate"] = normalize_bitrate(hevc.get("bitrate"), "2500k")
+    hevc["max_bitrate"] = normalize_bitrate(hevc.get("max_bitrate"), "10000k")
+    preset = str(hevc.get("preset") or "ultrafast").strip()
+    hevc["preset"] = preset if SAFE_FFMPEG_VALUE.fullmatch(preset) else "ultrafast"
+    config["hevc_settings"] = hevc
+
+    cookies = config.get("cookies", {})
+    if not isinstance(cookies, dict):
+        cookies = {}
+    config["cookies"] = {
+        "NID_SES": sanitize_cookie(cookies.get("NID_SES", "")),
+        "NID_AUT": sanitize_cookie(cookies.get("NID_AUT", "")),
+    }
+    config["log_enabled"] = bool(config.get("log_enabled", True))
+    return config
+
+
 def load_config():
     if os.path.exists(config_file_path):
         try:
             with open(config_file_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                # Merge with default config to ensure all keys exist
-                for key, value in default_config.items():
-                    if key not in config:
-                        config[key] = value
+                raw_config = json.load(f)
+                config = normalize_config(raw_config)
+                if config != raw_config:
+                    save_config(config)
                 return config
         except (json.JSONDecodeError, OSError) as e:
             print(f"Error loading config.json: {e}. Using defaults/migration.")
 
     # Migration Logic (if config.json doesn't exist or failed to load)
     print("Migrating settings from old files...")
-    config = default_config.copy()
+    config = deepcopy(default_config)
 
     # 1. Channels
     channels_path = os.path.join(script_directory, "channels.json")
@@ -46,7 +145,7 @@ def load_config():
         try:
             with open(channels_path, "r") as f:
                 config["channels"] = json.load(f)
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 2. Delays
@@ -55,7 +154,7 @@ def load_config():
         try:
             with open(delays_path, "r") as f:
                 config["delays"] = json.load(f)
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 3. Timeout (time_sleep.txt)
@@ -66,7 +165,7 @@ def load_config():
                 val = f.readline().strip()
                 if val.isdigit():
                     config["timeout"] = int(val)
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 4. Threads
@@ -77,7 +176,7 @@ def load_config():
                 val = f.readline().strip()
                 if val.isdigit():
                     config["stream_segment_threads"] = int(val)
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 5. HEVC
@@ -89,7 +188,7 @@ def load_config():
                 # Merge HEVC keys
                 for k, v in hevc_data.items():
                     config["hevc_settings"][k] = v
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 6. Log Enabled
@@ -98,7 +197,7 @@ def load_config():
         try:
             with open(log_path, "r") as f:
                 config["log_enabled"] = f.readline().strip().lower() == "true"
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # 7. Cookies
@@ -108,7 +207,7 @@ def load_config():
             with open(cookie_path, "r") as f:
                 cookie_data = json.load(f)
                 config["cookies"] = cookie_data
-        except:
+        except (json.JSONDecodeError, OSError):
             pass
 
     # Save migrated config
@@ -117,12 +216,35 @@ def load_config():
 
 
 def save_config(config):
+    config = normalize_config(config)
+    directory = os.path.dirname(config_file_path)
+    fd = None
+    temp_path = None
     try:
-        with open(config_file_path, "w", encoding="utf-8") as f:
+        fd, temp_path = tempfile.mkstemp(
+            prefix="config.", suffix=".tmp", dir=directory, text=True
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            fd = None
             json.dump(config, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.replace(temp_path, config_file_path)
+        if os.name != "nt":
+            try:
+                os.chmod(config_file_path, 0o600)
+            except OSError:
+                pass
         print("Configuration saved to config.json")
     except OSError as e:
         print(f"Error saving configuration: {e}")
+    finally:
+        if fd is not None:
+            os.close(fd)
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
 
 
 def try_again():
@@ -151,22 +273,25 @@ while True:
             )
             choice1 = str(input("Enter the number you want to execute: "))
             if choice1 == "1":
-                id = str(
+                channel_id = str(
                     input(
                         "Enter the unique ID of the streamer channel you want to add: "
                     )
-                )
-                name = str(input("Enter the streamer name:  "))
+                ).strip()
+                if not SAFE_CHANNEL_ID.fullmatch(channel_id):
+                    print("Invalid channel ID. Use only letters, numbers, '_' or '-'.")
+                    continue
+                name = CONTROL_CHARS.sub("", str(input("Enter the streamer name:  "))).strip() or channel_id
                 output_dir = str(
                     input(
                         "Specify the storage path (just type the name to save it in the same location as the program): "
                     )
-                )
+                ).strip() or "."
 
                 while True:
                     answer = str(
                         input(
-                            f"id: {id}, name: {name}, storage path: {output_dir} Is this correct? (Y/N): "
+                            f"id: {channel_id}, name: {name}, storage path: {output_dir} Is this correct? (Y/N): "
                         )
                     )
                     if answer == "Y" or answer == "y":
@@ -176,7 +301,7 @@ while True:
 
                         config["channels"].append(
                             {
-                                "id": id,
+                                "id": channel_id,
                                 "name": name,
                                 "output_dir": output_dir,
                                 "identifier": identifier,
@@ -285,7 +410,9 @@ while True:
                     "Recommended 2~4 threads, 2 threads for low-end systems / 4 threads for high-end systems"
                 )
                 try:
-                    new_threads = int(input("Enter the number of threads to change: "))
+                    new_threads = clamp_int(
+                        input("Enter the number of threads to change: "), 2, 1, 16
+                    )
                     config["stream_segment_threads"] = new_threads
                     save_config(config)
                     print("The number of threads has been changed.")
@@ -297,8 +424,11 @@ while True:
                     f"The current broadcast rescan interval is {config.get('timeout', 60)} seconds."
                 )
                 try:
-                    new_timeout = int(
-                        input("Enter the rescan interval to change (in seconds): ")
+                    new_timeout = clamp_int(
+                        input("Enter the rescan interval to change (in seconds): "),
+                        60,
+                        5,
+                        3600,
                     )
                     config["timeout"] = new_timeout
                     save_config(config)
@@ -346,21 +476,23 @@ while True:
                 print(" - hevc_vaapi (Linux VAAPI)")
                 print(" - hevc_videotoolbox (macOS)")
                 new_encoder = input("Enter encoder name: ").strip()
-                if new_encoder:
+                if new_encoder in ALLOWED_ENCODERS:
                     hevc["encoder"] = new_encoder
                     save_config(config)
+                else:
+                    print("Invalid encoder name.")
 
             elif choice3 == "3":
-                new_bitrate = input("Enter target bitrate (e.g., 6000k): ")
-                if not new_bitrate.endswith("k"):
-                    new_bitrate += "k"
+                new_bitrate = normalize_bitrate(
+                    input("Enter target bitrate (e.g., 6000k): "), hevc["bitrate"]
+                )
                 hevc["bitrate"] = new_bitrate
                 save_config(config)
 
             elif choice3 == "4":
-                new_max = input("Enter max bitrate (e.g., 10000k): ")
-                if not new_max.endswith("k"):
-                    new_max += "k"
+                new_max = normalize_bitrate(
+                    input("Enter max bitrate (e.g., 10000k): "), hevc["max_bitrate"]
+                )
                 hevc["max_bitrate"] = new_max
                 save_config(config)
 
@@ -369,9 +501,12 @@ while True:
                     "Options: ultrafast (rec), superfast, veryfast, faster, fast, medium"
                 )
                 print("Note: For NVENC, use p1-p7. For QSV, use veryfast-veryslow.")
-                new_preset = input("Enter preset name: ")
-                hevc["preset"] = new_preset
-                save_config(config)
+                new_preset = input("Enter preset name: ").strip()
+                if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
+                    hevc["preset"] = new_preset
+                    save_config(config)
+                else:
+                    print("Invalid preset name.")
 
             elif choice3 == "6":
                 break
@@ -379,8 +514,8 @@ while True:
                 try_again()
 
     elif choice == "4":
-        SES = str(input("Enter SES: "))
-        AUT = str(input("Enter AUT: "))
+        SES = sanitize_cookie(input("Enter SES: "))
+        AUT = sanitize_cookie(input("Enter AUT: "))
         config["cookies"]["NID_SES"] = SES
         config["cookies"]["NID_AUT"] = AUT
         save_config(config)

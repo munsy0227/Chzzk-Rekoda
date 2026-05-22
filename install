@@ -1,19 +1,16 @@
 #!/bin/bash
+set -e
+cd "$(dirname "$0")"
 
 echo "Check if uv is installed"
 if ! command -v uv > /dev/null 2>&1; then
     echo "uv is not installed. Installing uv now..."
-    # Install uv
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    # After installing uv, reload environment variables to use uv immediately
-    source "$HOME/.local/bin/env"
+    . "$HOME/.local/bin/env"
     echo "uv installed successfully. Now continuing..."
 fi
 
 echo "Starting configuration"
-# Execute the settings script
-bash settings
+./settings
 echo "Configuration completed!"
 echo "If you want to reconfigure, please run the \"settings\" script directly"
-
-exit 0

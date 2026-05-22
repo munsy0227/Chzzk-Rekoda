@@ -1,6 +1,5 @@
 #!/bin/bash
+set -e
+cd "$(dirname "$0")"
 
 uv run chzzk_record.py
-
-exit 0
-
