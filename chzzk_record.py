@@ -8,6 +8,7 @@ import platform
 import re
 import shutil
 import signal
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -303,11 +304,50 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
 
 
 async def drain_task(task: asyncio.Task, timeout: float = 5.0) -> None:
+    if task.done():
+        await asyncio.gather(task, return_exceptions=True)
+        return
+
     try:
-        await asyncio.wait_for(task, timeout=timeout)
+        await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
     except asyncio.TimeoutError:
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)
+    except asyncio.CancelledError:
+        if task.cancelled():
+            return
+        raise
+
+
+def isolated_subprocess_kwargs() -> Dict[str, Any]:
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+async def create_isolated_subprocess_exec(
+    *cmd: str, **kwargs: Any
+) -> asyncio.subprocess.Process:
+    process_kwargs: Dict[str, Any] = {"cwd": str(BASE_DIR)}
+    process_kwargs.update(isolated_subprocess_kwargs())
+    process_kwargs.update(kwargs)
+    return await asyncio.create_subprocess_exec(*cmd, **process_kwargs)
+
+
+def signal_process_group(
+    process: asyncio.subprocess.Process, force: bool = False
+) -> None:
+    if os.name != "nt":
+        sig = signal.SIGKILL if force else signal.SIGTERM
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(os.getpgid(process.pid), sig)
+            return
+
+    with contextlib.suppress(ProcessLookupError):
+        if force:
+            process.kill()
+        else:
+            process.terminate()
 
 
 async def terminate_process(
@@ -316,15 +356,70 @@ async def terminate_process(
     if process is None or process.returncode is not None:
         return
 
-    with contextlib.suppress(ProcessLookupError):
-        process.terminate()
+    signal_process_group(process)
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout)
     except asyncio.TimeoutError:
         logger.warning(f"{name} did not terminate in time. Killing it.")
-        with contextlib.suppress(ProcessLookupError):
-            process.kill()
+        signal_process_group(process, force=True)
         await process.wait()
+
+
+class RecordingProcessSandbox:
+    def __init__(self, channel_name: str, channel_id: str) -> None:
+        self.channel_name = channel_name
+        self.channel_id = channel_id
+        self.stream_process: Optional[asyncio.subprocess.Process] = None
+        self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
+        self._tasks: List[asyncio.Task] = []
+        self._cancel_on_cleanup: List[asyncio.Task] = []
+
+    async def start_streamlink(
+        self, command: List[str]
+    ) -> asyncio.subprocess.Process:
+        self.stream_process = await create_isolated_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        return self.stream_process
+
+    async def start_ffmpeg(self, command: List[str]) -> asyncio.subprocess.Process:
+        self.ffmpeg_process = await create_isolated_subprocess_exec(
+            *command,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        return self.ffmpeg_process
+
+    def create_task(
+        self, coro: Any, cancel_on_cleanup: bool = False
+    ) -> asyncio.Task:
+        task = asyncio.create_task(coro)
+        if cancel_on_cleanup:
+            self._cancel_on_cleanup.append(task)
+        else:
+            self._tasks.append(task)
+        return task
+
+    async def cleanup(self) -> None:
+        await terminate_process(
+            self.ffmpeg_process, f"ffmpeg [{self.channel_name}/{self.channel_id}]"
+        )
+        await terminate_process(
+            self.stream_process, f"streamlink [{self.channel_name}/{self.channel_id}]"
+        )
+        for task in self._cancel_on_cleanup:
+            if not task.done():
+                task.cancel()
+        if self._cancel_on_cleanup:
+            await asyncio.gather(*self._cancel_on_cleanup, return_exceptions=True)
+
+        for task in self._tasks:
+            await drain_task(task)
+        self._tasks.clear()
+        self._cancel_on_cleanup.clear()
 
 
 async def pipe_stream_to_stdin(
@@ -359,7 +454,12 @@ async def read_log_stream(
         if not line:
             break
         line_str = line.decode(errors="replace").strip()
-        if line_str:
+        if not line_str:
+            continue
+
+        if process_name == "streamlink":
+            logger.info(f"{process_name} stderr [{channel_id}]: {line_str}")
+        else:
             logger.debug(f"{process_name} stderr [{channel_id}]: {line_str}")
 
 
@@ -439,18 +539,41 @@ async def load_settings() -> (
     return timeout, stream_segment_threads, channels, delays, hevc_settings
 
 
-def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
+def cookie_header_from(cookies: Dict[str, str]) -> str:
     nid_aut = sanitize_cookie_value(cookies.get("NID_AUT", ""))
     nid_ses = sanitize_cookie_value(cookies.get("NID_SES", ""))
+    return f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
+
+
+def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
     return {
         "User-Agent": "Mozilla/5.0 (X11; Unix x86_64)",
-        "Cookie": f"NID_AUT={nid_aut}; NID_SES={nid_ses}",
+        "Cookie": cookie_header_from(cookies),
         "Origin": "https://chzzk.naver.com",
         "DNT": "1",
         "Sec-GPC": "1",
         "Connection": "keep-alive",
         "Referer": "",
     }
+
+
+def streamlink_http_header_args(cookies: Dict[str, str]) -> List[str]:
+    headers = [f"Cookie={cookie_header_from(cookies)}"]
+    headers.extend(
+        [
+            "User-Agent=Mozilla/5.0 (X11; Unix x86_64)",
+            "Origin=https://chzzk.naver.com",
+            "DNT=1",
+            "Sec-GPC=1",
+            "Connection=keep-alive",
+            "Referer=",
+        ]
+    )
+
+    args = []
+    for header in headers:
+        args.extend(["--http-header", header])
+    return args
 
 
 async def get_session_cookies() -> Dict[str, str]:
@@ -661,8 +784,7 @@ async def record_stream(
     recording_started = False
     temp_output_path: Optional[Path] = None
     final_output_path: Optional[Path] = None
-    stream_process: Optional[asyncio.subprocess.Process] = None
-    ffmpeg_process: Optional[asyncio.subprocess.Process] = None
+    active_attempt: Optional[RecordingProcessSandbox] = None
 
     try:
         while not shutdown_event.is_set():
@@ -707,27 +829,7 @@ async def record_stream(
 
                     output_dir.mkdir(parents=True, exist_ok=True)
 
-                    if not recording_started:
-                        logger.info(
-                            f"Recording started for {channel_name} at {current_time}."
-                        )
-                        recording_started = True
-                        recording_start_time = current_time
-
-                    if stream_process and stream_process.returncode is None:
-                        await terminate_process(stream_process, "existing streamlink")
-                        logger.info("Existing stream process terminated successfully.")
-
-                    if ffmpeg_process and ffmpeg_process.returncode is None:
-                        await terminate_process(ffmpeg_process, "existing ffmpeg")
-                        logger.info("Existing ffmpeg process terminated successfully.")
-
-                    pipe_task: Optional[asyncio.Task] = None
-                    stream_stderr_task: Optional[asyncio.Task] = None
-                    ffmpeg_stderr_task: Optional[asyncio.Task] = None
-                    ffmpeg_wait_task: Optional[asyncio.Task] = None
-                    stream_wait_task: Optional[asyncio.Task] = None
-                    shutdown_wait_task: Optional[asyncio.Task] = None
+                    active_attempt = RecordingProcessSandbox(channel_name, channel_id)
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
@@ -740,30 +842,15 @@ async def record_stream(
                             str(PLUGIN_DIR_PATH),
                             "--stream-segment-threads",
                             str(stream_segment_threads),
-                            "--http-header",
-                            f'Cookie=NID_AUT={cookies.get("NID_AUT", "")}; NID_SES={cookies.get("NID_SES", "")}',
-                            "--http-header",
-                            "User-Agent=Mozilla/5.0 (X11; Unix x86_64)",
-                            "--http-header",
-                            "Origin=https://chzzk.naver.com",
-                            "--http-header",
-                            "DNT=1",
-                            "--http-header",
-                            "Sec-GPC=1",
-                            "--http-header",
-                            "Connection=keep-alive",
-                            "--http-header",
-                            "Referer=",
+                            *streamlink_http_header_args(cookies),
                             "--ffmpeg-ffmpeg",
                             str(ffmpeg_path),
                             "--ffmpeg-copyts",
                             "--hls-segment-stream-data",
                         ]
 
-                        stream_process = await asyncio.create_subprocess_exec(
-                            *streamlink_cmd,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE,
+                        stream_process = await active_attempt.start_streamlink(
+                            streamlink_cmd
                         )
                         if stream_process.stdout is None:
                             raise RuntimeError("streamlink stdout pipe was not created")
@@ -1023,14 +1110,16 @@ async def record_stream(
 
                         ffmpeg_cmd = base_input_args + encoding_args + output_args
 
-                        ffmpeg_process = await asyncio.create_subprocess_exec(
-                            *ffmpeg_cmd,
-                            stdin=asyncio.subprocess.PIPE,
-                            stdout=asyncio.subprocess.DEVNULL,
-                            stderr=asyncio.subprocess.PIPE,
-                        )
+                        ffmpeg_process = await active_attempt.start_ffmpeg(ffmpeg_cmd)
                         if ffmpeg_process.stdin is None or ffmpeg_process.stderr is None:
                             raise RuntimeError("ffmpeg pipes were not created")
+
+                        if not recording_started:
+                            logger.info(
+                                f"Recording started for {channel_name} at {current_time}."
+                            )
+                            recording_started = True
+                            recording_start_time = current_time
 
                         # Initialize channel progress data
                         async with channel_progress_lock:
@@ -1043,20 +1132,22 @@ async def record_stream(
                                 "recording_start_time": recording_start_time,
                             }
 
-                        pipe_task = asyncio.create_task(
+                        pipe_task = active_attempt.create_task(
                             pipe_stream_to_stdin(
                                 stream_process.stdout, ffmpeg_process.stdin, channel_name
                             )
                         )
-                        stream_stderr_task = asyncio.create_task(
+                        stream_stderr_task = active_attempt.create_task(
                             read_log_stream(stream_process.stderr, "streamlink", channel_id)
                         )
-                        ffmpeg_stderr_task = asyncio.create_task(
+                        ffmpeg_stderr_task = active_attempt.create_task(
                             read_stream(ffmpeg_process.stderr, channel_id, "stderr")
                         )
-                        ffmpeg_wait_task = asyncio.create_task(ffmpeg_process.wait())
-                        stream_wait_task = asyncio.create_task(stream_process.wait())
-                        shutdown_wait_task = asyncio.create_task(shutdown_event.wait())
+                        ffmpeg_wait_task = active_attempt.create_task(ffmpeg_process.wait())
+                        stream_wait_task = active_attempt.create_task(stream_process.wait())
+                        shutdown_wait_task = active_attempt.create_task(
+                            shutdown_event.wait(), cancel_on_cleanup=True
+                        )
 
                         done, _ = await asyncio.wait(
                             [ffmpeg_wait_task, stream_wait_task, shutdown_wait_task],
@@ -1086,12 +1177,18 @@ async def record_stream(
                             await terminate_process(ffmpeg_process, "ffmpeg")
                             await drain_task(ffmpeg_wait_task)
 
+                        ffmpeg_returncode = ffmpeg_process.returncode
+                        stream_returncode = stream_process.returncode
                         logger.info(
-                            f"ffmpeg process for {channel_name} exited with return code {ffmpeg_process.returncode}."
+                            f"ffmpeg process for {channel_name} exited with return code {ffmpeg_returncode}."
                         )
                         logger.info(
-                            f"Stream recording process for {channel_name} exited with return code {stream_process.returncode}."
+                            f"Stream recording process for {channel_name} exited with return code {stream_returncode}."
                         )
+                        if stream_returncode not in (0, None):
+                            logger.warning(
+                                f"streamlink failed for {channel_name}; see the streamlink stderr lines above for the root cause."
+                            )
                         if recording_started:
                             logger.info(f"Recording stopped for {channel_name}.")
                             recording_started = False
@@ -1108,13 +1205,9 @@ async def record_stream(
                             channel_progress.pop(channel_id, None)
 
                     finally:
-                        for task in (pipe_task, stream_stderr_task, ffmpeg_stderr_task):
-                            if task is not None:
-                                await drain_task(task)
-                        if shutdown_wait_task is not None:
-                            if not shutdown_wait_task.done():
-                                shutdown_wait_task.cancel()
-                            await asyncio.gather(shutdown_wait_task, return_exceptions=True)
+                        if active_attempt is not None:
+                            await active_attempt.cleanup()
+                            active_attempt = None
 
                 except asyncio.CancelledError:
                     logger.info(f"Recording task for {channel_name} was cancelled.")
@@ -1126,8 +1219,9 @@ async def record_stream(
                     if recording_started:
                         logger.info(f"Recording stopped for {channel_name}.")
                         recording_started = False
-                    await terminate_process(stream_process, "streamlink")
-                    await terminate_process(ffmpeg_process, "ffmpeg")
+                    if active_attempt is not None:
+                        await active_attempt.cleanup()
+                        active_attempt = None
             else:
                 logger.error(f"No stream URL available for {channel_name}")
                 if recording_started:
@@ -1141,8 +1235,8 @@ async def record_stream(
                 continue
 
     finally:
-        await terminate_process(stream_process, "streamlink")
-        await terminate_process(ffmpeg_process, "ffmpeg")
+        if active_attempt is not None:
+            await active_attempt.cleanup()
         # Attempt to rename any remaining temp files
         if (
             recording_started
