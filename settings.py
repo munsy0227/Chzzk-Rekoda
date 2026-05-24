@@ -9,10 +9,14 @@ script_directory = os.path.dirname(os.path.abspath(__file__))
 config_file_path = os.path.join(script_directory, "config.json")
 
 # Default Configuration
+DEFAULT_RESCAN_INTERVAL_SECONDS = 60
+MIN_RESCAN_INTERVAL_SECONDS = 1
+MAX_RESCAN_INTERVAL_SECONDS = 3600
+
 default_config = {
     "channels": [],
     "delays": {},
-    "timeout": 60,
+    "timeout": DEFAULT_RESCAN_INTERVAL_SECONDS,
     "stream_segment_threads": 2,
     "hevc_settings": {
         "enable": False,
@@ -75,7 +79,12 @@ def normalize_bitrate(value, default):
 
 def normalize_config(config):
     config = deep_merge_defaults(config, default_config)
-    config["timeout"] = clamp_int(config.get("timeout"), 60, 5, 3600)
+    config["timeout"] = clamp_int(
+        config.get("timeout"),
+        DEFAULT_RESCAN_INTERVAL_SECONDS,
+        MIN_RESCAN_INTERVAL_SECONDS,
+        MAX_RESCAN_INTERVAL_SECONDS,
+    )
     config["stream_segment_threads"] = clamp_int(
         config.get("stream_segment_threads"), 2, 1, 16
     )
@@ -421,14 +430,14 @@ while True:
 
             elif choice2 == "2":
                 print(
-                    f"The current broadcast rescan interval is {config.get('timeout', 60)} seconds."
+                    f"The current broadcast rescan interval is {config.get('timeout', DEFAULT_RESCAN_INTERVAL_SECONDS)} seconds."
                 )
                 try:
                     new_timeout = clamp_int(
                         input("Enter the rescan interval to change (in seconds): "),
-                        60,
-                        5,
-                        3600,
+                        DEFAULT_RESCAN_INTERVAL_SECONDS,
+                        MIN_RESCAN_INTERVAL_SECONDS,
+                        MAX_RESCAN_INTERVAL_SECONDS,
                     )
                     config["timeout"] = new_timeout
                     save_config(config)

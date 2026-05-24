@@ -35,6 +35,10 @@ BASE_DIR = Path(__file__).resolve().parent
 CONFIG_FILE_PATH = BASE_DIR / "config.json"
 LOG_FILE_PATH = BASE_DIR / "log.log"
 
+DEFAULT_RESCAN_INTERVAL_SECONDS = 60
+MIN_RESCAN_INTERVAL_SECONDS = 1
+MAX_RESCAN_INTERVAL_SECONDS = 3600
+
 # Global console instance for Rich
 console = Console()
 
@@ -415,7 +419,12 @@ async def load_settings() -> (
 ):
     config = await load_config_async()
 
-    timeout = clamp_int(config.get("timeout"), default=60, min_value=5, max_value=3600)
+    timeout = clamp_int(
+        config.get("timeout"),
+        default=DEFAULT_RESCAN_INTERVAL_SECONDS,
+        min_value=MIN_RESCAN_INTERVAL_SECONDS,
+        max_value=MAX_RESCAN_INTERVAL_SECONDS,
+    )
     stream_segment_threads = clamp_int(
         config.get("stream_segment_threads"), default=2, min_value=1, max_value=16
     )
