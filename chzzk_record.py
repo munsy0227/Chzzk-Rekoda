@@ -40,7 +40,7 @@ DEFAULT_RESCAN_INTERVAL_SECONDS = 60
 MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
 DEFAULT_OUTPUT_FORMAT = "ts"
-SUPPORTED_OUTPUT_FORMATS = {"ts", "mp4", "mkv", "webm"}
+SUPPORTED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
 
 # Global console instance for Rich
 console = Console()
@@ -940,9 +940,6 @@ def build_av1_encoding_args(
             bufsize,
         ]
 
-    if recording_format == "mp4":
-        encoding_args.extend(["-tag:v", "av01"])
-
     if recording_format == "webm":
         encoding_args.extend(["-c:a", "libopus", "-b:a", "128k"])
     else:
@@ -1102,9 +1099,6 @@ async def record_stream(
                                 av1_settings, recording_format
                             )
                             encoding_args.extend(metadata_args)
-                            if recording_format == "mp4":
-                                encoding_args.extend(["-bsf:a", "aac_adtstoasc"])
-
                         elif recording_format == "webm":
                             if enable_hevc:
                                 logger.warning(
@@ -1148,8 +1142,6 @@ async def record_stream(
                                         "hevc_mp4toannexb",
                                     ]
                                 )
-                            elif recording_format == "mp4":
-                                common_hevc_args.extend(["-bsf:a", "aac_adtstoasc"])
 
                             if encoder == "libx265":
                                 x265_params = (
@@ -1332,8 +1324,6 @@ async def record_stream(
                                         "aac_adtstoasc",
                                     ]
                                 )
-                            elif recording_format == "mp4":
-                                encoding_args.extend(["-bsf:a", "aac_adtstoasc"])
 
                         output_args = ["-progress", "pipe:2"]
                         if recording_format in {"ts", "mkv"}:
@@ -1352,16 +1342,6 @@ async def record_stream(
                                     "+genpts+discardcorrupt+nobuffer",
                                     "-avioflags",
                                     "direct",
-                                    str(temp_output_path),
-                                ]
-                            )
-                        elif recording_format == "mp4":
-                            output_args.extend(
-                                [
-                                    "-f",
-                                    "mp4",
-                                    "-movflags",
-                                    "+faststart",
                                     str(temp_output_path),
                                 ]
                             )

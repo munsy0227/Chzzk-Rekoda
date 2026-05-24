@@ -13,7 +13,7 @@ DEFAULT_RESCAN_INTERVAL_SECONDS = 60
 MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
 DEFAULT_OUTPUT_FORMAT = "ts"
-ALLOWED_OUTPUT_FORMATS = {"ts", "mp4", "mkv", "webm"}
+ALLOWED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
 
 default_config = {
     "channels": [],
@@ -485,7 +485,7 @@ while True:
             elif choice2 == "3":
                 current_format = config.get("output_format", DEFAULT_OUTPUT_FORMAT)
                 print(f"The current output format is {current_format}.")
-                print("Available formats: ts, mp4, mkv, webm")
+                print("Available formats: ts, mkv, webm")
                 new_format = normalize_output_format(
                     input("Enter the output format to change: ")
                 )
