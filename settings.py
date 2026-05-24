@@ -12,12 +12,15 @@ config_file_path = os.path.join(script_directory, "config.json")
 DEFAULT_RESCAN_INTERVAL_SECONDS = 60
 MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
+DEFAULT_OUTPUT_FORMAT = "ts"
+ALLOWED_OUTPUT_FORMATS = {"ts", "mp4", "mkv", "webm"}
 
 default_config = {
     "channels": [],
     "delays": {},
     "timeout": DEFAULT_RESCAN_INTERVAL_SECONDS,
     "stream_segment_threads": 2,
+    "output_format": DEFAULT_OUTPUT_FORMAT,
     "hevc_settings": {
         "enable": False,
         "encoder": "libx265",
@@ -77,6 +80,11 @@ def normalize_bitrate(value, default):
     return text.lower()
 
 
+def normalize_output_format(value):
+    text = str(value or DEFAULT_OUTPUT_FORMAT).strip().lower().lstrip(".")
+    return text if text in ALLOWED_OUTPUT_FORMATS else DEFAULT_OUTPUT_FORMAT
+
+
 def normalize_config(config):
     config = deep_merge_defaults(config, default_config)
     config["timeout"] = clamp_int(
@@ -88,6 +96,7 @@ def normalize_config(config):
     config["stream_segment_threads"] = clamp_int(
         config.get("stream_segment_threads"), 2, 1, 16
     )
+    config["output_format"] = normalize_output_format(config.get("output_format"))
 
     channels = []
     for index, channel in enumerate(config.get("channels", []), start=1):
@@ -407,7 +416,7 @@ while True:
     elif choice == "2":
         while True:
             print(
-                "\n1. Set Recording Threads\n2. Set Broadcast Rescan Interval\n3. Go Back"
+                "\n1. Set Recording Threads\n2. Set Broadcast Rescan Interval\n3. Set Output Format\n4. Go Back"
             )
             choice2 = str(input("Enter the number you want to execute: "))
 
@@ -446,6 +455,17 @@ while True:
                     print("Invalid input.")
 
             elif choice2 == "3":
+                current_format = config.get("output_format", DEFAULT_OUTPUT_FORMAT)
+                print(f"The current output format is {current_format}.")
+                print("Available formats: ts, mp4, mkv, webm")
+                new_format = normalize_output_format(
+                    input("Enter the output format to change: ")
+                )
+                config["output_format"] = new_format
+                save_config(config)
+                print(f"The output format has been changed to {new_format}.")
+
+            elif choice2 == "4":
                 break
             else:
                 try_again()
