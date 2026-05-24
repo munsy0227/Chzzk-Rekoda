@@ -171,6 +171,14 @@ KNOWN_HEVC_ENCODERS = {
     "hevc_vaapi",
     "hevc_videotoolbox",
 }
+KNOWN_AV1_ENCODERS = {
+    "libsvtav1",
+    "libaom-av1",
+    "av1_nvenc",
+    "av1_qsv",
+    "av1_amf",
+    "av1_vaapi",
+}
 PLUGIN_DIR_PATH = BASE_DIR / "plugin"
 
 # Max filename length constants
@@ -265,6 +273,33 @@ def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
     encoder = str(settings.get("encoder", defaults["encoder"])).strip()
     if encoder not in KNOWN_HEVC_ENCODERS:
         logger.warning(f"Unknown HEVC encoder '{encoder}'. Falling back to libx265.")
+        encoder = defaults["encoder"]
+    settings["encoder"] = encoder
+    settings["bitrate"] = normalize_bitrate(settings.get("bitrate"), defaults["bitrate"])
+    settings["max_bitrate"] = normalize_bitrate(
+        settings.get("max_bitrate"), defaults["max_bitrate"]
+    )
+    preset = str(settings.get("preset", defaults["preset"])).strip()
+    settings["preset"] = preset if SAFE_FFMPEG_VALUE.fullmatch(preset) else defaults["preset"]
+    return settings
+
+
+def normalize_av1_settings(value: Any) -> Dict[str, Any]:
+    defaults = {
+        "enable": False,
+        "encoder": "libsvtav1",
+        "bitrate": "2500k",
+        "max_bitrate": "10000k",
+        "preset": "8",
+    }
+    if not isinstance(value, dict):
+        return defaults
+
+    settings = defaults | value
+    settings["enable"] = bool(settings.get("enable", False))
+    encoder = str(settings.get("encoder", defaults["encoder"])).strip()
+    if encoder not in KNOWN_AV1_ENCODERS:
+        logger.warning(f"Unknown AV1 encoder '{encoder}'. Falling back to libsvtav1.")
         encoder = defaults["encoder"]
     settings["encoder"] = encoder
     settings["bitrate"] = normalize_bitrate(settings.get("bitrate"), defaults["bitrate"])
@@ -522,7 +557,15 @@ async def load_config_async() -> Dict[str, Any]:
 
 
 async def load_settings() -> (
-    Tuple[int, int, List[Dict[str, Any]], Dict[str, int], Dict[str, Any], str]
+    Tuple[
+        int,
+        int,
+        List[Dict[str, Any]],
+        Dict[str, int],
+        Dict[str, Any],
+        Dict[str, Any],
+        str,
+    ]
 ):
     config = await load_config_async()
 
@@ -542,9 +585,20 @@ async def load_settings() -> (
         for key, value in raw_delays.items()
     } if isinstance(raw_delays, dict) else {}
     hevc_settings = normalize_hevc_settings(config.get("hevc_settings"))
+    av1_settings = normalize_av1_settings(config.get("av1_settings"))
+    if av1_settings.get("enable"):
+        hevc_settings["enable"] = False
     output_format = normalize_output_format(config.get("output_format"))
 
-    return timeout, stream_segment_threads, channels, delays, hevc_settings, output_format
+    return (
+        timeout,
+        stream_segment_threads,
+        channels,
+        delays,
+        hevc_settings,
+        av1_settings,
+        output_format,
+    )
 
 
 def cookie_header_from(cookies: Dict[str, str]) -> str:
@@ -770,6 +824,133 @@ async def read_stream(
             break
 
 
+def calculate_bufsize(max_bitrate: str, fallback: str = "16000k") -> str:
+    try:
+        max_val = int(max_bitrate.lower().replace("k", ""))
+    except ValueError:
+        return fallback
+    return f"{max_val * 2}k"
+
+
+def numeric_preset(value: Any, default: str) -> str:
+    text = str(value or default).strip()
+    return text if text.isdigit() else default
+
+
+def nvenc_preset(value: Any, default: str = "p4") -> str:
+    text = str(value or default).strip().lower()
+    if text.startswith("p") and len(text) == 2 and text[1].isdigit():
+        return text
+    if "fast" in text or "super" in text or "ultra" in text:
+        return "p1"
+    if "slow" in text:
+        return "p6"
+    return default
+
+
+def build_av1_encoding_args(
+    av1_settings: Dict[str, Any], recording_format: str
+) -> List[str]:
+    encoder = av1_settings.get("encoder", "libsvtav1")
+    bitrate = av1_settings.get("bitrate", "2500k")
+    max_bitrate = av1_settings.get("max_bitrate", "10000k")
+    preset = str(av1_settings.get("preset", "8")).strip()
+    bufsize = calculate_bufsize(max_bitrate)
+
+    if encoder == "libaom-av1":
+        encoding_args = [
+            "-c:v",
+            "libaom-av1",
+            "-cpu-used",
+            numeric_preset(preset, "6"),
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    elif encoder == "av1_nvenc":
+        encoding_args = [
+            "-c:v",
+            "av1_nvenc",
+            "-preset",
+            nvenc_preset(preset),
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+            "-rc",
+            "vbr",
+        ]
+    elif encoder == "av1_qsv":
+        encoding_args = [
+            "-c:v",
+            "av1_qsv",
+            "-preset",
+            preset,
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    elif encoder == "av1_amf":
+        encoding_args = [
+            "-c:v",
+            "av1_amf",
+            "-usage",
+            "transcoding",
+            "-rc",
+            "vbr_peak",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    elif encoder == "av1_vaapi":
+        encoding_args = [
+            "-vf",
+            "format=nv12,hwupload",
+            "-c:v",
+            "av1_vaapi",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    else:
+        encoding_args = [
+            "-c:v",
+            "libsvtav1",
+            "-preset",
+            numeric_preset(preset, "8"),
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+
+    if recording_format == "mp4":
+        encoding_args.extend(["-tag:v", "av01"])
+
+    if recording_format == "webm":
+        encoding_args.extend(["-c:a", "libopus", "-b:a", "128k"])
+    else:
+        encoding_args.extend(["-c:a", "copy"])
+
+    return encoding_args
+
+
 async def record_stream(
     channel: Dict[str, Any],
     headers: Dict[str, str],
@@ -779,6 +960,7 @@ async def record_stream(
     ffmpeg_path: Path,
     stream_segment_threads: int,
     hevc_settings: Dict[str, Any],
+    av1_settings: Dict[str, Any],
     output_format: str,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
@@ -830,8 +1012,14 @@ async def record_stream(
                         live_info.get("liveTitle", ""), fallback="untitled"
                     )
                     output_dir = resolve_output_dir(channel.get("output_dir", "."))
+                    recording_format = output_format
+                    if av1_settings.get("enable") and recording_format == "ts":
+                        logger.warning(
+                            f"AV1 output is not supported with TS for {channel_name}. Falling back to MKV."
+                        )
+                        recording_format = "mkv"
                     temp_output_file = shorten_filename(
-                        f"[{current_time.replace(':', '_')}] {channel_name} {live_title}.{output_format}.part"
+                        f"[{current_time.replace(':', '_')}] {channel_name} {live_title}.{recording_format}.part"
                     )
                     final_output_file = temp_output_file[:-5]  # Remove '.part'
                     temp_output_path = output_dir / temp_output_file
@@ -869,7 +1057,13 @@ async def record_stream(
                         base_input_args = []
                         encoding_args = []
 
-                        enable_hevc = hevc_settings.get("enable", False)
+                        enable_av1 = av1_settings.get("enable", False)
+                        av1_encoder = (
+                            av1_settings.get("encoder", "libsvtav1")
+                            if enable_av1
+                            else None
+                        )
+                        enable_hevc = hevc_settings.get("enable", False) and not enable_av1
                         encoder = (
                             hevc_settings.get("encoder", "libx265")
                             if enable_hevc
@@ -877,7 +1071,11 @@ async def record_stream(
                         )
 
                         # Handle VAAPI initialization before input
-                        if enable_hevc and output_format != "webm" and encoder == "hevc_vaapi":
+                        if (
+                            enable_hevc
+                            and recording_format != "webm"
+                            and encoder == "hevc_vaapi"
+                        ) or (enable_av1 and av1_encoder == "av1_vaapi"):
                             # Attempt to use the default render device
                             base_input_args = [
                                 str(ffmpeg_path),
@@ -899,7 +1097,15 @@ async def record_stream(
                             "0:s:v",
                         ]
 
-                        if output_format == "webm":
+                        if enable_av1:
+                            encoding_args = build_av1_encoding_args(
+                                av1_settings, recording_format
+                            )
+                            encoding_args.extend(metadata_args)
+                            if recording_format == "mp4":
+                                encoding_args.extend(["-bsf:a", "aac_adtstoasc"])
+
+                        elif recording_format == "webm":
                             if enable_hevc:
                                 logger.warning(
                                     f"HEVC settings are ignored for WebM output on {channel_name}."
@@ -933,7 +1139,7 @@ async def record_stream(
                                 bufsize = "16000k"
 
                             common_hevc_args = [*metadata_args]
-                            if output_format == "ts":
+                            if recording_format == "ts":
                                 common_hevc_args.extend(
                                     [
                                         "-bsf:a",
@@ -942,7 +1148,7 @@ async def record_stream(
                                         "hevc_mp4toannexb",
                                     ]
                                 )
-                            elif output_format == "mp4":
+                            elif recording_format == "mp4":
                                 common_hevc_args.extend(["-bsf:a", "aac_adtstoasc"])
 
                             if encoder == "libx265":
@@ -1117,7 +1323,7 @@ async def record_stream(
 
                         else:
                             encoding_args = ["-c", "copy", *metadata_args]
-                            if output_format == "ts":
+                            if recording_format == "ts":
                                 encoding_args.extend(
                                     [
                                         "-bsf:v",
@@ -1126,14 +1332,14 @@ async def record_stream(
                                         "aac_adtstoasc",
                                     ]
                                 )
-                            elif output_format == "mp4":
+                            elif recording_format == "mp4":
                                 encoding_args.extend(["-bsf:a", "aac_adtstoasc"])
 
                         output_args = ["-progress", "pipe:2"]
-                        if output_format in {"ts", "mkv"}:
+                        if recording_format in {"ts", "mkv"}:
                             output_args.append("-copy_unknown")
 
-                        if output_format == "ts":
+                        if recording_format == "ts":
                             output_args.extend(
                                 [
                                     "-f",
@@ -1149,7 +1355,7 @@ async def record_stream(
                                     str(temp_output_path),
                                 ]
                             )
-                        elif output_format == "mp4":
+                        elif recording_format == "mp4":
                             output_args.extend(
                                 [
                                     "-f",
@@ -1159,9 +1365,9 @@ async def record_stream(
                                     str(temp_output_path),
                                 ]
                             )
-                        elif output_format == "mkv":
+                        elif recording_format == "mkv":
                             output_args.extend(["-f", "matroska", str(temp_output_path)])
-                        elif output_format == "webm":
+                        elif recording_format == "webm":
                             output_args.extend(["-f", "webm", str(temp_output_path)])
 
                         ffmpeg_cmd = base_input_args + encoding_args + output_args
@@ -1310,9 +1516,15 @@ async def record_stream(
 
 async def manage_recording_tasks():
     active_tasks: Dict[str, asyncio.Task] = {}
-    timeout, stream_segment_threads, channels, delays, hevc_settings, output_format = (
-        await load_settings()
-    )
+    (
+        timeout,
+        stream_segment_threads,
+        channels,
+        delays,
+        hevc_settings,
+        av1_settings,
+        output_format,
+    ) = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
     ffmpeg_path = await setup_paths()
@@ -1331,6 +1543,7 @@ async def manage_recording_tasks():
                     new_channels,
                     new_delays,
                     new_hevc_settings,
+                    new_av1_settings,
                     new_output_format,
                 ) = await load_settings()
                 active_channels = 0
@@ -1368,6 +1581,7 @@ async def manage_recording_tasks():
                                     ffmpeg_path,
                                     new_stream_segment_threads,
                                     new_hevc_settings,
+                                    new_av1_settings,
                                     new_output_format,
                                 )
                             )

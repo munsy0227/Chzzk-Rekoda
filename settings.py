@@ -28,6 +28,13 @@ default_config = {
         "max_bitrate": "10000k",
         "preset": "ultrafast",
     },
+    "av1_settings": {
+        "enable": False,
+        "encoder": "libsvtav1",
+        "bitrate": "2500k",
+        "max_bitrate": "10000k",
+        "preset": "8",
+    },
     "log_enabled": True,
     "cookies": {"NID_SES": "", "NID_AUT": ""},
 }
@@ -44,6 +51,14 @@ ALLOWED_ENCODERS = {
     "hevc_amf",
     "hevc_vaapi",
     "hevc_videotoolbox",
+}
+ALLOWED_AV1_ENCODERS = {
+    "libsvtav1",
+    "libaom-av1",
+    "av1_nvenc",
+    "av1_qsv",
+    "av1_amf",
+    "av1_vaapi",
 }
 
 
@@ -129,6 +144,18 @@ def normalize_config(config):
     preset = str(hevc.get("preset") or "ultrafast").strip()
     hevc["preset"] = preset if SAFE_FFMPEG_VALUE.fullmatch(preset) else "ultrafast"
     config["hevc_settings"] = hevc
+
+    av1 = deep_merge_defaults(config.get("av1_settings", {}), default_config["av1_settings"])
+    av1["enable"] = bool(av1.get("enable"))
+    if av1.get("encoder") not in ALLOWED_AV1_ENCODERS:
+        av1["encoder"] = "libsvtav1"
+    av1["bitrate"] = normalize_bitrate(av1.get("bitrate"), "2500k")
+    av1["max_bitrate"] = normalize_bitrate(av1.get("max_bitrate"), "10000k")
+    av1_preset = str(av1.get("preset") or "8").strip()
+    av1["preset"] = av1_preset if SAFE_FFMPEG_VALUE.fullmatch(av1_preset) else "8"
+    if av1["enable"]:
+        hevc["enable"] = False
+    config["av1_settings"] = av1
 
     cookies = config.get("cookies", {})
     if not isinstance(cookies, dict):
@@ -278,9 +305,10 @@ while True:
         "\n1. Channel Settings"
         "\n2. Recording Settings"
         "\n3. HEVC Settings (High Efficiency Video Coding)"
-        "\n4. Cookie Settings (for adult verification)"
-        "\n5. Toggle Logging"
-        "\n6. Quit"
+        "\n4. AV1 Settings"
+        "\n5. Cookie Settings (for adult verification)"
+        "\n6. Toggle Logging"
+        "\n7. Quit"
     )
     choice = str(input("Enter the number you want to execute: "))
 
@@ -491,6 +519,8 @@ while True:
 
             if choice3 == "1":
                 hevc["enable"] = not hevc["enable"]
+                if hevc["enable"]:
+                    config["av1_settings"]["enable"] = False
                 save_config(config)
                 print(
                     f"HEVC encoding has been {'enabled' if hevc['enable'] else 'disabled'}."
@@ -543,6 +573,76 @@ while True:
                 try_again()
 
     elif choice == "4":
+        while True:
+            av1 = config["av1_settings"]
+            print("\n--- AV1 Settings ---")
+            print(f"Status: {'[Enabled]' if av1['enable'] else '[Disabled]'}")
+            print(f"Encoder: {av1.get('encoder', 'libsvtav1')}")
+            print(f"Target Bitrate: {av1['bitrate']}")
+            print(f"Max Bitrate: {av1['max_bitrate']}")
+            print(f"Preset: {av1['preset']}")
+            print("-" * 30)
+            print("1. Toggle Enable/Disable")
+            print("2. Set Encoder (libsvtav1, libaom-av1, av1_nvenc, etc.)")
+            print("3. Set Target Bitrate (e.g., 6000k)")
+            print("4. Set Max Bitrate (e.g., 8000k)")
+            print("5. Set Preset (libsvtav1/libaom-av1: 0-13, NVENC: p1-p7)")
+            print("6. Go Back")
+
+            choice4 = str(input("Enter the number you want to execute: "))
+
+            if choice4 == "1":
+                av1["enable"] = not av1["enable"]
+                if av1["enable"]:
+                    config["hevc_settings"]["enable"] = False
+                save_config(config)
+                print(
+                    f"AV1 encoding has been {'enabled' if av1['enable'] else 'disabled'}."
+                )
+
+            elif choice4 == "2":
+                print("\nAvailable Encoders:")
+                print(" - libsvtav1 (CPU, Default)")
+                print(" - libaom-av1 (CPU)")
+                print(" - av1_nvenc (NVIDIA GPU)")
+                print(" - av1_qsv (Intel GPU)")
+                print(" - av1_amf (AMD GPU)")
+                print(" - av1_vaapi (Linux VAAPI)")
+                new_encoder = input("Enter encoder name: ").strip()
+                if new_encoder in ALLOWED_AV1_ENCODERS:
+                    av1["encoder"] = new_encoder
+                    save_config(config)
+                else:
+                    print("Invalid encoder name.")
+
+            elif choice4 == "3":
+                new_bitrate = normalize_bitrate(
+                    input("Enter target bitrate (e.g., 6000k): "), av1["bitrate"]
+                )
+                av1["bitrate"] = new_bitrate
+                save_config(config)
+
+            elif choice4 == "4":
+                new_max = normalize_bitrate(
+                    input("Enter max bitrate (e.g., 10000k): "), av1["max_bitrate"]
+                )
+                av1["max_bitrate"] = new_max
+                save_config(config)
+
+            elif choice4 == "5":
+                new_preset = input("Enter preset name: ").strip()
+                if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
+                    av1["preset"] = new_preset
+                    save_config(config)
+                else:
+                    print("Invalid preset name.")
+
+            elif choice4 == "6":
+                break
+            else:
+                try_again()
+
+    elif choice == "5":
         SES = sanitize_cookie(input("Enter SES: "))
         AUT = sanitize_cookie(input("Enter AUT: "))
         config["cookies"]["NID_SES"] = SES
@@ -550,12 +650,12 @@ while True:
         save_config(config)
         print("Cookie information has been successfully saved.")
 
-    elif choice == "5":
+    elif choice == "6":
         config["log_enabled"] = not config["log_enabled"]
         save_config(config)
         print(f"Logging has been {'enabled' if config['log_enabled'] else 'disabled'}.")
 
-    elif choice == "6":
+    elif choice == "7":
         print("Exiting the settings.")
         break
     else:
