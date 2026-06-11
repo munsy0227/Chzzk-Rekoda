@@ -171,6 +171,8 @@ KNOWN_HEVC_ENCODERS = {
     "hevc_vaapi",
     "hevc_videotoolbox",
 }
+HEVC_SOFTWARE_FALLBACK_ENCODERS = ("libx265",)
+HEVC_ENCODER_PROBE_CACHE: Dict[Tuple[str, str, str, str, str], Tuple[bool, str]] = {}
 KNOWN_AV1_ENCODERS = {
     "libsvtav1",
     "libaom-av1",
@@ -179,6 +181,8 @@ KNOWN_AV1_ENCODERS = {
     "av1_amf",
     "av1_vaapi",
 }
+AV1_SOFTWARE_FALLBACK_ENCODERS = ("libsvtav1", "libaom-av1")
+AV1_ENCODER_PROBE_CACHE: Dict[Tuple[str, str, str, str, str], Tuple[bool, str]] = {}
 PLUGIN_DIR_PATH = BASE_DIR / "plugin"
 
 # Max filename length constants
@@ -874,6 +878,323 @@ def nvenc_preset(value: Any, default: str = "p4") -> str:
     return default
 
 
+def audio_stripped_encoding_args(args: List[str]) -> List[str]:
+    stripped = []
+    skip_next = False
+    audio_options = {"-c:a", "-b:a"}
+    for arg in args:
+        if skip_next:
+            skip_next = False
+            continue
+        if arg in audio_options:
+            skip_next = True
+            continue
+        stripped.append(arg)
+    return stripped
+
+
+def summarize_probe_error(message: str) -> str:
+    for line in message.splitlines():
+        line = line.strip()
+        if line:
+            return line[:300]
+    return "no diagnostic output"
+
+
+def probe_av1_encoder(
+    ffmpeg_path: Path, av1_settings: Dict[str, Any]
+) -> Tuple[bool, str]:
+    encoder = str(av1_settings.get("encoder", "libsvtav1"))
+    cache_key = (
+        str(ffmpeg_path),
+        encoder,
+        str(av1_settings.get("bitrate", "2500k")),
+        str(av1_settings.get("max_bitrate", "10000k")),
+        str(av1_settings.get("preset", "8")),
+    )
+    if cache_key in AV1_ENCODER_PROBE_CACHE:
+        return AV1_ENCODER_PROBE_CACHE[cache_key]
+
+    input_args = [str(ffmpeg_path), "-hide_banner", "-loglevel", "error"]
+    if encoder == "av1_vaapi":
+        input_args.extend(
+            [
+                "-init_hw_device",
+                "vaapi=vaapi0:/dev/dri/renderD128",
+                "-filter_hw_device",
+                "vaapi0",
+            ]
+        )
+    input_args.extend(
+        [
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x64:rate=1",
+            "-frames:v",
+            "1",
+        ]
+    )
+
+    video_args = audio_stripped_encoding_args(
+        build_av1_encoding_args(av1_settings, "mkv")
+    )
+    probe_cmd = input_args + video_args + ["-an", "-f", "null", "-"]
+
+    try:
+        result = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        message = (result.stderr or result.stdout or "").strip()
+        probe_result = (result.returncode == 0, message)
+    except (OSError, subprocess.SubprocessError) as e:
+        probe_result = (False, str(e))
+
+    AV1_ENCODER_PROBE_CACHE[cache_key] = probe_result
+    return probe_result
+
+
+def resolve_av1_settings_for_recording(
+    av1_settings: Dict[str, Any], ffmpeg_path: Path
+) -> Dict[str, Any]:
+    if not av1_settings.get("enable", False):
+        return av1_settings
+
+    active_settings = dict(av1_settings)
+    selected_encoder = str(active_settings.get("encoder", "libsvtav1"))
+    encoder_works, probe_message = probe_av1_encoder(ffmpeg_path, active_settings)
+    if encoder_works:
+        return active_settings
+
+    logger.warning(
+        f"AV1 encoder '{selected_encoder}' is not usable with the current "
+        f"FFmpeg/hardware setup: {summarize_probe_error(probe_message)}"
+    )
+
+    for fallback_encoder in AV1_SOFTWARE_FALLBACK_ENCODERS:
+        if fallback_encoder == selected_encoder:
+            continue
+        fallback_settings = dict(active_settings)
+        fallback_settings["encoder"] = fallback_encoder
+        fallback_works, fallback_message = probe_av1_encoder(
+            ffmpeg_path, fallback_settings
+        )
+        if fallback_works:
+            logger.warning(
+                f"Using AV1 encoder '{fallback_encoder}' instead of "
+                f"'{selected_encoder}' for this recording."
+            )
+            return fallback_settings
+        logger.warning(
+            f"AV1 fallback encoder '{fallback_encoder}' is not usable: "
+            f"{summarize_probe_error(fallback_message)}"
+        )
+
+    disabled_settings = dict(active_settings)
+    disabled_settings["enable"] = False
+    logger.warning("No usable AV1 encoder found. Recording without AV1 encoding.")
+    return disabled_settings
+
+
+def build_hevc_probe_args(hevc_settings: Dict[str, Any]) -> List[str]:
+    encoder = hevc_settings.get("encoder", "libx265")
+    bitrate = hevc_settings.get("bitrate", "2500k")
+    max_bitrate = hevc_settings.get("max_bitrate", "10000k")
+    preset = str(hevc_settings.get("preset", "ultrafast")).strip()
+    bufsize = calculate_bufsize(max_bitrate)
+
+    if encoder == "hevc_nvenc":
+        return [
+            "-c:v",
+            "hevc_nvenc",
+            "-preset",
+            nvenc_preset(preset),
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+            "-rc",
+            "vbr",
+        ]
+    if encoder == "hevc_qsv":
+        return [
+            "-c:v",
+            "hevc_qsv",
+            "-preset",
+            preset,
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    if encoder == "hevc_amf":
+        return [
+            "-c:v",
+            "hevc_amf",
+            "-usage",
+            "transcoding",
+            "-rc",
+            "vbr_peak",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    if encoder == "hevc_vaapi":
+        return [
+            "-vf",
+            "format=nv12,hwupload",
+            "-c:v",
+            "hevc_vaapi",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    if encoder == "hevc_videotoolbox":
+        return [
+            "-c:v",
+            "hevc_videotoolbox",
+            "-allow_sw",
+            "1",
+            "-realtime",
+            "true",
+            "-b:v",
+            bitrate,
+            "-maxrate",
+            max_bitrate,
+            "-bufsize",
+            bufsize,
+        ]
+    return [
+        "-c:v",
+        "libx265",
+        "-preset",
+        preset,
+        "-b:v",
+        bitrate,
+        "-maxrate",
+        max_bitrate,
+        "-bufsize",
+        bufsize,
+        "-tune",
+        "zerolatency",
+    ]
+
+
+def probe_hevc_encoder(
+    ffmpeg_path: Path, hevc_settings: Dict[str, Any]
+) -> Tuple[bool, str]:
+    encoder = str(hevc_settings.get("encoder", "libx265"))
+    cache_key = (
+        str(ffmpeg_path),
+        encoder,
+        str(hevc_settings.get("bitrate", "2500k")),
+        str(hevc_settings.get("max_bitrate", "10000k")),
+        str(hevc_settings.get("preset", "ultrafast")),
+    )
+    if cache_key in HEVC_ENCODER_PROBE_CACHE:
+        return HEVC_ENCODER_PROBE_CACHE[cache_key]
+
+    input_args = [str(ffmpeg_path), "-hide_banner", "-loglevel", "error"]
+    if encoder == "hevc_vaapi":
+        input_args.extend(
+            [
+                "-init_hw_device",
+                "vaapi=vaapi0:/dev/dri/renderD128",
+                "-filter_hw_device",
+                "vaapi0",
+            ]
+        )
+    input_args.extend(
+        [
+            "-f",
+            "lavfi",
+            "-i",
+            "testsrc2=size=64x64:rate=1",
+            "-frames:v",
+            "1",
+        ]
+    )
+
+    probe_cmd = input_args + build_hevc_probe_args(hevc_settings) + [
+        "-an",
+        "-f",
+        "null",
+        "-",
+    ]
+
+    try:
+        result = subprocess.run(
+            probe_cmd,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+        message = (result.stderr or result.stdout or "").strip()
+        probe_result = (result.returncode == 0, message)
+    except (OSError, subprocess.SubprocessError) as e:
+        probe_result = (False, str(e))
+
+    HEVC_ENCODER_PROBE_CACHE[cache_key] = probe_result
+    return probe_result
+
+
+def resolve_hevc_settings_for_recording(
+    hevc_settings: Dict[str, Any], ffmpeg_path: Path
+) -> Dict[str, Any]:
+    if not hevc_settings.get("enable", False):
+        return hevc_settings
+
+    active_settings = dict(hevc_settings)
+    selected_encoder = str(active_settings.get("encoder", "libx265"))
+    encoder_works, probe_message = probe_hevc_encoder(ffmpeg_path, active_settings)
+    if encoder_works:
+        return active_settings
+
+    logger.warning(
+        f"HEVC encoder '{selected_encoder}' is not usable with the current "
+        f"FFmpeg/hardware setup: {summarize_probe_error(probe_message)}"
+    )
+
+    for fallback_encoder in HEVC_SOFTWARE_FALLBACK_ENCODERS:
+        if fallback_encoder == selected_encoder:
+            continue
+        fallback_settings = dict(active_settings)
+        fallback_settings["encoder"] = fallback_encoder
+        fallback_works, fallback_message = probe_hevc_encoder(
+            ffmpeg_path, fallback_settings
+        )
+        if fallback_works:
+            logger.warning(
+                f"Using HEVC encoder '{fallback_encoder}' instead of "
+                f"'{selected_encoder}' for this recording."
+            )
+            return fallback_settings
+        logger.warning(
+            f"HEVC fallback encoder '{fallback_encoder}' is not usable: "
+            f"{summarize_probe_error(fallback_message)}"
+        )
+
+    disabled_settings = dict(active_settings)
+    disabled_settings["enable"] = False
+    logger.warning("No usable HEVC encoder found. Recording without HEVC encoding.")
+    return disabled_settings
+
+
 def build_av1_encoding_args(
     av1_settings: Dict[str, Any], recording_format: str
 ) -> List[str]:
@@ -1068,15 +1389,26 @@ async def record_stream(
                         base_input_args = []
                         encoding_args = []
 
-                        enable_av1 = av1_settings.get("enable", False)
+                        active_av1_settings = resolve_av1_settings_for_recording(
+                            av1_settings, ffmpeg_path
+                        )
+                        enable_av1 = active_av1_settings.get("enable", False)
                         av1_encoder = (
-                            av1_settings.get("encoder", "libsvtav1")
+                            active_av1_settings.get("encoder", "libsvtav1")
                             if enable_av1
                             else None
                         )
-                        enable_hevc = hevc_settings.get("enable", False) and not enable_av1
+                        active_hevc_settings = hevc_settings
+                        if not enable_av1:
+                            active_hevc_settings = resolve_hevc_settings_for_recording(
+                                hevc_settings, ffmpeg_path
+                            )
+                        enable_hevc = (
+                            active_hevc_settings.get("enable", False)
+                            and not enable_av1
+                        )
                         encoder = (
-                            hevc_settings.get("encoder", "libx265")
+                            active_hevc_settings.get("encoder", "libx265")
                             if enable_hevc
                             else None
                         )
@@ -1110,7 +1442,7 @@ async def record_stream(
 
                         if enable_av1:
                             encoding_args = build_av1_encoding_args(
-                                av1_settings, recording_format
+                                active_av1_settings, recording_format
                             )
                             encoding_args.extend(metadata_args)
                         elif recording_format == "webm":
@@ -1136,9 +1468,11 @@ async def record_stream(
                             ]
 
                         elif enable_hevc:
-                            bitrate = hevc_settings.get("bitrate", "2500k")
-                            max_bitrate = hevc_settings.get("max_bitrate", "10000k")
-                            preset = hevc_settings.get("preset", "ultrafast")
+                            bitrate = active_hevc_settings.get("bitrate", "2500k")
+                            max_bitrate = active_hevc_settings.get(
+                                "max_bitrate", "10000k"
+                            )
+                            preset = active_hevc_settings.get("preset", "ultrafast")
 
                             try:
                                 max_val = int(max_bitrate.lower().replace("k", ""))
@@ -1410,14 +1744,18 @@ async def record_stream(
                             return_when=asyncio.FIRST_COMPLETED,
                         )
 
+                        completed_by = None
                         if shutdown_wait_task in done:
+                            completed_by = "shutdown"
                             await terminate_process(ffmpeg_process, "ffmpeg")
                             await terminate_process(stream_process, "streamlink")
                             break
 
                         if ffmpeg_wait_task in done:
+                            completed_by = "ffmpeg"
                             await terminate_process(stream_process, "streamlink")
                         elif stream_wait_task in done:
+                            completed_by = "streamlink"
                             try:
                                 await asyncio.wait_for(ffmpeg_wait_task, timeout=30)
                             except asyncio.TimeoutError:
@@ -1441,7 +1779,11 @@ async def record_stream(
                         logger.info(
                             f"Stream recording process for {channel_name} exited with return code {stream_returncode}."
                         )
-                        if stream_returncode not in (0, None):
+                        if ffmpeg_returncode not in (0, None):
+                            logger.warning(
+                                f"ffmpeg failed for {channel_name}; see the ffmpeg stderr lines above for the root cause."
+                            )
+                        if stream_returncode not in (0, None) and completed_by != "ffmpeg":
                             logger.warning(
                                 f"streamlink failed for {channel_name}; see the streamlink stderr lines above for the root cause."
                             )
@@ -1451,10 +1793,16 @@ async def record_stream(
 
                         # Atomically rename the temporary file to final output
                         if temp_output_path and final_output_path and temp_output_path.exists():
-                            destination_path = unique_path(final_output_path)
-                            temp_output_path.replace(destination_path)
-                            final_output_path = destination_path
-                            logger.info(f"Recording saved to {final_output_path}")
+                            if temp_output_path.stat().st_size == 0:
+                                temp_output_path.unlink(missing_ok=True)
+                                logger.warning(
+                                    f"Discarded empty recording file for {channel_name}."
+                                )
+                            else:
+                                destination_path = unique_path(final_output_path)
+                                temp_output_path.replace(destination_path)
+                                final_output_path = destination_path
+                                logger.info(f"Recording saved to {final_output_path}")
 
                         # Remove progress data
                         async with channel_progress_lock:
