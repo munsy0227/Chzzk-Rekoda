@@ -824,12 +824,38 @@ async def read_stream(
             break
 
 
-def calculate_bufsize(max_bitrate: str, fallback: str = "16000k") -> str:
+def bitrate_to_kbps(value: Any) -> Optional[int]:
+    text = str(value or "").strip().lower()
+    if not text:
+        return None
+
     try:
-        max_val = int(max_bitrate.lower().replace("k", ""))
+        if text.endswith("m"):
+            return int(text[:-1]) * 1000
+        if text.endswith("k"):
+            return int(text[:-1])
+        return int(text)
     except ValueError:
+        return None
+
+
+def calculate_bufsize(max_bitrate: str, fallback: str = "16000k") -> str:
+    max_val = bitrate_to_kbps(max_bitrate)
+    if max_val is None:
         return fallback
     return f"{max_val * 2}k"
+
+
+def capped_vbr_args(bitrate: str, max_bitrate: str, bufsize: str) -> List[str]:
+    bitrate_value = bitrate_to_kbps(bitrate)
+    max_bitrate_value = bitrate_to_kbps(max_bitrate)
+    if (
+        bitrate_value is not None
+        and max_bitrate_value is not None
+        and max_bitrate_value <= bitrate_value
+    ):
+        return []
+    return ["-maxrate", max_bitrate, "-bufsize", bufsize]
 
 
 def numeric_preset(value: Any, default: str) -> str:
@@ -865,10 +891,7 @@ def build_av1_encoding_args(
             numeric_preset(preset, "6"),
             "-b:v",
             bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            *capped_vbr_args(bitrate, max_bitrate, bufsize),
         ]
     elif encoder == "av1_nvenc":
         encoding_args = [
@@ -893,10 +916,7 @@ def build_av1_encoding_args(
             preset,
             "-b:v",
             bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            *capped_vbr_args(bitrate, max_bitrate, bufsize),
         ]
     elif encoder == "av1_amf":
         encoding_args = [
@@ -908,10 +928,7 @@ def build_av1_encoding_args(
             "vbr_peak",
             "-b:v",
             bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            *capped_vbr_args(bitrate, max_bitrate, bufsize),
         ]
     elif encoder == "av1_vaapi":
         encoding_args = [
@@ -919,12 +936,11 @@ def build_av1_encoding_args(
             "format=nv12,hwupload",
             "-c:v",
             "av1_vaapi",
+            "-rc_mode",
+            "VBR",
             "-b:v",
             bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            *capped_vbr_args(bitrate, max_bitrate, bufsize),
         ]
     else:
         encoding_args = [
@@ -934,10 +950,8 @@ def build_av1_encoding_args(
             numeric_preset(preset, "8"),
             "-b:v",
             bitrate,
-            "-maxrate",
-            max_bitrate,
-            "-bufsize",
-            bufsize,
+            "-svtav1-params",
+            "rc=1",
         ]
 
     if recording_format == "webm":
