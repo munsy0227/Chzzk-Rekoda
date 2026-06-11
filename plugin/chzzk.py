@@ -3,7 +3,7 @@ import re
 import time
 from typing import Any, Dict, Tuple, Union, TypedDict, Optional, List
 from dataclasses import dataclass
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, parse_qs, urlunparse
 
 from streamlink.exceptions import StreamError
 from streamlink.plugin import Plugin, pluginmatcher
@@ -18,6 +18,13 @@ from streamlink.stream.hls import (
 log = logging.getLogger(__name__)
 
 
+def stream_error_status_code(err: StreamError) -> Optional[int]:
+    response = getattr(err, "response", None)
+    if response is None:
+        response = getattr(getattr(err, "err", None), "response", None)
+    return getattr(response, "status_code", None)
+
+
 class ChzzkHLSStreamWorker(HLSStreamWorker):
     """
     Custom HLS Stream Worker for Chzzk.
@@ -26,17 +33,21 @@ class ChzzkHLSStreamWorker(HLSStreamWorker):
     stream: "ChzzkHLSStream"
 
     def _fetch_playlist(self) -> Any:
+        last_error: Optional[StreamError] = None
         for attempt in range(2):  # Retry once before failing
             try:
                 return super()._fetch_playlist()
             except StreamError as err:
-                if err.response is not None and err.response.status_code >= 400:
-                    self.stream.refresh_playlist()
-                    log.debug(f"Force-reloading the channel playlist on error: {err}")
-                else:
+                last_error = err
+                status_code = stream_error_status_code(err)
+                if status_code is not None and status_code < 400:
                     log.debug(f"Non-recoverable error occurred: {err}")
-                    raise err
-        raise StreamError("Failed to fetch playlist after retries")
+                    raise
+                if attempt == 1:
+                    break
+                self.stream.refresh_playlist()
+                log.debug(f"Force-reloading the channel playlist on error: {err}")
+        raise last_error or StreamError("Failed to fetch playlist after retries")
 
 
 class ChzzkHLSStreamReader(HLSStreamReader):
@@ -77,6 +88,7 @@ class ChzzkHLSStream(HLSStream):
         media, status, *_ = data
         if status != "OPEN" or media is None:
             raise StreamError("Error occurred while refreshing the stream URL.")
+        current_quality = self._playlist_quality(self._url)
         for media_info in media:
             if (
                 len(media_info) >= 3
@@ -84,16 +96,37 @@ class ChzzkHLSStream(HLSStream):
                 and media_info[0] == "HLS"
             ):
                 media_path = self._update_domain(media_info[2])
-                res = self._fetch_variant_playlist(self.session, media_path)
-                m3u8 = parse_m3u8(res)
-                for playlist in m3u8.playlists:
-                    if playlist.stream_info:
-                        new_url = self._update_domain(playlist.uri)
-                        self._replace_token(new_url)
-                        log.debug("Refreshed the stream URL.")
-                        self._expire = self._get_expire_time(self._url)
-                        return
+                request_args = dict(self.args)
+                request_args.pop("url", None)
+                res = type(self)._fetch_playlist(self.session, media_path, **request_args)
+                m3u8 = parse_m3u8(res, parser=type(self).__parser__)
+                playlists = [playlist for playlist in m3u8.playlists if playlist.stream_info]
+                if not playlists:
+                    continue
+
+                playlist = self._select_refreshed_playlist(playlists, current_quality)
+                new_url = self._update_domain(playlist.uri)
+                self._url = new_url
+                self.args["url"] = new_url
+                log.debug("Refreshed the stream URL.")
+                self._expire = self._get_expire_time(self._url)
+                return
         raise StreamError("No valid HLS stream found in the refreshed playlist.")
+
+    def _playlist_quality(self, url: str) -> Optional[str]:
+        for part in urlparse(url).path.split("/"):
+            if re.fullmatch(r"\d+p(?:\d+)?", part):
+                return part
+        return None
+
+    def _select_refreshed_playlist(
+        self, playlists: List[Any], quality: Optional[str]
+    ) -> Any:
+        if quality is not None:
+            for playlist in playlists:
+                if self._playlist_quality(playlist.uri) == quality:
+                    return playlist
+        return playlists[-1]
 
     def _update_domain(self, url: str) -> str:
         """
@@ -103,20 +136,6 @@ class ChzzkHLSStream(HLSStream):
         if parsed.hostname == "livecloud.pstatic.net":
             return urlunparse(parsed._replace(netloc="nlive-streaming.navercdn.com"))
         return url
-
-    def _replace_token(self, new_url: str) -> None:
-        """
-        Replace the token in the current URL with the token from the new URL.
-        """
-        parsed_old = urlparse(self._url)
-        parsed_new = urlparse(new_url)
-        qs_old = parse_qs(parsed_old.query)
-        qs_new = parse_qs(parsed_new.query)
-        # Replace the 'hdnts' parameter with the new token
-        if "hdnts" in qs_new:
-            qs_old["hdnts"] = qs_new.get("hdnts")
-        new_query = urlencode(qs_old, doseq=True)
-        self._url = urlunparse(parsed_old._replace(query=new_query))
 
     def _get_expire_time(self, url: str) -> Optional[int]:
         """
