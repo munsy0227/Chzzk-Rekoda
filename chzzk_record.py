@@ -41,6 +41,8 @@ MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
 DEFAULT_OUTPUT_FORMAT = "ts"
 SUPPORTED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
+FFMPEG_FINALIZE_TIMEOUT_SECONDS = 60
+RECORDING_SHUTDOWN_TIMEOUT_SECONDS = 90
 
 # Global console instance for Rich
 console = Console()
@@ -409,6 +411,20 @@ async def terminate_process(
         logger.warning(f"{name} did not terminate in time. Killing it.")
         signal_process_group(process, force=True)
         await process.wait()
+
+
+async def wait_for_task_completion(
+    task: Optional[asyncio.Task], name: str, timeout: float
+) -> bool:
+    if task is None or task.done():
+        return True
+
+    try:
+        await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
+        return True
+    except asyncio.TimeoutError:
+        logger.warning(f"{name} did not exit within {timeout:.0f} seconds.")
+        return False
 
 
 class RecordingProcessSandbox:
@@ -1376,6 +1392,7 @@ async def record_stream(
                             "--ffmpeg-ffmpeg",
                             str(ffmpeg_path),
                             "--ffmpeg-copyts",
+                            "--ffmpeg-start-at-zero",
                             "--hls-segment-stream-data",
                         ]
 
@@ -1426,12 +1443,21 @@ async def record_stream(
                                 "vaapi=vaapi0:/dev/dri/renderD128",
                                 "-filter_hw_device",
                                 "vaapi0",
+                                "-fflags",
+                                "+genpts+discardcorrupt",
                                 "-i",
                                 "pipe:0",
                                 "-y",
                             ]
                         else:
-                            base_input_args = [str(ffmpeg_path), "-i", "pipe:0", "-y"]
+                            base_input_args = [
+                                str(ffmpeg_path),
+                                "-fflags",
+                                "+genpts+discardcorrupt",
+                                "-i",
+                                "pipe:0",
+                                "-y",
+                            ]
 
                         metadata_args = [
                             "-map_metadata:s:a",
@@ -1684,10 +1710,14 @@ async def record_stream(
                                     "mpegts",
                                     "-mpegts_flags",
                                     "resend_headers",
-                                    "-bsf",
-                                    "setts=pts=PTS-STARTPTS",
-                                    "-fflags",
-                                    "+genpts+discardcorrupt+nobuffer",
+                                    "-mpegts_copyts",
+                                    "0",
+                                    "-avoid_negative_ts",
+                                    "make_zero",
+                                    "-muxpreload",
+                                    "0",
+                                    "-muxdelay",
+                                    "0",
                                     "-avioflags",
                                     "direct",
                                     str(temp_output_path),
@@ -1745,23 +1775,29 @@ async def record_stream(
                         )
 
                         completed_by = None
+                        stop_after_attempt = False
                         if shutdown_wait_task in done:
                             completed_by = "shutdown"
-                            await terminate_process(ffmpeg_process, "ffmpeg")
+                            stop_after_attempt = True
                             await terminate_process(stream_process, "streamlink")
-                            break
+                            await drain_task(pipe_task, timeout=10)
+                            if not await wait_for_task_completion(
+                                ffmpeg_wait_task,
+                                f"ffmpeg finalize for {channel_name}",
+                                FFMPEG_FINALIZE_TIMEOUT_SECONDS,
+                            ):
+                                await terminate_process(ffmpeg_process, "ffmpeg")
 
                         if ffmpeg_wait_task in done:
                             completed_by = "ffmpeg"
                             await terminate_process(stream_process, "streamlink")
                         elif stream_wait_task in done:
                             completed_by = "streamlink"
-                            try:
-                                await asyncio.wait_for(ffmpeg_wait_task, timeout=30)
-                            except asyncio.TimeoutError:
-                                logger.warning(
-                                    f"ffmpeg did not exit after streamlink ended for {channel_name}."
-                                )
+                            if not await wait_for_task_completion(
+                                ffmpeg_wait_task,
+                                f"ffmpeg after streamlink ended for {channel_name}",
+                                FFMPEG_FINALIZE_TIMEOUT_SECONDS,
+                            ):
                                 await terminate_process(ffmpeg_process, "ffmpeg")
 
                         if stream_wait_task and not stream_wait_task.done():
@@ -1783,7 +1819,10 @@ async def record_stream(
                             logger.warning(
                                 f"ffmpeg failed for {channel_name}; see the ffmpeg stderr lines above for the root cause."
                             )
-                        if stream_returncode not in (0, None) and completed_by != "ffmpeg":
+                        if (
+                            stream_returncode not in (0, None)
+                            and completed_by not in {"ffmpeg", "shutdown"}
+                        ):
                             logger.warning(
                                 f"streamlink failed for {channel_name}; see the streamlink stderr lines above for the root cause."
                             )
@@ -1798,6 +1837,11 @@ async def record_stream(
                                 logger.warning(
                                     f"Discarded empty recording file for {channel_name}."
                                 )
+                            elif ffmpeg_returncode != 0:
+                                logger.warning(
+                                    f"Leaving incomplete recording file at {temp_output_path} "
+                                    f"because ffmpeg exited with return code {ffmpeg_returncode}."
+                                )
                             else:
                                 destination_path = unique_path(final_output_path)
                                 temp_output_path.replace(destination_path)
@@ -1808,6 +1852,9 @@ async def record_stream(
                         async with channel_progress_lock:
                             channel_progress.pop(channel_id, None)
 
+                        if stop_after_attempt:
+                            break
+
                     finally:
                         if active_attempt is not None:
                             await active_attempt.cleanup()
@@ -1815,6 +1862,9 @@ async def record_stream(
 
                 except asyncio.CancelledError:
                     logger.info(f"Recording task for {channel_name} was cancelled.")
+                    if recording_started:
+                        logger.info(f"Recording stopped for {channel_name}.")
+                        recording_started = False
                     break
                 except Exception as e:
                     logger.exception(
@@ -1841,16 +1891,10 @@ async def record_stream(
     finally:
         if active_attempt is not None:
             await active_attempt.cleanup()
-        # Attempt to rename any remaining temp files
-        if (
-            recording_started
-            and temp_output_path
-            and final_output_path
-            and temp_output_path.exists()
-        ):
-            destination_path = unique_path(final_output_path)
-            temp_output_path.replace(destination_path)
-            logger.info(f"Recording saved to {destination_path}")
+        if recording_started and temp_output_path and temp_output_path.exists():
+            logger.warning(
+                f"Leaving unfinished recording file at {temp_output_path}."
+            )
         # Remove progress data
         async with channel_progress_lock:
             channel_progress.pop(channel_id, None)
@@ -1956,10 +2000,22 @@ async def manage_recording_tasks():
         except asyncio.CancelledError:
             logger.info("Recording management task was cancelled.")
         finally:
-            # Cancel all active recording tasks
-            for task in active_tasks.values():
-                task.cancel()
-            await asyncio.gather(*active_tasks.values(), return_exceptions=True)
+            active_recording_tasks = list(active_tasks.values())
+            if active_recording_tasks:
+                done, pending = await asyncio.wait(
+                    active_recording_tasks,
+                    timeout=RECORDING_SHUTDOWN_TIMEOUT_SECONDS,
+                )
+                if done:
+                    await asyncio.gather(*done, return_exceptions=True)
+                if pending:
+                    logger.warning(
+                        "Timed out waiting for recording tasks to finalize. "
+                        "Cancelling remaining tasks."
+                    )
+                    for task in pending:
+                        task.cancel()
+                    await asyncio.gather(*pending, return_exceptions=True)
 
 
 def handle_shutdown():
