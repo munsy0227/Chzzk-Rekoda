@@ -41,6 +41,8 @@ MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
 DEFAULT_OUTPUT_FORMAT = "ts"
 SUPPORTED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
+DEFAULT_RECORDING_SPLIT_MINUTES = 0
+MAX_RECORDING_SPLIT_MINUTES = 10080
 FFMPEG_FINALIZE_TIMEOUT_SECONDS = 60
 RECORDING_SHUTDOWN_TIMEOUT_SECONDS = 90
 
@@ -261,6 +263,34 @@ def normalize_bitrate(value: Any, default: str) -> str:
 def normalize_output_format(value: Any) -> str:
     text = str(value or DEFAULT_OUTPUT_FORMAT).strip().lower().lstrip(".")
     return text if text in SUPPORTED_OUTPUT_FORMATS else DEFAULT_OUTPUT_FORMAT
+
+
+def normalize_recording_split_minutes(
+    value: Any, legacy_hours: Any = None
+) -> int:
+    if value is None and legacy_hours is not None:
+        legacy_minutes = clamp_int(
+            legacy_hours,
+            default=DEFAULT_RECORDING_SPLIT_MINUTES,
+            min_value=0,
+            max_value=MAX_RECORDING_SPLIT_MINUTES // 60,
+        ) * 60
+        return min(legacy_minutes, MAX_RECORDING_SPLIT_MINUTES)
+
+    return clamp_int(
+        value,
+        default=DEFAULT_RECORDING_SPLIT_MINUTES,
+        min_value=0,
+        max_value=MAX_RECORDING_SPLIT_MINUTES,
+    )
+
+
+def format_recording_split_interval(minutes: int) -> str:
+    if minutes <= 0:
+        return "disabled"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hour(s)"
+    return f"{minutes} minute(s)"
 
 
 def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
@@ -585,6 +615,7 @@ async def load_settings() -> (
         Dict[str, Any],
         Dict[str, Any],
         str,
+        int,
     ]
 ):
     config = await load_config_async()
@@ -609,6 +640,10 @@ async def load_settings() -> (
     if av1_settings.get("enable"):
         hevc_settings["enable"] = False
     output_format = normalize_output_format(config.get("output_format"))
+    recording_split_minutes = normalize_recording_split_minutes(
+        config.get("recording_split_minutes"),
+        config.get("recording_split_hours"),
+    )
 
     return (
         timeout,
@@ -618,6 +653,7 @@ async def load_settings() -> (
         hevc_settings,
         av1_settings,
         output_format,
+        recording_split_minutes,
     )
 
 
@@ -729,6 +765,132 @@ def shorten_filename(filename: str) -> str:
         return shortened_filename
 
     return filename
+
+
+def shorten_segment_template(base_name: str, extension: str) -> str:
+    suffix = f"_%03d.{extension}"
+    filename = f"{base_name}{suffix}"
+    filename_bytes = filename.encode("utf-8")
+    if len(filename_bytes) <= MAX_FILENAME_BYTES:
+        return filename
+
+    hash_value = hashlib.sha256(filename_bytes).hexdigest()[:MAX_HASH_LENGTH]
+    max_name_length = MAX_FILENAME_BYTES - (
+        len(suffix.encode("utf-8")) + MAX_HASH_LENGTH + 1
+    )
+    shortened_name_bytes = base_name.encode("utf-8")[:max_name_length]
+    shortened_name = shortened_name_bytes.decode("utf-8", "ignore").strip(" .")
+    if not shortened_name:
+        shortened_name = "recording"
+    shortened_filename = f"{shortened_name}_{hash_value}{suffix}"
+    logger.warning(
+        f"Segment filename template {filename!r} is too long. "
+        f"Shortening to {shortened_filename!r}."
+    )
+    return shortened_filename
+
+
+def segment_template_regex(template_name: str) -> re.Pattern:
+    pattern = re.escape(template_name).replace(
+        re.escape("%03d"), r"(?P<index>\d+)"
+    )
+    return re.compile(f"^{pattern}$")
+
+
+def segment_output_files(output_dir: Path, template_name: str) -> List[Path]:
+    if not output_dir.exists():
+        return []
+
+    pattern = segment_template_regex(template_name)
+
+    def sort_key(path: Path) -> int:
+        match = pattern.match(path.name)
+        if not match:
+            return 0
+        return int(match.group("index"))
+
+    return sorted(
+        (path for path in output_dir.iterdir() if pattern.match(path.name)),
+        key=sort_key,
+    )
+
+
+def unique_segment_template(
+    output_dir: Path, base_name: str, extension: str
+) -> Tuple[Path, str]:
+    for index in range(1000):
+        candidate_base = base_name if index == 0 else f"{base_name}_{index}"
+        template_name = shorten_segment_template(candidate_base, extension)
+        if not segment_output_files(output_dir, template_name):
+            return output_dir / template_name, template_name
+    raise FileExistsError(
+        f"Could not find an available segment filename for {base_name}"
+    )
+
+
+def build_output_args(
+    recording_format: str, output_path: Path, split_seconds: int = 0
+) -> List[str]:
+    output_args = ["-progress", "pipe:2"]
+    if recording_format in {"ts", "mkv"}:
+        output_args.append("-copy_unknown")
+
+    if split_seconds > 0:
+        segment_format = {
+            "ts": "mpegts",
+            "mkv": "matroska",
+            "webm": "webm",
+        }[recording_format]
+        output_args.extend(
+            [
+                "-f",
+                "segment",
+                "-segment_time",
+                str(split_seconds),
+                "-segment_start_number",
+                "1",
+                "-reset_timestamps",
+                "1",
+                "-segment_format",
+                segment_format,
+            ]
+        )
+        if recording_format == "ts":
+            output_args.extend(
+                [
+                    "-segment_format_options",
+                    "mpegts_flags=resend_headers:mpegts_copyts=0",
+                ]
+            )
+        output_args.append(str(output_path))
+        return output_args
+
+    if recording_format == "ts":
+        output_args.extend(
+            [
+                "-f",
+                "mpegts",
+                "-mpegts_flags",
+                "resend_headers",
+                "-mpegts_copyts",
+                "0",
+                "-avoid_negative_ts",
+                "make_zero",
+                "-muxpreload",
+                "0",
+                "-muxdelay",
+                "0",
+                "-avioflags",
+                "direct",
+                str(output_path),
+            ]
+        )
+    elif recording_format == "mkv":
+        output_args.extend(["-f", "matroska", str(output_path)])
+    elif recording_format == "webm":
+        output_args.extend(["-f", "webm", str(output_path)])
+
+    return output_args
 
 
 def format_size(size_bytes: float) -> str:
@@ -1310,10 +1472,13 @@ async def record_stream(
     hevc_settings: Dict[str, Any],
     av1_settings: Dict[str, Any],
     output_format: str,
+    recording_split_minutes: int,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
+    recording_split_minutes = normalize_recording_split_minutes(recording_split_minutes)
+    split_seconds = recording_split_minutes * 60
     logger.info(f"Attempting to record stream for channel: {channel_name}")
     await asyncio.sleep(delay)
 
@@ -1324,6 +1489,7 @@ async def record_stream(
     recording_started = False
     temp_output_path: Optional[Path] = None
     final_output_path: Optional[Path] = None
+    segment_output_template: Optional[str] = None
     active_attempt: Optional[RecordingProcessSandbox] = None
 
     try:
@@ -1366,14 +1532,32 @@ async def record_stream(
                             f"AV1 output is not supported with TS for {channel_name}. Falling back to MKV."
                         )
                         recording_format = "mkv"
-                    temp_output_file = shorten_filename(
-                        f"[{current_time.replace(':', '_')}] {channel_name} {live_title}.{recording_format}.part"
+                    safe_current_time = current_time.replace(":", "_")
+                    base_output_name = (
+                        f"[{safe_current_time}] {channel_name} {live_title}"
                     )
-                    final_output_file = temp_output_file[:-5]  # Remove '.part'
-                    temp_output_path = output_dir / temp_output_file
-                    final_output_path = output_dir / final_output_file
-
                     output_dir.mkdir(parents=True, exist_ok=True)
+                    segment_output_template = None
+                    if split_seconds > 0:
+                        segment_output_path, segment_output_template = (
+                            unique_segment_template(
+                                output_dir, base_output_name, recording_format
+                            )
+                        )
+                        temp_output_path = None
+                        final_output_path = None
+                        logger.info(
+                            f"Split recording enabled for {channel_name}: "
+                            f"new file every "
+                            f"{format_recording_split_interval(recording_split_minutes)}."
+                        )
+                    else:
+                        temp_output_file = shorten_filename(
+                            f"{base_output_name}.{recording_format}.part"
+                        )
+                        final_output_file = temp_output_file[:-5]
+                        temp_output_path = output_dir / temp_output_file
+                        final_output_path = output_dir / final_output_file
 
                     active_attempt = RecordingProcessSandbox(channel_name, channel_id)
                     try:
@@ -1699,34 +1883,16 @@ async def record_stream(
                                     ]
                                 )
 
-                        output_args = ["-progress", "pipe:2"]
-                        if recording_format in {"ts", "mkv"}:
-                            output_args.append("-copy_unknown")
-
-                        if recording_format == "ts":
-                            output_args.extend(
-                                [
-                                    "-f",
-                                    "mpegts",
-                                    "-mpegts_flags",
-                                    "resend_headers",
-                                    "-mpegts_copyts",
-                                    "0",
-                                    "-avoid_negative_ts",
-                                    "make_zero",
-                                    "-muxpreload",
-                                    "0",
-                                    "-muxdelay",
-                                    "0",
-                                    "-avioflags",
-                                    "direct",
-                                    str(temp_output_path),
-                                ]
-                            )
-                        elif recording_format == "mkv":
-                            output_args.extend(["-f", "matroska", str(temp_output_path)])
-                        elif recording_format == "webm":
-                            output_args.extend(["-f", "webm", str(temp_output_path)])
+                        output_path = (
+                            segment_output_path
+                            if split_seconds > 0
+                            else temp_output_path
+                        )
+                        if output_path is None:
+                            raise RuntimeError("recording output path was not created")
+                        output_args = build_output_args(
+                            recording_format, output_path, split_seconds
+                        )
 
                         ffmpeg_cmd = base_input_args + encoding_args + output_args
 
@@ -1830,8 +1996,45 @@ async def record_stream(
                             logger.info(f"Recording stopped for {channel_name}.")
                             recording_started = False
 
+                        if split_seconds > 0 and segment_output_template:
+                            segment_paths = segment_output_files(
+                                output_dir, segment_output_template
+                            )
+                            saved_segments = []
+                            for segment_path in segment_paths:
+                                if segment_path.stat().st_size == 0:
+                                    segment_path.unlink(missing_ok=True)
+                                    logger.warning(
+                                        f"Discarded empty recording segment for "
+                                        f"{channel_name}: {segment_path}"
+                                    )
+                                else:
+                                    saved_segments.append(segment_path)
+
+                            if not saved_segments:
+                                logger.warning(
+                                    f"No recording segment files were created for "
+                                    f"{channel_name}."
+                                )
+                            elif ffmpeg_returncode != 0:
+                                logger.warning(
+                                    f"Split recording files were left at "
+                                    f"{output_dir} because ffmpeg exited with "
+                                    f"return code {ffmpeg_returncode}. The last "
+                                    f"segment may be incomplete."
+                                )
+
+                            for segment_path in saved_segments:
+                                logger.info(
+                                    f"Recording segment saved to {segment_path}"
+                                )
+
                         # Atomically rename the temporary file to final output
-                        if temp_output_path and final_output_path and temp_output_path.exists():
+                        elif (
+                            temp_output_path
+                            and final_output_path
+                            and temp_output_path.exists()
+                        ):
                             if temp_output_path.stat().st_size == 0:
                                 temp_output_path.unlink(missing_ok=True)
                                 logger.warning(
@@ -1910,6 +2113,7 @@ async def manage_recording_tasks():
         hevc_settings,
         av1_settings,
         output_format,
+        recording_split_minutes,
     ) = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
@@ -1931,6 +2135,7 @@ async def manage_recording_tasks():
                     new_hevc_settings,
                     new_av1_settings,
                     new_output_format,
+                    new_recording_split_minutes,
                 ) = await load_settings()
                 active_channels = 0
 
@@ -1969,6 +2174,7 @@ async def manage_recording_tasks():
                                     new_hevc_settings,
                                     new_av1_settings,
                                     new_output_format,
+                                    new_recording_split_minutes,
                                 )
                             )
                             active_tasks[channel_id] = task

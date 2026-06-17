@@ -14,6 +14,8 @@ MIN_RESCAN_INTERVAL_SECONDS = 1
 MAX_RESCAN_INTERVAL_SECONDS = 3600
 DEFAULT_OUTPUT_FORMAT = "ts"
 ALLOWED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
+DEFAULT_RECORDING_SPLIT_MINUTES = 0
+MAX_RECORDING_SPLIT_MINUTES = 10080
 
 default_config = {
     "channels": [],
@@ -21,6 +23,7 @@ default_config = {
     "timeout": DEFAULT_RESCAN_INTERVAL_SECONDS,
     "stream_segment_threads": 2,
     "output_format": DEFAULT_OUTPUT_FORMAT,
+    "recording_split_minutes": DEFAULT_RECORDING_SPLIT_MINUTES,
     "hevc_settings": {
         "enable": False,
         "encoder": "libx265",
@@ -100,6 +103,14 @@ def normalize_output_format(value):
     return text if text in ALLOWED_OUTPUT_FORMATS else DEFAULT_OUTPUT_FORMAT
 
 
+def format_split_interval(minutes):
+    if minutes <= 0:
+        return "disabled"
+    if minutes % 60 == 0:
+        return f"{minutes // 60} hour(s)"
+    return f"{minutes} minute(s)"
+
+
 def normalize_config(config):
     config = deep_merge_defaults(config, default_config)
     config["timeout"] = clamp_int(
@@ -112,6 +123,24 @@ def normalize_config(config):
         config.get("stream_segment_threads"), 2, 1, 16
     )
     config["output_format"] = normalize_output_format(config.get("output_format"))
+    legacy_split_hours = config.pop("recording_split_hours", None)
+    split_minutes = config.get("recording_split_minutes")
+    if legacy_split_hours is not None and split_minutes in (
+        None,
+        DEFAULT_RECORDING_SPLIT_MINUTES,
+    ):
+        split_minutes = clamp_int(
+            legacy_split_hours,
+            DEFAULT_RECORDING_SPLIT_MINUTES,
+            0,
+            MAX_RECORDING_SPLIT_MINUTES // 60,
+        ) * 60
+    config["recording_split_minutes"] = clamp_int(
+        split_minutes,
+        DEFAULT_RECORDING_SPLIT_MINUTES,
+        0,
+        MAX_RECORDING_SPLIT_MINUTES,
+    )
 
     channels = []
     for index, channel in enumerate(config.get("channels", []), start=1):
@@ -444,7 +473,11 @@ while True:
     elif choice == "2":
         while True:
             print(
-                "\n1. Set Recording Threads\n2. Set Broadcast Rescan Interval\n3. Set Output Format\n4. Go Back"
+                "\n1. Set Recording Threads"
+                "\n2. Set Broadcast Rescan Interval"
+                "\n3. Set Output Format"
+                "\n4. Set Recording Split Interval"
+                "\n5. Go Back"
             )
             choice2 = str(input("Enter the number you want to execute: "))
 
@@ -494,6 +527,54 @@ while True:
                 print(f"The output format has been changed to {new_format}.")
 
             elif choice2 == "4":
+                current_split = clamp_int(
+                    config.get("recording_split_minutes"),
+                    DEFAULT_RECORDING_SPLIT_MINUTES,
+                    0,
+                    MAX_RECORDING_SPLIT_MINUTES,
+                )
+                print(
+                    f"The current recording split interval is "
+                    f"{format_split_interval(current_split)}."
+                )
+                print("Choose split interval unit:")
+                print("1. Hours")
+                print("2. Minutes")
+                print("3. Disable Split Recording")
+                unit_choice = input("Enter the number you want to execute: ").strip()
+
+                if unit_choice == "1":
+                    split_hours = clamp_int(
+                        input("Enter the split interval to change (in hours): "),
+                        DEFAULT_RECORDING_SPLIT_MINUTES,
+                        0,
+                        MAX_RECORDING_SPLIT_MINUTES // 60,
+                    )
+                    new_split = split_hours * 60
+                elif unit_choice == "2":
+                    new_split = clamp_int(
+                        input("Enter the split interval to change (in minutes): "),
+                        DEFAULT_RECORDING_SPLIT_MINUTES,
+                        0,
+                        MAX_RECORDING_SPLIT_MINUTES,
+                    )
+                elif unit_choice == "3":
+                    new_split = 0
+                else:
+                    try_again()
+                    continue
+
+                config["recording_split_minutes"] = new_split
+                save_config(config)
+                if new_split == 0:
+                    print("Split recording has been disabled.")
+                else:
+                    print(
+                        f"The recording split interval has been changed to "
+                        f"{format_split_interval(new_split)}."
+                    )
+
+            elif choice2 == "5":
                 break
             else:
                 try_again()

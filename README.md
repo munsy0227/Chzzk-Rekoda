@@ -90,7 +90,7 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 5. 입력한 정보가 맞다면 `Y`를 입력하세요.
 
 > **팁:** 성인 인증이 필요한 방송을 녹화하려면 설정 메뉴의 **5번 (Cookie Settings)** 에서 쿠키값(NID_AUT, NID_SES)을 입력해야 합니다.
-> 저장 확장자는 설정 메뉴의 **2번 (Recording Settings)** 에서 `ts`, `mkv`, `webm` 중 선택할 수 있고, AV1 인코딩은 **4번 (AV1 Settings)** 에서 켤 수 있습니다.
+> 저장 확장자는 설정 메뉴의 **2번 (Recording Settings)** 에서 `ts`, `mkv`, `webm` 중 선택할 수 있고, 같은 메뉴에서 녹화 파일을 몇 시간 또는 몇 분마다 분할할지도 설정할 수 있습니다. AV1 인코딩은 **4번 (AV1 Settings)** 에서 켤 수 있습니다.
 
 ---
 
