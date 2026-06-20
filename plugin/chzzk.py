@@ -3,7 +3,7 @@ import re
 import time
 from typing import Any, Dict, Tuple, Union, TypedDict, Optional, List
 from dataclasses import dataclass
-from urllib.parse import urlparse, parse_qs, urlunparse
+from urllib.parse import urlparse, parse_qs
 
 from streamlink.exceptions import StreamError
 from streamlink.plugin import Plugin, pluginmatcher
@@ -95,17 +95,24 @@ class ChzzkHLSStream(HLSStream):
                 and media_info[1] == "HLS"
                 and media_info[0] == "HLS"
             ):
-                media_path = self._update_domain(media_info[2])
+                media_path = media_info[2]
                 request_args = dict(self.args)
                 request_args.pop("url", None)
-                res = type(self)._fetch_playlist(self.session, media_path, **request_args)
+                res = type(self)._fetch_playlist(
+                    self.session, media_path, **request_args
+                )
                 m3u8 = parse_m3u8(res, parser=type(self).__parser__)
-                playlists = [playlist for playlist in m3u8.playlists if playlist.stream_info]
+                playlists = [
+                    playlist for playlist in m3u8.playlists
+                    if playlist.stream_info
+                ]
                 if not playlists:
                     continue
 
-                playlist = self._select_refreshed_playlist(playlists, current_quality)
-                new_url = self._update_domain(playlist.uri)
+                playlist = self._select_refreshed_playlist(
+                    playlists, current_quality
+                )
+                new_url = playlist.uri
                 self._url = new_url
                 self.args["url"] = new_url
                 log.debug("Refreshed the stream URL.")
@@ -127,15 +134,6 @@ class ChzzkHLSStream(HLSStream):
                 if self._playlist_quality(playlist.uri) == quality:
                     return playlist
         return playlists[-1]
-
-    def _update_domain(self, url: str) -> str:
-        """
-        Update the domain of the given URL if it matches specific criteria.
-        """
-        parsed = urlparse(url)
-        if parsed.hostname == "livecloud.pstatic.net":
-            return urlunparse(parsed._replace(netloc="nlive-streaming.navercdn.com"))
-        return url
 
     def _get_expire_time(self, url: str) -> Optional[int]:
         """
@@ -320,7 +318,7 @@ class Chzzk(Plugin):
                 and media_info[1] == "HLS"
                 and media_info[0] == "HLS"
             ):
-                media_path = self._update_domain(media_info[2])
+                media_path = media_info[2]
                 hls_streams = ChzzkHLSStream.parse_variant_playlist(
                     self.session,
                     media_path,
@@ -332,15 +330,6 @@ class Chzzk(Plugin):
             log.error("No valid HLS streams found.")
             return None
         return streams
-
-    def _update_domain(self, url: str) -> str:
-        """
-        Update the domain of the given URL if it matches specific criteria.
-        """
-        parsed = urlparse(url)
-        if parsed.hostname == "livecloud.pstatic.net":
-            return urlunparse(parsed._replace(netloc="nlive-streaming.navercdn.com"))
-        return url
 
     def _get_streams(self) -> Optional[Dict[str, HLSStream]]:
         if self.matches["live"]:
