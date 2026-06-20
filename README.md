@@ -1,5 +1,7 @@
 # 치지직 레코다 (Chzzk-Rekoda)
 
+**언어:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
+
 Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
 
 또한 컴퓨터를 잘 모르는 분들도 쉽게 사용할 수 있는 **치지직 자동 녹화 프로그램**입니다.  
@@ -14,6 +16,7 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 ## 1. 설치하기 (다운로드)
 
 사용하고 계신 운영체제(윈도우, 맥, 리눅스)에 맞는 설명을 읽고 따라해주세요.
+설치 중 언어 선택 화면이 나오면 원하는 언어를 먼저 선택하세요.
 
 ### 🪟 윈도우 (Windows) 사용자
 
@@ -90,7 +93,7 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 5. 입력한 정보가 맞다면 `Y`를 입력하세요.
 
 > **팁:** 성인 인증이 필요한 방송을 녹화하려면 설정 메뉴의 **5번 (Cookie Settings)** 에서 쿠키값(NID_AUT, NID_SES)을 입력해야 합니다.
-> 저장 확장자는 설정 메뉴의 **2번 (Recording Settings)** 에서 `ts`, `mkv`, `webm` 중 선택할 수 있고, 같은 메뉴에서 녹화 파일을 몇 시간 또는 몇 분마다 분할할지도 설정할 수 있습니다. AV1 인코딩은 **4번 (AV1 Settings)** 에서 켤 수 있습니다. DNS 문제가 있을 때는 **6번 (DNS-over-HTTPS Settings)** 에서 DoH 주소를 설정하고 켤 수 있습니다.
+> 저장 확장자는 설정 메뉴의 **2번 (Recording Settings)** 에서 `ts`, `mkv`, `webm` 중 선택할 수 있고, 같은 메뉴에서 녹화 파일을 몇 시간 또는 몇 분마다 분할할지도 설정할 수 있습니다. AV1 인코딩은 **4번 (AV1 Settings)** 에서 켤 수 있습니다. DNS 문제가 있을 때는 **6번 (DNS-over-HTTPS Settings)** 에서 DoH 주소를 설정하고 켤 수 있습니다. 언어는 **8번 (Language Settings)** 에서 한국어, 영어, 중국어 간체/정체, 일본어 중 선택할 수 있습니다.
 
 ---
 

@@ -5,6 +5,19 @@ import tempfile
 from copy import deepcopy
 from urllib.parse import urlparse
 
+from i18n import (
+    DEFAULT_LANGUAGE,
+    SUPPORTED_LANGUAGES,
+    enabled_word,
+    format_split_interval as localized_split_interval,
+    language_display_name,
+    language_options,
+    normalize_language,
+    on_off_label,
+    state_label,
+    translate,
+)
+
 # File path settings
 script_directory = os.path.dirname(os.path.abspath(__file__))
 config_file_path = os.path.join(script_directory, "config.json")
@@ -46,6 +59,7 @@ default_config = {
         "enable": False,
         "doh_url": DEFAULT_DOH_URL,
     },
+    "language": DEFAULT_LANGUAGE,
 }
 
 
@@ -130,16 +144,14 @@ def normalize_dns_settings(value):
     return settings
 
 
-def format_split_interval(minutes):
-    if minutes <= 0:
-        return "disabled"
-    if minutes % 60 == 0:
-        return f"{minutes // 60} hour(s)"
-    return f"{minutes} minute(s)"
+def format_split_interval(minutes, language=DEFAULT_LANGUAGE):
+    return localized_split_interval(language, minutes)
 
 
 def normalize_config(config):
     config = deep_merge_defaults(config, default_config)
+    config["language"] = normalize_language(config.get("language"))
+    language = config["language"]
     config["timeout"] = clamp_int(
         config.get("timeout"),
         DEFAULT_RESCAN_INTERVAL_SECONDS,
@@ -175,7 +187,13 @@ def normalize_config(config):
             continue
         channel_id = str(channel.get("id", "")).strip()
         if not SAFE_CHANNEL_ID.fullmatch(channel_id):
-            print(f"Skipping invalid channel id: {channel_id}")
+            print(
+                translate(
+                    language,
+                    "settings.invalid_channel_skipped",
+                    channel_id=channel_id,
+                )
+            )
             continue
         channel["id"] = channel_id
         channel["name"] = CONTROL_CHARS.sub("", str(channel.get("name") or channel_id)).strip()
@@ -235,10 +253,16 @@ def load_config():
                     save_config(config)
                 return config
         except (json.JSONDecodeError, OSError) as e:
-            print(f"Error loading config.json: {e}. Using defaults/migration.")
+            print(
+                translate(
+                    DEFAULT_LANGUAGE,
+                    "settings.error_loading_config",
+                    error=e,
+                )
+            )
 
     # Migration Logic (if config.json doesn't exist or failed to load)
-    print("Migrating settings from old files...")
+    print(translate(DEFAULT_LANGUAGE, "settings.migrating_old_settings"))
     config = deepcopy(default_config)
 
     # 1. Channels
@@ -336,9 +360,17 @@ def save_config(config):
                 os.chmod(config_file_path, 0o600)
             except OSError:
                 pass
-        print("Configuration saved to config.json")
+        language = normalize_language(config.get("language"))
+        print(translate(language, "settings.config_saved"))
     except OSError as e:
-        print(f"Error saving configuration: {e}")
+        language = normalize_language(config.get("language"))
+        print(
+            translate(
+                language,
+                "settings.config_save_error",
+                error=e,
+            )
+        )
     finally:
         if fd is not None:
             os.close(fd)
@@ -356,50 +388,83 @@ def try_again():
 # Load config at startup
 config = load_config()
 
+
+def current_language():
+    return normalize_language(config.get("language"))
+
+
+def t(key, **kwargs):
+    return translate(current_language(), key, **kwargs)
+
+
+def try_again():
+    print(t("settings.try_again"))
+
+
+def print_codec_settings(codec, settings):
+    print("\n" + t("settings.codec_title", codec=codec))
+    print(t("settings.status", status=state_label(current_language(), settings["enable"])))
+    print(t("settings.encoder", encoder=settings.get("encoder", "libx265")))
+    print(t("settings.target_bitrate", bitrate=settings["bitrate"]))
+    print(t("settings.max_bitrate", bitrate=settings["max_bitrate"]))
+    print(t("settings.preset", preset=settings["preset"]))
+    print("-" * 30)
+
+
+def print_language_menu():
+    print("\n" + t("settings.language_title"))
+    print(t("settings.current_language", language=language_display_name(current_language())))
+    for idx, (code, name) in enumerate(language_options(), start=1):
+        print(f"{idx}. {name} ({code})")
+
+
+def select_language(value):
+    text = value.strip()
+    options = language_options()
+    if text.isdigit():
+        index = int(text) - 1
+        if 0 <= index < len(options):
+            return options[index][0]
+        return None
+    if text in SUPPORTED_LANGUAGES:
+        return text
+    normalized = normalize_language(text)
+    if normalized != DEFAULT_LANGUAGE or text.lower() in {"ko", "kr", "kor", "korean", "한국어"}:
+        return normalized
+    return None
+
+
 while True:
-    print("Chzzk Auto-Recording Settings")
-    print(
-        "\n1. Channel Settings"
-        "\n2. Recording Settings"
-        "\n3. HEVC Settings (High Efficiency Video Coding)"
-        "\n4. AV1 Settings"
-        "\n5. Cookie Settings (for adult verification)"
-        "\n6. DNS-over-HTTPS Settings"
-        "\n7. Toggle Logging"
-        "\n8. Quit"
-    )
-    choice = str(input("Enter the number you want to execute: "))
+    print(t("settings.main_title"))
+    print(t("settings.main_menu"))
+    choice = str(input(t("settings.prompt_choice"))).strip()
 
     if choice == "1":
         while True:
-            print(
-                "\n1. Add Channel\n2. Delete Channel\n3. Toggle Channel Recording\n4. Go Back"
-            )
-            choice1 = str(input("Enter the number you want to execute: "))
+            print(t("settings.channel_menu"))
+            choice1 = str(input(t("settings.prompt_choice"))).strip()
             if choice1 == "1":
-                channel_id = str(
-                    input(
-                        "Enter the unique ID of the streamer channel you want to add: "
-                    )
-                ).strip()
+                channel_id = str(input(t("settings.prompt_channel_id"))).strip()
                 if not SAFE_CHANNEL_ID.fullmatch(channel_id):
-                    print("Invalid channel ID. Use only letters, numbers, '_' or '-'.")
+                    print(t("settings.invalid_channel_id"))
                     continue
-                name = CONTROL_CHARS.sub("", str(input("Enter the streamer name:  "))).strip() or channel_id
-                output_dir = str(
-                    input(
-                        "Specify the storage path (just type the name to save it in the same location as the program): "
-                    )
-                ).strip() or "."
+                name = CONTROL_CHARS.sub(
+                    "", str(input(t("settings.prompt_streamer_name")))
+                ).strip() or channel_id
+                output_dir = str(input(t("settings.prompt_output_dir"))).strip() or "."
 
                 while True:
                     answer = str(
                         input(
-                            f"id: {channel_id}, name: {name}, storage path: {output_dir} Is this correct? (Y/N): "
+                            t(
+                                "settings.confirm_channel",
+                                channel_id=channel_id,
+                                name=name,
+                                output_dir=output_dir,
+                            )
                         )
-                    )
-                    if answer == "Y" or answer == "y":
-                        # Determine next channel identifier
+                    ).strip()
+                    if answer.lower() == "y":
                         current_count = len(config["channels"])
                         identifier = f"ch{current_count + 1}"
 
@@ -412,41 +477,44 @@ while True:
                                 "active": "on",
                             }
                         )
-
-                        # Add delay entry
-                        config["delays"][
-                            identifier
-                        ] = current_count  # default delay logic
+                        config["delays"][identifier] = current_count
 
                         save_config(config)
-                        print("Channel added and config saved.")
+                        print(t("settings.channel_added"))
                         break
-                    elif answer == "N" or answer == "n":
-                        print("Then please enter it again")
+                    if answer.lower() == "n":
+                        print(t("settings.reenter"))
                         break
-                    else:
-                        try_again()
+                    try_again()
 
             elif choice1 == "2":
                 if not config["channels"]:
-                    print("No channels to delete.")
+                    print(t("settings.no_channels_delete"))
                     continue
 
-                print("Current channel list:")
+                print(t("settings.current_channel_list"))
                 for idx, channel in enumerate(config["channels"], start=1):
-                    print(f"{idx}. id: {channel['id']}, name: {channel['name']}")
+                    print(
+                        t(
+                            "settings.channel_list_item",
+                            idx=idx,
+                            channel_id=channel["id"],
+                            name=channel["name"],
+                        )
+                    )
 
                 try:
-                    idx_to_del = (
-                        int(input("Enter the number of the channel to delete: ")) - 1
-                    )
+                    idx_to_del = int(input(t("settings.prompt_delete_channel"))) - 1
                     if 0 <= idx_to_del < len(config["channels"]):
                         deleted_channel = config["channels"].pop(idx_to_del)
                         print(
-                            f"The deleted channel: id: {deleted_channel['id']}, name: {deleted_channel['name']}"
+                            t(
+                                "settings.deleted_channel",
+                                channel_id=deleted_channel["id"],
+                                name=deleted_channel["name"],
+                            )
                         )
 
-                        # Rebuild delays and identifiers
                         new_delays = {}
                         for i, channel in enumerate(config["channels"]):
                             new_identifier = f"ch{i + 1}"
@@ -455,44 +523,51 @@ while True:
 
                         config["delays"] = new_delays
                         save_config(config)
-                        print("Channel deleted and config re-indexed.")
+                        print(t("settings.channel_deleted"))
                     else:
-                        print("Invalid channel number.")
+                        print(t("settings.invalid_channel_number"))
                 except ValueError:
-                    print("Invalid input. Please enter a valid number.")
+                    print(t("settings.invalid_number"))
 
             elif choice1 == "3":
                 if not config["channels"]:
-                    print("No channels available to toggle.")
+                    print(t("settings.no_channels_toggle"))
                     continue
 
-                print("Current channel list:")
+                print(t("settings.current_channel_list"))
                 for idx, channel in enumerate(config["channels"], start=1):
+                    status = on_off_label(
+                        current_language(), channel.get("active", "on") == "on"
+                    )
                     print(
-                        f"{idx}. id: {channel['id']}, name: {channel['name']}, recording status: {'On' if channel.get('active', 'on') == 'on' else 'Off'}"
+                        t(
+                            "settings.channel_list_item_status",
+                            idx=idx,
+                            channel_id=channel["id"],
+                            name=channel["name"],
+                            status=status,
+                        )
                     )
 
                 try:
-                    idx_to_toggle = (
-                        int(
-                            input(
-                                "Enter the number of the channel to toggle recording status: "
-                            )
-                        )
-                        - 1
-                    )
+                    idx_to_toggle = int(input(t("settings.prompt_toggle_channel"))) - 1
                     if 0 <= idx_to_toggle < len(config["channels"]):
                         channel = config["channels"][idx_to_toggle]
                         current_state = channel.get("active", "on")
                         channel["active"] = "off" if current_state == "on" else "on"
+                        status = on_off_label(current_language(), current_state != "on")
                         print(
-                            f"The recording status of {channel['name']} channel has been changed to {'Off' if current_state == 'on' else 'On'}."
+                            t(
+                                "settings.channel_status_changed",
+                                name=channel["name"],
+                                status=status,
+                            )
                         )
                         save_config(config)
                     else:
-                        print("Invalid channel number.")
+                        print(t("settings.invalid_channel_number"))
                 except ValueError:
-                    print("Invalid input. Please enter a valid number.")
+                    print(t("settings.invalid_number"))
 
             elif choice1 == "4":
                 break
@@ -501,59 +576,47 @@ while True:
 
     elif choice == "2":
         while True:
-            print(
-                "\n1. Set Recording Threads"
-                "\n2. Set Broadcast Rescan Interval"
-                "\n3. Set Output Format"
-                "\n4. Set Recording Split Interval"
-                "\n5. Go Back"
-            )
-            choice2 = str(input("Enter the number you want to execute: "))
+            print(t("settings.recording_menu"))
+            choice2 = str(input(t("settings.prompt_choice"))).strip()
 
             if choice2 == "1":
                 print(
-                    f"The current number of recording threads is {config.get('stream_segment_threads', 2)}."
-                )
-                print(
-                    "Recommended 2~4 threads, 2 threads for low-end systems / 4 threads for high-end systems"
-                )
-                try:
-                    new_threads = clamp_int(
-                        input("Enter the number of threads to change: "), 2, 1, 16
+                    t(
+                        "settings.current_threads",
+                        count=config.get("stream_segment_threads", 2),
                     )
-                    config["stream_segment_threads"] = new_threads
-                    save_config(config)
-                    print("The number of threads has been changed.")
-                except ValueError:
-                    print("Invalid input.")
+                )
+                print(t("settings.thread_recommendation"))
+                new_threads = clamp_int(input(t("settings.prompt_threads")), 2, 1, 16)
+                config["stream_segment_threads"] = new_threads
+                save_config(config)
+                print(t("settings.threads_changed"))
 
             elif choice2 == "2":
                 print(
-                    f"The current broadcast rescan interval is {config.get('timeout', DEFAULT_RESCAN_INTERVAL_SECONDS)} seconds."
-                )
-                try:
-                    new_timeout = clamp_int(
-                        input("Enter the rescan interval to change (in seconds): "),
-                        DEFAULT_RESCAN_INTERVAL_SECONDS,
-                        MIN_RESCAN_INTERVAL_SECONDS,
-                        MAX_RESCAN_INTERVAL_SECONDS,
+                    t(
+                        "settings.current_timeout",
+                        seconds=config.get("timeout", DEFAULT_RESCAN_INTERVAL_SECONDS),
                     )
-                    config["timeout"] = new_timeout
-                    save_config(config)
-                    print("The broadcast rescan interval has been changed.")
-                except ValueError:
-                    print("Invalid input.")
+                )
+                new_timeout = clamp_int(
+                    input(t("settings.prompt_timeout")),
+                    DEFAULT_RESCAN_INTERVAL_SECONDS,
+                    MIN_RESCAN_INTERVAL_SECONDS,
+                    MAX_RESCAN_INTERVAL_SECONDS,
+                )
+                config["timeout"] = new_timeout
+                save_config(config)
+                print(t("settings.timeout_changed"))
 
             elif choice2 == "3":
                 current_format = config.get("output_format", DEFAULT_OUTPUT_FORMAT)
-                print(f"The current output format is {current_format}.")
-                print("Available formats: ts, mkv, webm")
-                new_format = normalize_output_format(
-                    input("Enter the output format to change: ")
-                )
+                print(t("settings.current_output_format", format=current_format))
+                print(t("settings.available_formats"))
+                new_format = normalize_output_format(input(t("settings.prompt_output_format")))
                 config["output_format"] = new_format
                 save_config(config)
-                print(f"The output format has been changed to {new_format}.")
+                print(t("settings.output_format_changed", format=new_format))
 
             elif choice2 == "4":
                 current_split = clamp_int(
@@ -563,18 +626,20 @@ while True:
                     MAX_RECORDING_SPLIT_MINUTES,
                 )
                 print(
-                    f"The current recording split interval is "
-                    f"{format_split_interval(current_split)}."
+                    t(
+                        "settings.current_split",
+                        interval=format_split_interval(current_split, current_language()),
+                    )
                 )
-                print("Choose split interval unit:")
-                print("1. Hours")
-                print("2. Minutes")
-                print("3. Disable Split Recording")
-                unit_choice = input("Enter the number you want to execute: ").strip()
+                print(t("settings.choose_split_unit"))
+                print(t("settings.unit_hours"))
+                print(t("settings.unit_minutes"))
+                print(t("settings.unit_disable"))
+                unit_choice = input(t("settings.prompt_choice")).strip()
 
                 if unit_choice == "1":
                     split_hours = clamp_int(
-                        input("Enter the split interval to change (in hours): "),
+                        input(t("settings.prompt_split_hours")),
                         DEFAULT_RECORDING_SPLIT_MINUTES,
                         0,
                         MAX_RECORDING_SPLIT_MINUTES // 60,
@@ -582,7 +647,7 @@ while True:
                     new_split = split_hours * 60
                 elif unit_choice == "2":
                     new_split = clamp_int(
-                        input("Enter the split interval to change (in minutes): "),
+                        input(t("settings.prompt_split_minutes")),
                         DEFAULT_RECORDING_SPLIT_MINUTES,
                         0,
                         MAX_RECORDING_SPLIT_MINUTES,
@@ -596,11 +661,13 @@ while True:
                 config["recording_split_minutes"] = new_split
                 save_config(config)
                 if new_split == 0:
-                    print("Split recording has been disabled.")
+                    print(t("settings.split_disabled"))
                 else:
                     print(
-                        f"The recording split interval has been changed to "
-                        f"{format_split_interval(new_split)}."
+                        t(
+                            "settings.split_changed",
+                            interval=format_split_interval(new_split, current_language()),
+                        )
                     )
 
             elif choice2 == "5":
@@ -611,21 +678,9 @@ while True:
     elif choice == "3":
         while True:
             hevc = config["hevc_settings"]
-            print("\n--- HEVC (H.265) Settings ---")
-            print(f"Status: {'[Enabled]' if hevc['enable'] else '[Disabled]'}")
-            print(f"Encoder: {hevc.get('encoder', 'libx265')}")
-            print(f"Target Bitrate: {hevc['bitrate']}")
-            print(f"Max Bitrate: {hevc['max_bitrate']}")
-            print(f"Preset: {hevc['preset']}")
-            print("-" * 30)
-            print("1. Toggle Enable/Disable")
-            print("2. Set Encoder (libx265, hevc_nvenc, hevc_qsv, etc.)")
-            print("3. Set Target Bitrate (e.g., 6000k)")
-            print("4. Set Max Bitrate (e.g., 8000k)")
-            print("5. Set Preset (ultrafast, superfast, etc.)")
-            print("6. Go Back")
-
-            choice3 = str(input("Enter the number you want to execute: "))
+            print_codec_settings("HEVC (H.265)", hevc)
+            print(t("settings.hevc_menu"))
+            choice3 = str(input(t("settings.prompt_choice"))).strip()
 
             if choice3 == "1":
                 hevc["enable"] = not hevc["enable"]
@@ -633,49 +688,49 @@ while True:
                     config["av1_settings"]["enable"] = False
                 save_config(config)
                 print(
-                    f"HEVC encoding has been {'enabled' if hevc['enable'] else 'disabled'}."
+                    t(
+                        "settings.encoding_toggled",
+                        codec="HEVC",
+                        state=enabled_word(current_language(), hevc["enable"]),
+                    )
                 )
 
             elif choice3 == "2":
-                print("\nAvailable Encoders:")
+                print(t("settings.available_encoders"))
                 print(" - libx265 (CPU, Default)")
                 print(" - hevc_nvenc (NVIDIA GPU)")
                 print(" - hevc_qsv (Intel GPU)")
                 print(" - hevc_amf (AMD GPU)")
                 print(" - hevc_vaapi (Linux VAAPI)")
                 print(" - hevc_videotoolbox (macOS)")
-                new_encoder = input("Enter encoder name: ").strip()
+                new_encoder = input(t("settings.prompt_encoder")).strip()
                 if new_encoder in ALLOWED_ENCODERS:
                     hevc["encoder"] = new_encoder
                     save_config(config)
                 else:
-                    print("Invalid encoder name.")
+                    print(t("settings.invalid_encoder"))
 
             elif choice3 == "3":
-                new_bitrate = normalize_bitrate(
-                    input("Enter target bitrate (e.g., 6000k): "), hevc["bitrate"]
+                hevc["bitrate"] = normalize_bitrate(
+                    input(t("settings.prompt_target_bitrate")), hevc["bitrate"]
                 )
-                hevc["bitrate"] = new_bitrate
                 save_config(config)
 
             elif choice3 == "4":
-                new_max = normalize_bitrate(
-                    input("Enter max bitrate (e.g., 10000k): "), hevc["max_bitrate"]
+                hevc["max_bitrate"] = normalize_bitrate(
+                    input(t("settings.prompt_max_bitrate")), hevc["max_bitrate"]
                 )
-                hevc["max_bitrate"] = new_max
                 save_config(config)
 
             elif choice3 == "5":
-                print(
-                    "Options: ultrafast (rec), superfast, veryfast, faster, fast, medium"
-                )
-                print("Note: For NVENC, use p1-p7. For QSV, use veryfast-veryslow.")
-                new_preset = input("Enter preset name: ").strip()
+                print(t("settings.hevc_preset_options"))
+                print(t("settings.hevc_preset_note"))
+                new_preset = input(t("settings.prompt_preset")).strip()
                 if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
                     hevc["preset"] = new_preset
                     save_config(config)
                 else:
-                    print("Invalid preset name.")
+                    print(t("settings.invalid_preset"))
 
             elif choice3 == "6":
                 break
@@ -685,21 +740,9 @@ while True:
     elif choice == "4":
         while True:
             av1 = config["av1_settings"]
-            print("\n--- AV1 Settings ---")
-            print(f"Status: {'[Enabled]' if av1['enable'] else '[Disabled]'}")
-            print(f"Encoder: {av1.get('encoder', 'libsvtav1')}")
-            print(f"Target Bitrate: {av1['bitrate']}")
-            print(f"Max Bitrate: {av1['max_bitrate']}")
-            print(f"Preset: {av1['preset']}")
-            print("-" * 30)
-            print("1. Toggle Enable/Disable")
-            print("2. Set Encoder (libsvtav1, libaom-av1, av1_nvenc, etc.)")
-            print("3. Set Target Bitrate (e.g., 6000k)")
-            print("4. Set Max Bitrate (e.g., 8000k)")
-            print("5. Set Preset (libsvtav1/libaom-av1: 0-13, NVENC: p1-p7)")
-            print("6. Go Back")
-
-            choice4 = str(input("Enter the number you want to execute: "))
+            print_codec_settings("AV1", av1)
+            print(t("settings.av1_menu"))
+            choice4 = str(input(t("settings.prompt_choice"))).strip()
 
             if choice4 == "1":
                 av1["enable"] = not av1["enable"]
@@ -707,45 +750,47 @@ while True:
                     config["hevc_settings"]["enable"] = False
                 save_config(config)
                 print(
-                    f"AV1 encoding has been {'enabled' if av1['enable'] else 'disabled'}."
+                    t(
+                        "settings.encoding_toggled",
+                        codec="AV1",
+                        state=enabled_word(current_language(), av1["enable"]),
+                    )
                 )
 
             elif choice4 == "2":
-                print("\nAvailable Encoders:")
+                print(t("settings.available_encoders"))
                 print(" - libsvtav1 (CPU, Default)")
                 print(" - libaom-av1 (CPU)")
                 print(" - av1_nvenc (NVIDIA GPU)")
                 print(" - av1_qsv (Intel GPU)")
                 print(" - av1_amf (AMD GPU)")
                 print(" - av1_vaapi (Linux VAAPI)")
-                new_encoder = input("Enter encoder name: ").strip()
+                new_encoder = input(t("settings.prompt_encoder")).strip()
                 if new_encoder in ALLOWED_AV1_ENCODERS:
                     av1["encoder"] = new_encoder
                     save_config(config)
                 else:
-                    print("Invalid encoder name.")
+                    print(t("settings.invalid_encoder"))
 
             elif choice4 == "3":
-                new_bitrate = normalize_bitrate(
-                    input("Enter target bitrate (e.g., 6000k): "), av1["bitrate"]
+                av1["bitrate"] = normalize_bitrate(
+                    input(t("settings.prompt_target_bitrate")), av1["bitrate"]
                 )
-                av1["bitrate"] = new_bitrate
                 save_config(config)
 
             elif choice4 == "4":
-                new_max = normalize_bitrate(
-                    input("Enter max bitrate (e.g., 10000k): "), av1["max_bitrate"]
+                av1["max_bitrate"] = normalize_bitrate(
+                    input(t("settings.prompt_max_bitrate")), av1["max_bitrate"]
                 )
-                av1["max_bitrate"] = new_max
                 save_config(config)
 
             elif choice4 == "5":
-                new_preset = input("Enter preset name: ").strip()
+                new_preset = input(t("settings.prompt_preset")).strip()
                 if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
                     av1["preset"] = new_preset
                     save_config(config)
                 else:
-                    print("Invalid preset name.")
+                    print(t("settings.invalid_preset"))
 
             elif choice4 == "6":
                 break
@@ -753,47 +798,44 @@ while True:
                 try_again()
 
     elif choice == "5":
-        SES = sanitize_cookie(input("Enter SES: "))
-        AUT = sanitize_cookie(input("Enter AUT: "))
-        config["cookies"]["NID_SES"] = SES
-        config["cookies"]["NID_AUT"] = AUT
+        ses = sanitize_cookie(input(t("settings.prompt_ses")))
+        aut = sanitize_cookie(input(t("settings.prompt_aut")))
+        config["cookies"]["NID_SES"] = ses
+        config["cookies"]["NID_AUT"] = aut
         save_config(config)
-        print("Cookie information has been successfully saved.")
+        print(t("settings.cookies_saved"))
 
     elif choice == "6":
         while True:
             dns_settings = config["dns_settings"]
-            print("\n--- DNS-over-HTTPS Settings ---")
-            print(f"Status: {'[Enabled]' if dns_settings['enable'] else '[Disabled]'}")
-            print(f"DoH URL: {dns_settings['doh_url']}")
+            print("\n" + t("settings.dns_title"))
+            print(t("settings.status", status=state_label(current_language(), dns_settings["enable"])))
+            print(t("settings.doh_url", url=dns_settings["doh_url"]))
             print("-" * 30)
-            print("1. Toggle Enable/Disable")
-            print("2. Set DNS-over-HTTPS URL")
-            print("3. Reset to Default URL")
-            print("4. Go Back")
+            print(t("settings.dns_menu"))
 
-            choice6 = str(input("Enter the number you want to execute: "))
+            choice6 = str(input(t("settings.prompt_choice"))).strip()
 
             if choice6 == "1":
                 dns_settings["enable"] = not dns_settings["enable"]
                 save_config(config)
                 print(
-                    f"DNS-over-HTTPS has been "
-                    f"{'enabled' if dns_settings['enable'] else 'disabled'}."
+                    t(
+                        "settings.dns_toggled",
+                        state=enabled_word(current_language(), dns_settings["enable"]),
+                    )
                 )
 
             elif choice6 == "2":
-                new_url = normalize_doh_url(
-                    input("Enter the DNS-over-HTTPS URL: ")
-                )
+                new_url = normalize_doh_url(input(t("settings.prompt_doh_url")))
                 dns_settings["doh_url"] = new_url
                 save_config(config)
-                print(f"DNS-over-HTTPS URL has been changed to {new_url}.")
+                print(t("settings.doh_url_changed", url=new_url))
 
             elif choice6 == "3":
                 dns_settings["doh_url"] = DEFAULT_DOH_URL
                 save_config(config)
-                print(f"DNS-over-HTTPS URL has been reset to {DEFAULT_DOH_URL}.")
+                print(t("settings.doh_url_reset", url=DEFAULT_DOH_URL))
 
             elif choice6 == "4":
                 break
@@ -803,10 +845,30 @@ while True:
     elif choice == "7":
         config["log_enabled"] = not config["log_enabled"]
         save_config(config)
-        print(f"Logging has been {'enabled' if config['log_enabled'] else 'disabled'}.")
+        print(
+            t(
+                "settings.logging_toggled",
+                state=enabled_word(current_language(), config["log_enabled"]),
+            )
+        )
 
     elif choice == "8":
-        print("Exiting the settings.")
+        print_language_menu()
+        selected_language = select_language(input(t("settings.prompt_language")))
+        if selected_language is None:
+            print(t("settings.invalid_language"))
+            continue
+        config["language"] = selected_language
+        save_config(config)
+        print(
+            t(
+                "settings.language_changed",
+                language=language_display_name(selected_language),
+            )
+        )
+
+    elif choice == "9":
+        print(t("settings.exiting"))
         break
     else:
-        print("Please try again.\n")
+        try_again()

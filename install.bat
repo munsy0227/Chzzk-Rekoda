@@ -24,6 +24,14 @@ if %errorlevel%==0 (
     exit /b 0
 )
 
+echo Select language
+uv run python scripts\select_language.py
+if errorlevel 1 (
+    echo Language selection failed.
+    pause
+    exit /b 1
+)
+
 echo Installing ffmpeg
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install_ffmpeg_windows.ps1"
 if errorlevel 1 (

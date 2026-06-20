@@ -20,6 +20,12 @@ import aiohttp
 import orjson
 
 from dns_over_https import install_doh_dns
+from i18n import (
+    DEFAULT_LANGUAGE,
+    format_split_interval as localized_split_interval,
+    normalize_language,
+    translate,
+)
 
 if platform.system() != "Windows":
     import uvloop
@@ -62,6 +68,10 @@ channel_progress_lock = asyncio.Lock()
 # Create a queue for log messages
 log_queue: asyncio.Queue = asyncio.Queue()
 
+# Cache language lookups; the live UI asks for translated labels often.
+language_cache_mtime_ns: Optional[int] = None
+language_cache_value = DEFAULT_LANGUAGE
+
 
 # Helper function to load log_enabled
 def load_config_sync() -> Dict[str, Any]:
@@ -77,6 +87,30 @@ def load_config_sync() -> Dict[str, Any]:
 
 def get_log_enabled() -> bool:
     return bool(load_config_sync().get("log_enabled", True))
+
+
+def get_language_sync() -> str:
+    global language_cache_mtime_ns, language_cache_value
+
+    try:
+        mtime_ns = CONFIG_FILE_PATH.stat().st_mtime_ns
+    except OSError:
+        language_cache_mtime_ns = None
+        language_cache_value = DEFAULT_LANGUAGE
+        return language_cache_value
+
+    if language_cache_mtime_ns == mtime_ns:
+        return language_cache_value
+
+    language_cache_mtime_ns = mtime_ns
+    language_cache_value = normalize_language(
+        load_config_sync().get("language", DEFAULT_LANGUAGE)
+    )
+    return language_cache_value
+
+
+def tr(key: str, **kwargs: Any) -> str:
+    return translate(get_language_sync(), key, **kwargs)
 
 
 def normalize_doh_url(value: Any) -> str:
@@ -117,9 +151,14 @@ def toggle_log_enabled():
 
         save_json_secure(CONFIG_FILE_PATH, current_config)
 
-        print(f"Logging has been {'enabled' if new_state else 'disabled'}.")
+        print(
+            tr(
+                "record.logging_toggled",
+                state=tr("common.enabled" if new_state else "common.disabled"),
+            )
+        )
     except Exception as e:
-        print(f"Error toggling log: {e}")
+        print(tr("record.logging_toggle_error", error=e))
 
 
 # Custom logging handler to put log messages into the queue
@@ -187,18 +226,14 @@ def install_internal_dns_resolver() -> None:
     doh_url = dns_settings["doh_url"]
     try:
         install_doh_dns(url=doh_url)
-        logger.info(f"Using DNS-over-HTTPS resolver: {doh_url}")
+        logger.info(tr("record.doh_using", url=doh_url))
     except Exception as e:
-        logger.warning(f"Failed to install DNS-over-HTTPS resolver: {e}")
+        logger.warning(tr("record.doh_install_failed", error=e))
 
 
 install_internal_dns_resolver()
 
-print(
-    "Chzzk Rekoda made by munsy0227\n"
-    "If you encounter any bugs or errors, please report them on GitHub Issues!\n"
-    "버그나 에러가 발생하면 깃허브 이슈에 제보해 주세요!"
-)
+print(tr("record.startup_banner"))
 
 # Constants
 LIVE_DETAIL_API = (
@@ -336,11 +371,7 @@ def normalize_recording_split_minutes(
 
 
 def format_recording_split_interval(minutes: int) -> str:
-    if minutes <= 0:
-        return "disabled"
-    if minutes % 60 == 0:
-        return f"{minutes // 60} hour(s)"
-    return f"{minutes} minute(s)"
+    return localized_split_interval(get_language_sync(), minutes)
 
 
 def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
@@ -358,7 +389,7 @@ def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
     settings["enable"] = bool(settings.get("enable", False))
     encoder = str(settings.get("encoder", defaults["encoder"])).strip()
     if encoder not in KNOWN_HEVC_ENCODERS:
-        logger.warning(f"Unknown HEVC encoder '{encoder}'. Falling back to libx265.")
+        logger.warning(tr("record.unknown_hevc_encoder", encoder=encoder))
         encoder = defaults["encoder"]
     settings["encoder"] = encoder
     settings["bitrate"] = normalize_bitrate(settings.get("bitrate"), defaults["bitrate"])
@@ -385,7 +416,7 @@ def normalize_av1_settings(value: Any) -> Dict[str, Any]:
     settings["enable"] = bool(settings.get("enable", False))
     encoder = str(settings.get("encoder", defaults["encoder"])).strip()
     if encoder not in KNOWN_AV1_ENCODERS:
-        logger.warning(f"Unknown AV1 encoder '{encoder}'. Falling back to libsvtav1.")
+        logger.warning(tr("record.unknown_av1_encoder", encoder=encoder))
         encoder = defaults["encoder"]
     settings["encoder"] = encoder
     settings["bitrate"] = normalize_bitrate(settings.get("bitrate"), defaults["bitrate"])
@@ -404,12 +435,12 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
     normalized = []
     for index, raw_channel in enumerate(value, start=1):
         if not isinstance(raw_channel, dict):
-            logger.warning(f"Skipping invalid channel entry at index {index}.")
+            logger.warning(tr("record.skip_invalid_channel_entry", index=index))
             continue
 
         channel_id = str(raw_channel.get("id", "")).strip()
         if not SAFE_CHANNEL_ID.fullmatch(channel_id):
-            logger.warning(f"Skipping channel with invalid ID: {channel_id!r}")
+            logger.warning(tr("record.skip_invalid_channel_id", channel_id=channel_id))
             continue
 
         identifier = str(raw_channel.get("identifier") or f"ch{index}").strip()
@@ -505,7 +536,7 @@ async def terminate_process(
     try:
         await asyncio.wait_for(process.wait(), timeout=timeout)
     except asyncio.TimeoutError:
-        logger.warning(f"{name} did not terminate in time. Killing it.")
+        logger.warning(tr("record.process_timeout_kill", name=name))
         signal_process_group(process, force=True)
         await process.wait()
 
@@ -520,7 +551,7 @@ async def wait_for_task_completion(
         await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
         return True
     except asyncio.TimeoutError:
-        logger.warning(f"{name} did not exit within {timeout:.0f} seconds.")
+        logger.warning(tr("record.task_timeout", name=name, timeout=timeout))
         return False
 
 
@@ -593,9 +624,9 @@ async def pipe_stream_to_stdin(
             writer.write(chunk)
             await writer.drain()
     except (BrokenPipeError, ConnectionResetError):
-        logger.debug(f"ffmpeg stdin closed while piping stream for {channel_name}.")
+        logger.debug(tr("record.pipe_closed", channel_name=channel_name))
     except Exception as e:
-        logger.error(f"Error piping stream to ffmpeg for {channel_name}: {e}")
+        logger.error(tr("record.pipe_error", channel_name=channel_name, error=e))
     finally:
         if not writer.is_closing():
             writer.close()
@@ -627,27 +658,27 @@ async def setup_paths() -> Optional[Path]:
     os_name = platform.system()
 
     if os_name == "Windows":
-        logger.info("Running on Windows.")
+        logger.info(tr("record.running_windows"))
         bundled_ffmpeg = BASE_DIR / "ffmpeg" / "bin" / "ffmpeg.exe"
         if bundled_ffmpeg.exists():
-            logger.info(f"Using bundled ffmpeg at: {bundled_ffmpeg}")
+            logger.info(tr("record.using_bundled_ffmpeg", path=bundled_ffmpeg))
             return bundled_ffmpeg
 
         ffmpeg_on_path = shutil.which("ffmpeg")
         if ffmpeg_on_path:
             ffmpeg_path = Path(ffmpeg_on_path)
-            logger.info(f"Using ffmpeg from PATH at: {ffmpeg_path}")
+            logger.info(tr("record.using_path_ffmpeg", path=ffmpeg_path))
             return ffmpeg_path
 
-        logger.error("ffmpeg not found. Run install.bat or add ffmpeg to PATH.")
+        logger.error(tr("record.ffmpeg_not_found_windows"))
     else:
         ffmpeg_on_path = shutil.which("ffmpeg")
         if ffmpeg_on_path:
             ffmpeg_path = Path(ffmpeg_on_path)
-            logger.info(f"Running on {os_name}. ffmpeg found at: {ffmpeg_path}")
+            logger.info(tr("record.running_os_ffmpeg_found", os_name=os_name, path=ffmpeg_path))
             return ffmpeg_path
 
-        logger.error("ffmpeg not found on the system PATH.")
+        logger.error(tr("record.ffmpeg_not_found_path"))
 
     return None
 
@@ -660,10 +691,10 @@ async def load_json_async(file_path: Path) -> Any:
             content = await file.read()
             return orjson.loads(content)
     except orjson.JSONDecodeError as e:
-        logger.error(f"JSON decode error in {file_path}: {e}")
+        logger.error(tr("record.json_decode_error", file_path=file_path, error=e))
         return None
     except Exception as e:
-        logger.error(f"Error loading JSON from {file_path}: {e}")
+        logger.error(tr("record.json_load_error", file_path=file_path, error=e))
         return None
 
 
@@ -791,21 +822,21 @@ async def get_live_info(
             status = content.get("status", "")
             if status == "CLOSE":
                 logger.info(
-                    f"The channel '{channel.get('name', 'Unknown')}' is not currently live."
+                    tr("record.channel_not_live", channel_name=channel.get("name", tr("common.unknown")))
                 )
             if status == "BLOCK":
                 logger.info(
-                    f"The channel '{channel.get('name', 'Unknown')}' is blocked."
+                    tr("record.channel_blocked", channel_name=channel.get("name", tr("common.unknown")))
                 )
                 return status, {}
             return status, content
     except aiohttp.ClientError as e:
         logger.error(
-            f"HTTP error occurred while fetching live info for {channel.get('name', 'Unknown')}: {e}"
+            tr("record.http_live_info_error", channel_name=channel.get("name", tr("common.unknown")), error=e)
         )
     except Exception as e:
         logger.error(
-            f"Failed to fetch live info for {channel.get('name', 'Unknown')}: {e}"
+            tr("record.live_info_failed", channel_name=channel.get("name", tr("common.unknown")), error=e)
         )
     return "", {}
 
@@ -828,7 +859,7 @@ def shorten_filename(filename: str) -> str:
         shortened_name = shortened_name_bytes.decode("utf-8", "ignore")
         shortened_filename = f"{shortened_name}_{hash_value}{compound_ext}"
         logger.warning(
-            f"Filename '{filename}' is too long. Shortening to '{shortened_filename}'."
+            tr("record.filename_too_long", filename=filename, shortened=shortened_filename)
         )
         return shortened_filename
 
@@ -852,8 +883,11 @@ def shorten_segment_template(base_name: str, extension: str) -> str:
         shortened_name = "recording"
     shortened_filename = f"{shortened_name}_{hash_value}{suffix}"
     logger.warning(
-        f"Segment filename template {filename!r} is too long. "
-        f"Shortening to {shortened_filename!r}."
+        tr(
+            "record.segment_template_too_long",
+            filename=filename,
+            shortened=shortened_filename,
+        )
     )
     return shortened_filename
 
@@ -1070,7 +1104,7 @@ async def read_stream(
 
                 summary.clear()
         except Exception as e:
-            logger.error(f"Error occurred while reading stream for {channel_id}: {e}")
+            logger.error(tr("record.read_stream_error", channel_id=channel_id, error=e))
             break
 
 
@@ -1217,8 +1251,11 @@ def resolve_av1_settings_for_recording(
         return active_settings
 
     logger.warning(
-        f"AV1 encoder '{selected_encoder}' is not usable with the current "
-        f"FFmpeg/hardware setup: {summarize_probe_error(probe_message)}"
+        tr(
+            "record.av1_unusable",
+            encoder=selected_encoder,
+            message=summarize_probe_error(probe_message),
+        )
     )
 
     for fallback_encoder in AV1_SOFTWARE_FALLBACK_ENCODERS:
@@ -1231,18 +1268,24 @@ def resolve_av1_settings_for_recording(
         )
         if fallback_works:
             logger.warning(
-                f"Using AV1 encoder '{fallback_encoder}' instead of "
-                f"'{selected_encoder}' for this recording."
+                tr(
+                    "record.av1_fallback",
+                    fallback=fallback_encoder,
+                    selected=selected_encoder,
+                )
             )
             return fallback_settings
         logger.warning(
-            f"AV1 fallback encoder '{fallback_encoder}' is not usable: "
-            f"{summarize_probe_error(fallback_message)}"
+            tr(
+                "record.av1_fallback_unusable",
+                encoder=fallback_encoder,
+                message=summarize_probe_error(fallback_message),
+            )
         )
 
     disabled_settings = dict(active_settings)
     disabled_settings["enable"] = False
-    logger.warning("No usable AV1 encoder found. Recording without AV1 encoding.")
+    logger.warning(tr("record.av1_no_encoder"))
     return disabled_settings
 
 
@@ -1412,8 +1455,11 @@ def resolve_hevc_settings_for_recording(
         return active_settings
 
     logger.warning(
-        f"HEVC encoder '{selected_encoder}' is not usable with the current "
-        f"FFmpeg/hardware setup: {summarize_probe_error(probe_message)}"
+        tr(
+            "record.hevc_unusable",
+            encoder=selected_encoder,
+            message=summarize_probe_error(probe_message),
+        )
     )
 
     for fallback_encoder in HEVC_SOFTWARE_FALLBACK_ENCODERS:
@@ -1426,18 +1472,24 @@ def resolve_hevc_settings_for_recording(
         )
         if fallback_works:
             logger.warning(
-                f"Using HEVC encoder '{fallback_encoder}' instead of "
-                f"'{selected_encoder}' for this recording."
+                tr(
+                    "record.hevc_fallback",
+                    fallback=fallback_encoder,
+                    selected=selected_encoder,
+                )
             )
             return fallback_settings
         logger.warning(
-            f"HEVC fallback encoder '{fallback_encoder}' is not usable: "
-            f"{summarize_probe_error(fallback_message)}"
+            tr(
+                "record.hevc_fallback_unusable",
+                encoder=fallback_encoder,
+                message=summarize_probe_error(fallback_message),
+            )
         )
 
     disabled_settings = dict(active_settings)
     disabled_settings["enable"] = False
-    logger.warning("No usable HEVC encoder found. Recording without HEVC encoding.")
+    logger.warning(tr("record.hevc_no_encoder"))
     return disabled_settings
 
 
@@ -1547,11 +1599,11 @@ async def record_stream(
     output_format = normalize_output_format(output_format)
     recording_split_minutes = normalize_recording_split_minutes(recording_split_minutes)
     split_seconds = recording_split_minutes * 60
-    logger.info(f"Attempting to record stream for channel: {channel_name}")
+    logger.info(tr("record.attempting_channel", channel_name=channel_name))
     await asyncio.sleep(delay)
 
     if channel.get("active", "on") == "off":
-        logger.info(f"{channel_name} channel is inactive. Skipping recording.")
+        logger.info(tr("record.channel_inactive", channel_name=channel_name))
         return
 
     recording_started = False
@@ -1577,7 +1629,7 @@ async def record_stream(
                             break
 
                         logger.info(
-                            f"Waiting for the channel '{channel_name}' to go live..."
+                            tr("record.waiting_live", channel_name=channel_name)
                         )
                         try:
                             await asyncio.wait_for(
@@ -1597,7 +1649,7 @@ async def record_stream(
                     recording_format = output_format
                     if av1_settings.get("enable") and recording_format == "ts":
                         logger.warning(
-                            f"AV1 output is not supported with TS for {channel_name}. Falling back to MKV."
+                            tr("record.av1_ts_fallback", channel_name=channel_name)
                         )
                         recording_format = "mkv"
                     safe_current_time = current_time.replace(":", "_")
@@ -1615,9 +1667,13 @@ async def record_stream(
                         temp_output_path = None
                         final_output_path = None
                         logger.info(
-                            f"Split recording enabled for {channel_name}: "
-                            f"new file every "
-                            f"{format_recording_split_interval(recording_split_minutes)}."
+                            tr(
+                                "record.split_enabled",
+                                channel_name=channel_name,
+                                interval=format_recording_split_interval(
+                                    recording_split_minutes
+                                ),
+                            )
                         )
                     else:
                         temp_output_file = shorten_filename(
@@ -1726,7 +1782,7 @@ async def record_stream(
                         elif recording_format == "webm":
                             if enable_hevc:
                                 logger.warning(
-                                    f"HEVC settings are ignored for WebM output on {channel_name}."
+                                    tr("record.hevc_ignored_webm", channel_name=channel_name)
                                 )
                             encoding_args = [
                                 "-c:v",
@@ -1970,7 +2026,7 @@ async def record_stream(
 
                         if not recording_started:
                             logger.info(
-                                f"Recording started for {channel_name} at {current_time}."
+                                tr("record.recording_started", channel_name=channel_name, current_time=current_time)
                             )
                             recording_started = True
                             recording_start_time = current_time
@@ -2044,24 +2100,24 @@ async def record_stream(
                         ffmpeg_returncode = ffmpeg_process.returncode
                         stream_returncode = stream_process.returncode
                         logger.info(
-                            f"ffmpeg process for {channel_name} exited with return code {ffmpeg_returncode}."
+                            tr("record.ffmpeg_exited", channel_name=channel_name, returncode=ffmpeg_returncode)
                         )
                         logger.info(
-                            f"Stream recording process for {channel_name} exited with return code {stream_returncode}."
+                            tr("record.stream_process_exited", channel_name=channel_name, returncode=stream_returncode)
                         )
                         if ffmpeg_returncode not in (0, None):
                             logger.warning(
-                                f"ffmpeg failed for {channel_name}; see the ffmpeg stderr lines above for the root cause."
+                                tr("record.ffmpeg_failed", channel_name=channel_name)
                             )
                         if (
                             stream_returncode not in (0, None)
                             and completed_by not in {"ffmpeg", "shutdown"}
                         ):
                             logger.warning(
-                                f"streamlink failed for {channel_name}; see the streamlink stderr lines above for the root cause."
+                                tr("record.streamlink_failed", channel_name=channel_name)
                             )
                         if recording_started:
-                            logger.info(f"Recording stopped for {channel_name}.")
+                            logger.info(tr("record.recording_stopped", channel_name=channel_name))
                             recording_started = False
 
                         if split_seconds > 0 and segment_output_template:
@@ -2073,28 +2129,31 @@ async def record_stream(
                                 if segment_path.stat().st_size == 0:
                                     segment_path.unlink(missing_ok=True)
                                     logger.warning(
-                                        f"Discarded empty recording segment for "
-                                        f"{channel_name}: {segment_path}"
+                                        tr(
+                                            "record.empty_segment_discarded",
+                                            channel_name=channel_name,
+                                            path=segment_path,
+                                        )
                                     )
                                 else:
                                     saved_segments.append(segment_path)
 
                             if not saved_segments:
                                 logger.warning(
-                                    f"No recording segment files were created for "
-                                    f"{channel_name}."
+                                    tr("record.no_segments", channel_name=channel_name)
                                 )
                             elif ffmpeg_returncode != 0:
                                 logger.warning(
-                                    f"Split recording files were left at "
-                                    f"{output_dir} because ffmpeg exited with "
-                                    f"return code {ffmpeg_returncode}. The last "
-                                    f"segment may be incomplete."
+                                    tr(
+                                        "record.split_left_incomplete",
+                                        output_dir=output_dir,
+                                        returncode=ffmpeg_returncode,
+                                    )
                                 )
 
                             for segment_path in saved_segments:
                                 logger.info(
-                                    f"Recording segment saved to {segment_path}"
+                                    tr("record.segment_saved", path=segment_path)
                                 )
 
                         # Atomically rename the temporary file to final output
@@ -2106,18 +2165,21 @@ async def record_stream(
                             if temp_output_path.stat().st_size == 0:
                                 temp_output_path.unlink(missing_ok=True)
                                 logger.warning(
-                                    f"Discarded empty recording file for {channel_name}."
+                                    tr("record.empty_file_discarded", channel_name=channel_name)
                                 )
                             elif ffmpeg_returncode != 0:
                                 logger.warning(
-                                    f"Leaving incomplete recording file at {temp_output_path} "
-                                    f"because ffmpeg exited with return code {ffmpeg_returncode}."
+                                    tr(
+                                        "record.incomplete_file_left",
+                                        path=temp_output_path,
+                                        returncode=ffmpeg_returncode,
+                                    )
                                 )
                             else:
                                 destination_path = unique_path(final_output_path)
                                 temp_output_path.replace(destination_path)
                                 final_output_path = destination_path
-                                logger.info(f"Recording saved to {final_output_path}")
+                                logger.info(tr("record.saved", path=final_output_path))
 
                         # Remove progress data
                         async with channel_progress_lock:
@@ -2132,25 +2194,25 @@ async def record_stream(
                             active_attempt = None
 
                 except asyncio.CancelledError:
-                    logger.info(f"Recording task for {channel_name} was cancelled.")
+                    logger.info(tr("record.task_cancelled", channel_name=channel_name))
                     if recording_started:
-                        logger.info(f"Recording stopped for {channel_name}.")
+                        logger.info(tr("record.recording_stopped", channel_name=channel_name))
                         recording_started = False
                     break
                 except Exception as e:
                     logger.exception(
-                        f"Error occurred while recording {channel_name}: {e}"
+                        tr("record.recording_error", channel_name=channel_name, error=e)
                     )
                     if recording_started:
-                        logger.info(f"Recording stopped for {channel_name}.")
+                        logger.info(tr("record.recording_stopped", channel_name=channel_name))
                         recording_started = False
                     if active_attempt is not None:
                         await active_attempt.cleanup()
                         active_attempt = None
             else:
-                logger.error(f"No stream URL available for {channel_name}")
+                logger.error(tr("record.no_stream_url", channel_name=channel_name))
                 if recording_started:
-                    logger.info(f"Recording stopped for {channel_name}.")
+                    logger.info(tr("record.recording_stopped", channel_name=channel_name))
                     recording_started = False
 
             # Wait for shutdown event or timeout
@@ -2164,7 +2226,7 @@ async def record_stream(
             await active_attempt.cleanup()
         if recording_started and temp_output_path and temp_output_path.exists():
             logger.warning(
-                f"Leaving unfinished recording file at {temp_output_path}."
+                tr("record.unfinished_file_left", path=temp_output_path)
             )
         # Remove progress data
         async with channel_progress_lock:
@@ -2188,7 +2250,7 @@ async def manage_recording_tasks():
     ffmpeg_path = await setup_paths()
 
     if not ffmpeg_path or not ffmpeg_path.exists():
-        logger.error("ffmpeg executable not found. Exiting.")
+        logger.error(tr("record.ffmpeg_executable_missing"))
         return
 
     request_timeout = aiohttp.ClientTimeout(total=30)
@@ -2217,7 +2279,7 @@ async def manage_recording_tasks():
                         task = active_tasks.pop(channel_id)
                         task.cancel()
                         logger.info(
-                            f"Cancelled recording task for deactivated channel: {channel_id}"
+                            tr("record.cancelled_deactivated_id", channel_id=channel_id)
                         )
                         # Remove progress data
                         async with channel_progress_lock:
@@ -2226,7 +2288,7 @@ async def manage_recording_tasks():
                 for channel in new_channels:
                     channel_id = str(channel.get("id"))
                     if not channel_id:
-                        logger.warning("Channel ID is missing in configuration.")
+                        logger.warning(tr("record.channel_id_missing"))
                         continue
                     if channel_id not in active_tasks:
                         if channel.get("active", "on") == "on":
@@ -2248,14 +2310,14 @@ async def manage_recording_tasks():
                             active_tasks[channel_id] = task
                             active_channels += 1
                             logger.info(
-                                f"Started recording task for new active channel: {channel.get('name', 'Unknown')}"
+                                tr("record.started_new_active_channel", channel_name=channel.get("name", tr("common.unknown")))
                             )
                     else:
                         if channel.get("active", "on") == "off":
                             task = active_tasks.pop(channel_id)
                             task.cancel()
                             logger.info(
-                                f"Cancelled recording task for deactivated channel: {channel.get('name', 'Unknown')}"
+                                tr("record.cancelled_deactivated_name", channel_name=channel.get("name", tr("common.unknown")))
                             )
                             # Remove progress data
                             async with channel_progress_lock:
@@ -2264,7 +2326,7 @@ async def manage_recording_tasks():
                             active_channels += 1
 
                 if active_channels == 0:
-                    logger.info("All channels are inactive. No active recordings.")
+                    logger.info(tr("record.all_inactive"))
 
                 # Wait for shutdown event or 10 seconds
                 try:
@@ -2272,7 +2334,7 @@ async def manage_recording_tasks():
                 except asyncio.TimeoutError:
                     continue
         except asyncio.CancelledError:
-            logger.info("Recording management task was cancelled.")
+            logger.info(tr("record.management_cancelled"))
         finally:
             active_recording_tasks = list(active_tasks.values())
             if active_recording_tasks:
@@ -2284,8 +2346,7 @@ async def manage_recording_tasks():
                     await asyncio.gather(*done, return_exceptions=True)
                 if pending:
                     logger.warning(
-                        "Timed out waiting for recording tasks to finalize. "
-                        "Cancelling remaining tasks."
+                        tr("record.shutdown_wait_timeout")
                     )
                     for task in pending:
                         task.cancel()
@@ -2293,7 +2354,7 @@ async def manage_recording_tasks():
 
 
 def handle_shutdown():
-    logger.info("Received shutdown signal. Shutting down...")
+    logger.info(tr("record.shutdown_signal"))
     shutdown_event.set()
 
 
@@ -2318,12 +2379,12 @@ async def display_progress():
                     for progress_data in channel_progress.values():
                         # Create a table for each channel
                         table = Table(show_header=True, header_style="bold magenta")
-                        table.add_column("Channel", style="cyan", no_wrap=True)
-                        table.add_column("Bitrate")
-                        table.add_column("Download Speed")
-                        table.add_column("Total Size")
-                        table.add_column("Out Time")
-                        table.add_column("Start Time")
+                        table.add_column(tr("record.table_channel"), style="cyan", no_wrap=True)
+                        table.add_column(tr("record.table_bitrate"))
+                        table.add_column(tr("record.table_download_speed"))
+                        table.add_column(tr("record.table_total_size"))
+                        table.add_column(tr("record.table_out_time"))
+                        table.add_column(tr("record.table_start_time"))
 
                         table.add_row(
                             progress_data.get("channel_name", "Unknown"),
@@ -2342,7 +2403,7 @@ async def display_progress():
                 else:
                     # Show a message if no channels are recording
                     channel_panels.append(
-                        Panel("No active recordings.", title="Recording Progress")
+                        Panel(tr("record.no_active_recordings"), title=tr("record.progress_title"))
                     )
 
             # Group all channel panels together
@@ -2362,7 +2423,7 @@ async def display_progress():
 
             # Update the log panel
             log_text = Text("\n".join(log_messages))
-            layout["upper"].update(Panel(log_text, title="Logs"))
+            layout["upper"].update(Panel(log_text, title=tr("record.logs_title")))
 
             await asyncio.sleep(0.1)
 
@@ -2383,19 +2444,19 @@ async def main() -> None:
     try:
         await manage_recording_tasks()
     except KeyboardInterrupt:
-        logger.info("Received KeyboardInterrupt. Shutting down...")
+        logger.info(tr("record.keyboard_interrupt"))
         handle_shutdown()
         # Wait a moment to allow tasks to clean up
         await asyncio.sleep(0.1)
     except asyncio.CancelledError:
-        logger.info("Main task was cancelled.")
+        logger.info(tr("record.main_cancelled"))
     except Exception as e:
-        logger.exception(f"An error occurred: {e}")
+        logger.exception(tr("record.unhandled_error", error=e))
     finally:
         # Wait for display_progress to process remaining logs
         shutdown_event.set()
         await display_task
-        logger.info("Recorder has been shut down.")
+        logger.info(tr("record.shutdown_complete"))
 
 
 if __name__ == "__main__":

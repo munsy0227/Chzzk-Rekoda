@@ -10,6 +10,9 @@ if ! command -v uv > /dev/null 2>&1; then
     echo "uv installed successfully. Now continuing..."
 fi
 
+echo "Select language"
+uv run python scripts/select_language.py
+
 echo "Starting configuration"
 ./settings
 echo "Configuration completed!"
