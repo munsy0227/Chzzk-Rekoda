@@ -50,6 +50,7 @@ DEFAULT_RECORDING_SPLIT_MINUTES = 0
 MAX_RECORDING_SPLIT_MINUTES = 10080
 FFMPEG_FINALIZE_TIMEOUT_SECONDS = 60
 RECORDING_SHUTDOWN_TIMEOUT_SECONDS = 90
+ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 
 # Global console instance for Rich
 console = Console()
@@ -1175,7 +1176,7 @@ def probe_av1_encoder(
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=size=64x64:rate=1",
+            ENCODER_PROBE_TESTSRC,
             "-frames:v",
             "1",
         ]
@@ -1368,7 +1369,7 @@ def probe_hevc_encoder(
             "-f",
             "lavfi",
             "-i",
-            "testsrc2=size=64x64:rate=1",
+            ENCODER_PROBE_TESTSRC,
             "-frames:v",
             "1",
         ]
