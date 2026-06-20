@@ -3,6 +3,7 @@ import json
 import re
 import tempfile
 from copy import deepcopy
+from urllib.parse import urlparse
 
 # File path settings
 script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -16,6 +17,7 @@ DEFAULT_OUTPUT_FORMAT = "ts"
 ALLOWED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
 DEFAULT_RECORDING_SPLIT_MINUTES = 0
 MAX_RECORDING_SPLIT_MINUTES = 10080
+DEFAULT_DOH_URL = "https://dns.adguard-dns.com/dns-query"
 
 default_config = {
     "channels": [],
@@ -40,6 +42,10 @@ default_config = {
     },
     "log_enabled": True,
     "cookies": {"NID_SES": "", "NID_AUT": ""},
+    "dns_settings": {
+        "enable": False,
+        "doh_url": DEFAULT_DOH_URL,
+    },
 }
 
 
@@ -101,6 +107,27 @@ def normalize_bitrate(value, default):
 def normalize_output_format(value):
     text = str(value or DEFAULT_OUTPUT_FORMAT).strip().lower().lstrip(".")
     return text if text in ALLOWED_OUTPUT_FORMATS else DEFAULT_OUTPUT_FORMAT
+
+
+def normalize_doh_url(value):
+    text = CONTROL_CHARS.sub("", str(value or DEFAULT_DOH_URL)).strip()
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return DEFAULT_DOH_URL
+    if parsed.scheme != "https" or not parsed.hostname:
+        return DEFAULT_DOH_URL
+    return text
+
+
+def normalize_dns_settings(value):
+    settings = deep_merge_defaults(
+        value if isinstance(value, dict) else {},
+        default_config["dns_settings"],
+    )
+    settings["enable"] = bool(settings.get("enable"))
+    settings["doh_url"] = normalize_doh_url(settings.get("doh_url"))
+    return settings
 
 
 def format_split_interval(minutes):
@@ -194,6 +221,7 @@ def normalize_config(config):
         "NID_AUT": sanitize_cookie(cookies.get("NID_AUT", "")),
     }
     config["log_enabled"] = bool(config.get("log_enabled", True))
+    config["dns_settings"] = normalize_dns_settings(config.get("dns_settings"))
     return config
 
 
@@ -336,8 +364,9 @@ while True:
         "\n3. HEVC Settings (High Efficiency Video Coding)"
         "\n4. AV1 Settings"
         "\n5. Cookie Settings (for adult verification)"
-        "\n6. Toggle Logging"
-        "\n7. Quit"
+        "\n6. DNS-over-HTTPS Settings"
+        "\n7. Toggle Logging"
+        "\n8. Quit"
     )
     choice = str(input("Enter the number you want to execute: "))
 
@@ -732,11 +761,51 @@ while True:
         print("Cookie information has been successfully saved.")
 
     elif choice == "6":
+        while True:
+            dns_settings = config["dns_settings"]
+            print("\n--- DNS-over-HTTPS Settings ---")
+            print(f"Status: {'[Enabled]' if dns_settings['enable'] else '[Disabled]'}")
+            print(f"DoH URL: {dns_settings['doh_url']}")
+            print("-" * 30)
+            print("1. Toggle Enable/Disable")
+            print("2. Set DNS-over-HTTPS URL")
+            print("3. Reset to Default URL")
+            print("4. Go Back")
+
+            choice6 = str(input("Enter the number you want to execute: "))
+
+            if choice6 == "1":
+                dns_settings["enable"] = not dns_settings["enable"]
+                save_config(config)
+                print(
+                    f"DNS-over-HTTPS has been "
+                    f"{'enabled' if dns_settings['enable'] else 'disabled'}."
+                )
+
+            elif choice6 == "2":
+                new_url = normalize_doh_url(
+                    input("Enter the DNS-over-HTTPS URL: ")
+                )
+                dns_settings["doh_url"] = new_url
+                save_config(config)
+                print(f"DNS-over-HTTPS URL has been changed to {new_url}.")
+
+            elif choice6 == "3":
+                dns_settings["doh_url"] = DEFAULT_DOH_URL
+                save_config(config)
+                print(f"DNS-over-HTTPS URL has been reset to {DEFAULT_DOH_URL}.")
+
+            elif choice6 == "4":
+                break
+            else:
+                try_again()
+
+    elif choice == "7":
         config["log_enabled"] = not config["log_enabled"]
         save_config(config)
         print(f"Logging has been {'enabled' if config['log_enabled'] else 'disabled'}.")
 
-    elif choice == "7":
+    elif choice == "8":
         print("Exiting the settings.")
         break
     else:

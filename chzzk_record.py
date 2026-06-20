@@ -13,10 +13,13 @@ import sys
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse
 
 import aiofiles
 import aiohttp
 import orjson
+
+from dns_over_https import install_doh_dns
 
 if platform.system() != "Windows":
     import uvloop
@@ -35,6 +38,8 @@ from rich.text import Text
 BASE_DIR = Path(__file__).resolve().parent
 CONFIG_FILE_PATH = BASE_DIR / "config.json"
 LOG_FILE_PATH = BASE_DIR / "log.log"
+DEFAULT_DOH_URL = "https://dns.adguard-dns.com/dns-query"
+STREAMLINK_DNS_PATCH_DIR = BASE_DIR / "streamlink_dns_patch"
 
 DEFAULT_RESCAN_INTERVAL_SECONDS = 60
 MIN_RESCAN_INTERVAL_SECONDS = 1
@@ -58,15 +63,43 @@ log_queue: asyncio.Queue = asyncio.Queue()
 
 
 # Helper function to load log_enabled
-def get_log_enabled() -> bool:
+def load_config_sync() -> Dict[str, Any]:
     if os.path.exists(CONFIG_FILE_PATH):
         try:
             with open(CONFIG_FILE_PATH, "rb") as f:
                 config = orjson.loads(f.read())
-                return config.get("log_enabled", True)
+                return config if isinstance(config, dict) else {}
         except Exception:
             pass
-    return True
+    return {}
+
+
+def get_log_enabled() -> bool:
+    return bool(load_config_sync().get("log_enabled", True))
+
+
+def normalize_doh_url(value: Any) -> str:
+    text = str(value or DEFAULT_DOH_URL).strip()
+    try:
+        parsed = urlparse(text)
+    except ValueError:
+        return DEFAULT_DOH_URL
+    if parsed.scheme != "https" or not parsed.hostname:
+        return DEFAULT_DOH_URL
+    return text
+
+
+def normalize_dns_settings(value: Any) -> Dict[str, Any]:
+    defaults = {"enable": False, "doh_url": DEFAULT_DOH_URL}
+    settings = defaults | value if isinstance(value, dict) else defaults
+    return {
+        "enable": bool(settings.get("enable")),
+        "doh_url": normalize_doh_url(settings.get("doh_url")),
+    }
+
+
+def get_dns_settings_sync() -> Dict[str, Any]:
+    return normalize_dns_settings(load_config_sync().get("dns_settings"))
 
 
 # Function to toggle log_enabled
@@ -143,6 +176,22 @@ def setup_logger() -> logging.Logger:
 
 
 logger = setup_logger()
+
+
+def install_internal_dns_resolver() -> None:
+    dns_settings = get_dns_settings_sync()
+    if not dns_settings["enable"]:
+        return
+
+    doh_url = dns_settings["doh_url"]
+    try:
+        install_doh_dns(url=doh_url)
+        logger.info(f"Using DNS-over-HTTPS resolver: {doh_url}")
+    except Exception as e:
+        logger.warning(f"Failed to install DNS-over-HTTPS resolver: {e}")
+
+
+install_internal_dns_resolver()
 
 print(
     "Chzzk Rekoda made by munsy0227\n"
@@ -403,6 +452,23 @@ def isolated_subprocess_kwargs() -> Dict[str, Any]:
     return {"start_new_session": True}
 
 
+def streamlink_subprocess_env() -> Dict[str, str]:
+    env = os.environ.copy()
+    dns_settings = get_dns_settings_sync()
+    if not dns_settings["enable"]:
+        return env
+
+    python_paths = [str(STREAMLINK_DNS_PATCH_DIR), str(BASE_DIR)]
+    existing_python_path = env.get("PYTHONPATH")
+    if existing_python_path:
+        python_paths.append(existing_python_path)
+
+    env["PYTHONPATH"] = os.pathsep.join(python_paths)
+    env["CHZZK_REKODA_ENABLE_DOH_DNS"] = "1"
+    env["CHZZK_REKODA_DOH_DNS_URL"] = dns_settings["doh_url"]
+    return env
+
+
 async def create_isolated_subprocess_exec(
     *cmd: str, **kwargs: Any
 ) -> asyncio.subprocess.Process:
@@ -473,6 +539,7 @@ class RecordingProcessSandbox:
             *command,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=streamlink_subprocess_env(),
         )
         return self.stream_process
 
