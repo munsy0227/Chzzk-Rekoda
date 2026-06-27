@@ -80,17 +80,19 @@ If the settings screen closed after installation, run `settings.bat` on Windows 
    - **Enter `1` and press Enter**: Channel Settings
    - **Enter `1` and press Enter**: Add Channel
 
-2. Enter the **streamer unique ID**.
-   - It is the letters and numbers at the end of the CHZZK channel URL.
-   - Example: if the URL is `https://chzzk.naver.com/abc1234`, the ID is `abc1234`.
+2. Choose how to **add a channel**.
+   - **Search by channel name**: enter a search term, then select a channel from results that show both its name and ID.
+   - **Add directly by channel ID**: enter the ID at the end of the CHZZK channel URL, and the official channel name is retrieved automatically.
 
-3. Enter the **streamer name**.
-   - You can use any nickname that is easy for you to recognize.
+3. Verify the **channel name and ID** that were found.
+   - An already registered ID is marked in the search results and cannot be added twice.
+   - If another registered ID has the same name, its existing ID is shown so you can distinguish channels with identical names.
 
 4. Enter the **save path**.
-   - If you press Enter without typing anything, recordings are saved in the program folder.
+   - If you press Enter without typing anything, a folder named after the official channel is created inside the project and recordings are saved there.
+   - You can enter another folder name or path when needed.
 
-5. If the information you entered is correct, enter `Y`.
+5. If the displayed channel name, ID, and save path are correct, enter `Y`.
 
 > **Tip:** To record broadcasts that require adult or membership verification, open **5. NAVER Cookie Settings** and either sign in to NAVER directly in a new Chrome, Microsoft Edge, or Firefox window to import the cookies (NID_AUT, NID_SES), or enter the values manually. The browser login method may require an internet connection to prepare a compatible driver on first use.
 > The save extension can be selected from `ts`, `mkv`, or `webm` in **2. Recording Settings**, and the same menu lets you set whether recording files are split every few hours or minutes. AV1 encoding can be enabled in **4. AV1 Settings**. If you have DNS problems, set and enable a DoH URL in **6. DNS-over-HTTPS Settings**. The language can be changed in **8. Language Settings** among Korean, English, Simplified Chinese, Traditional Chinese, and Japanese.
@@ -118,7 +120,7 @@ If a black window is open and text is appearing, it is working normally.
 ## FAQ
 
 **Q. Where are the recorded files?**
-A. If you did not set a separate save path during setup, they are saved inside the project folder.
+A. If you did not set a separate save path, recordings are saved in the official channel-name folder inside the project.
 
 **Q. How do I turn off the program?**
 A. Close the running black window (terminal), or click the window and press `Ctrl` + `C` on the keyboard.

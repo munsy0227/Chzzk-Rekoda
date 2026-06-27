@@ -3,7 +3,9 @@ import json
 import re
 import tempfile
 from copy import deepcopy
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
 from i18n import (
     DEFAULT_LANGUAGE,
@@ -32,6 +34,14 @@ DEFAULT_RECORDING_SPLIT_MINUTES = 0
 MAX_RECORDING_SPLIT_MINUTES = 10080
 DEFAULT_DOH_URL = "https://dns.adguard-dns.com/dns-query"
 NAVER_LOGIN_URL = "https://nid.naver.com/nidlogin.login"
+CHZZK_CHANNEL_SEARCH_URL = (
+    "https://api.chzzk.naver.com/service/v1/search/channels"
+)
+CHZZK_CHANNEL_DETAIL_URL = (
+    "https://api.chzzk.naver.com/service/v1/channels/{channel_id}"
+)
+CHZZK_API_TIMEOUT_SECONDS = 10
+CHZZK_SEARCH_RESULT_LIMIT = 20
 AUTH_COOKIE_NAMES = ("NID_AUT", "NID_SES")
 BROWSER_LOGIN_OPTIONS = {
     "1": ("chrome", "Chrome"),
@@ -74,6 +84,15 @@ SAFE_CHANNEL_ID = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 SAFE_FFMPEG_VALUE = re.compile(r"^[A-Za-z0-9_.-]{1,32}$")
 SAFE_BITRATE = re.compile(r"^\d+[kKmM]?$")
 CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+INVALID_FOLDER_CHARS = re.compile(r'[<>:"/\\|?*]')
+WINDOWS_RESERVED_NAMES = {
+    "CON",
+    "PRN",
+    "AUX",
+    "NUL",
+    *(f"COM{number}" for number in range(1, 10)),
+    *(f"LPT{number}" for number in range(1, 10)),
+}
 ALLOWED_ENCODERS = {
     "libx265",
     "hevc_nvenc",
@@ -149,6 +168,140 @@ def normalize_dns_settings(value):
     settings["enable"] = bool(settings.get("enable"))
     settings["doh_url"] = normalize_doh_url(settings.get("doh_url"))
     return settings
+
+
+def request_chzzk_api(url, language, params=None):
+    if params:
+        url = f"{url}?{urlencode(params)}"
+    request = Request(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "application/json",
+            "Accept-Language": language,
+            "Referer": "https://chzzk.naver.com/",
+            "Origin": "https://chzzk.naver.com",
+        },
+    )
+    try:
+        with urlopen(request, timeout=CHZZK_API_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (
+        HTTPError,
+        URLError,
+        TimeoutError,
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+    ) as error:
+        message = str(error).strip().splitlines()[0] or type(error).__name__
+        return None, message
+
+    if not isinstance(payload, dict) or payload.get("code") != 200:
+        message = payload.get("message") if isinstance(payload, dict) else None
+        return None, str(
+            message or translate(language, "settings.api_invalid_response")
+        )
+
+    content = payload.get("content")
+    if not isinstance(content, dict):
+        return None, translate(language, "settings.api_missing_content")
+    return content, None
+
+
+def search_chzzk_channels(keyword, language):
+    content, error = request_chzzk_api(
+        CHZZK_CHANNEL_SEARCH_URL,
+        language,
+        {
+            "keyword": keyword,
+            "offset": 0,
+            "size": CHZZK_SEARCH_RESULT_LIMIT,
+            "withFirstChannelContent": "false",
+        },
+    )
+    if error:
+        return [], error
+
+    data = content.get("data")
+    if not isinstance(data, list):
+        return [], translate(language, "settings.api_invalid_response")
+
+    results = []
+    seen_ids = set()
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        channel = item.get("channel")
+        if not isinstance(channel, dict):
+            continue
+        channel_id = str(channel.get("channelId", "")).strip()
+        name = CONTROL_CHARS.sub(
+            "", str(channel.get("channelName", ""))
+        ).strip()
+        if (
+            not SAFE_CHANNEL_ID.fullmatch(channel_id)
+            or not name
+            or channel_id in seen_ids
+        ):
+            continue
+        seen_ids.add(channel_id)
+        results.append({"id": channel_id, "name": name})
+    return results, None
+
+
+def fetch_chzzk_channel(channel_id, language):
+    content, error = request_chzzk_api(
+        CHZZK_CHANNEL_DETAIL_URL.format(channel_id=channel_id),
+        language,
+    )
+    if error:
+        return None, error
+
+    returned_id = str(content.get("channelId", "")).strip()
+    name = CONTROL_CHARS.sub(
+        "", str(content.get("channelName", ""))
+    ).strip()
+    if returned_id != channel_id or not name:
+        return None, translate(language, "settings.api_invalid_channel_data")
+    return {"id": returned_id, "name": name}, None
+
+
+def find_channel_by_id(channels, channel_id):
+    return next(
+        (channel for channel in channels if channel.get("id") == channel_id),
+        None,
+    )
+
+
+def channels_with_name(channels, name, exclude_id=None):
+    normalized_name = name.casefold()
+    return [
+        channel
+        for channel in channels
+        if channel.get("id") != exclude_id
+        and str(channel.get("name", "")).casefold() == normalized_name
+    ]
+
+
+def safe_channel_folder_name(name, channel_id):
+    folder_name = INVALID_FOLDER_CHARS.sub("_", CONTROL_CHARS.sub("", name))
+    folder_name = folder_name.strip().strip(".")
+    if folder_name.split(".", 1)[0].upper() in WINDOWS_RESERVED_NAMES:
+        folder_name = f"_{folder_name}"
+    return folder_name[:120] or channel_id
+
+
+def create_output_directory(output_dir):
+    expanded_path = os.path.expanduser(output_dir)
+    if not os.path.isabs(expanded_path):
+        expanded_path = os.path.join(script_directory, expanded_path)
+    try:
+        os.makedirs(expanded_path, exist_ok=True)
+    except OSError as error:
+        print(t("settings.output_dir_create_error", error=error))
+        return False
+    return True
 
 
 def format_split_interval(minutes, language=DEFAULT_LANGUAGE):
@@ -490,6 +643,157 @@ def select_language(value):
     return None
 
 
+def print_duplicate_channel(channel):
+    print(
+        t(
+            "settings.channel_already_registered",
+            channel_id=channel["id"],
+            name=channel["name"],
+            output_dir=channel["output_dir"],
+        )
+    )
+
+
+def choose_channel_by_search():
+    keyword = str(input(t("settings.prompt_search_keyword"))).strip()
+    if not keyword:
+        print(t("settings.empty_search_keyword"))
+        return None
+
+    results, error = search_chzzk_channels(keyword, current_language())
+    if error:
+        print(t("settings.channel_search_failed", error=error))
+        return None
+    if not results:
+        print(t("settings.no_search_results"))
+        return None
+
+    print(t("settings.channel_search_results"))
+    for index, channel in enumerate(results, start=1):
+        registered = find_channel_by_id(config["channels"], channel["id"])
+        status = t("settings.already_registered_marker") if registered else ""
+        print(
+            t(
+                "settings.channel_search_result",
+                index=index,
+                name=channel["name"],
+                channel_id=channel["id"],
+                status=status,
+            )
+        )
+
+    selection = str(input(t("settings.prompt_search_result"))).strip()
+    if selection == "0":
+        return None
+    try:
+        selected_index = int(selection)
+    except ValueError:
+        print(t("settings.invalid_channel_number"))
+        return None
+    if not 1 <= selected_index <= len(results):
+        print(t("settings.invalid_channel_number"))
+        return None
+    selected = results[selected_index - 1]
+
+    duplicate = find_channel_by_id(config["channels"], selected["id"])
+    if duplicate:
+        print_duplicate_channel(duplicate)
+        return None
+    return selected
+
+
+def choose_channel_by_id():
+    channel_id = str(input(t("settings.prompt_channel_id"))).strip()
+    if not SAFE_CHANNEL_ID.fullmatch(channel_id):
+        print(t("settings.invalid_channel_id"))
+        return None
+
+    duplicate = find_channel_by_id(config["channels"], channel_id)
+    if duplicate:
+        print_duplicate_channel(duplicate)
+        return None
+
+    print(t("settings.channel_lookup_in_progress"))
+    channel, error = fetch_chzzk_channel(channel_id, current_language())
+    if error:
+        print(t("settings.channel_lookup_failed", error=error))
+        return None
+    print(
+        t(
+            "settings.channel_lookup_result",
+            channel_id=channel["id"],
+            name=channel["name"],
+        )
+    )
+    return channel
+
+
+def add_selected_channel(channel):
+    channel_id = channel["id"]
+    name = channel["name"]
+    duplicate_names = channels_with_name(
+        config["channels"], name, exclude_id=channel_id
+    )
+    if duplicate_names:
+        duplicate_ids = ", ".join(item["id"] for item in duplicate_names)
+        print(
+            t(
+                "settings.duplicate_channel_name_warning",
+                name=name,
+                channel_ids=duplicate_ids,
+            )
+        )
+
+    default_output_dir = safe_channel_folder_name(name, channel_id)
+    output_dir = str(
+        input(
+            t(
+                "settings.prompt_output_dir",
+                default_output_dir=default_output_dir,
+            )
+        )
+    ).strip() or default_output_dir
+
+    while True:
+        answer = str(
+            input(
+                t(
+                    "settings.confirm_channel",
+                    channel_id=channel_id,
+                    name=name,
+                    output_dir=output_dir,
+                )
+            )
+        ).strip()
+        if answer.lower() == "y":
+            duplicate = find_channel_by_id(config["channels"], channel_id)
+            if duplicate:
+                print_duplicate_channel(duplicate)
+                return
+            if not create_output_directory(output_dir):
+                return
+
+            current_count = len(config["channels"])
+            identifier = f"ch{current_count + 1}"
+            config["channels"].append(
+                {
+                    "id": channel_id,
+                    "name": name,
+                    "output_dir": output_dir,
+                    "identifier": identifier,
+                    "active": "on",
+                }
+            )
+            config["delays"][identifier] = current_count
+            save_config(config)
+            print(t("settings.channel_added"))
+            return
+        if answer.lower() == "n":
+            print(t("settings.reenter"))
+            return
+        try_again()
+
+
 while True:
     print(t("settings.main_title"))
     print(t("settings.main_menu"))
@@ -500,48 +804,20 @@ while True:
             print(t("settings.channel_menu"))
             choice1 = str(input(t("settings.prompt_choice"))).strip()
             if choice1 == "1":
-                channel_id = str(input(t("settings.prompt_channel_id"))).strip()
-                if not SAFE_CHANNEL_ID.fullmatch(channel_id):
-                    print(t("settings.invalid_channel_id"))
+                print(t("settings.add_channel_menu"))
+                add_choice = str(input(t("settings.prompt_choice"))).strip()
+                if add_choice == "1":
+                    selected_channel = choose_channel_by_search()
+                elif add_choice == "2":
+                    selected_channel = choose_channel_by_id()
+                elif add_choice == "3":
                     continue
-                name = CONTROL_CHARS.sub(
-                    "", str(input(t("settings.prompt_streamer_name")))
-                ).strip() or channel_id
-                output_dir = str(input(t("settings.prompt_output_dir"))).strip() or "."
-
-                while True:
-                    answer = str(
-                        input(
-                            t(
-                                "settings.confirm_channel",
-                                channel_id=channel_id,
-                                name=name,
-                                output_dir=output_dir,
-                            )
-                        )
-                    ).strip()
-                    if answer.lower() == "y":
-                        current_count = len(config["channels"])
-                        identifier = f"ch{current_count + 1}"
-
-                        config["channels"].append(
-                            {
-                                "id": channel_id,
-                                "name": name,
-                                "output_dir": output_dir,
-                                "identifier": identifier,
-                                "active": "on",
-                            }
-                        )
-                        config["delays"][identifier] = current_count
-
-                        save_config(config)
-                        print(t("settings.channel_added"))
-                        break
-                    if answer.lower() == "n":
-                        print(t("settings.reenter"))
-                        break
+                else:
                     try_again()
+                    continue
+
+                if selected_channel is not None:
+                    add_selected_channel(selected_channel)
 
             elif choice1 == "2":
                 if not config["channels"]:
