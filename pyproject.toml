@@ -10,6 +10,7 @@ dependencies = [
     "dnspython>=2.8.0",
     "orjson",
     "rich",
+    "selenium>=4.6",
     "streamlink",
     "uvloop; sys_platform != 'win32'",
 ]

@@ -92,7 +92,7 @@ Streamlink と FFmpeg を使用して作られた、Windows、macOS、Linux 対�
 
 5. 入力した情報が正しければ `Y` を入力してください。
 
-> **ヒント:** 成人認証が必要な配信を録画するには、設定メニューの **5. Cookie Settings** で Cookie 値（NID_AUT、NID_SES）を入力する必要があります。
+> **ヒント:** 成人認証またはメンバーシップ認証が必要な配信を録画するには、設定メニューの **5. NAVER Cookie 設定** で、新しい Chrome、Microsoft Edge、または Firefox ウィンドウから NAVER に直接ログインして Cookie（NID_AUT、NID_SES）を取得するか、Cookie 値を手動で入力してください。ブラウザログイン方式の初回利用時は、互換ドライバーの準備にインターネット接続が必要な場合があります。
 > 保存拡張子は **2. Recording Settings** で `ts`、`mkv`、`webm` から選択でき、同じメニューで録画ファイルを何時間または何分ごとに分割するかも設定できます。AV1 エンコードは **4. AV1 Settings** で有効にできます。DNS に問題がある場合は、**6. DNS-over-HTTPS Settings** で DoH アドレスを設定して有効にできます。言語は **8. Language Settings** で韓国語、英語、簡体字中国語、繁体字中国語、日本語から選択できます。
 
 ---

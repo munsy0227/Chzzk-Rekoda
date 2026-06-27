@@ -65,7 +65,7 @@ TRANSLATIONS = {
             "\n2. 녹화 설정"
             "\n3. HEVC 설정 (고효율 비디오 코딩)"
             "\n4. AV1 설정"
-            "\n5. 쿠키 설정 (성인 인증용)"
+            "\n5. 네이버 쿠키 설정 (성인 인증, 맴버십 인증)"
             "\n6. DNS-over-HTTPS 설정"
             "\n7. 로그 켜기/끄기"
             "\n8. 언어 설정"
@@ -182,6 +182,38 @@ TRANSLATIONS = {
         "settings.prompt_ses": "SES를 입력하세요: ",
         "settings.prompt_aut": "AUT를 입력하세요: ",
         "settings.cookies_saved": "쿠키 정보가 저장되었습니다.",
+        "settings.cookie_title": "--- 쿠키 설정 ---",
+        "settings.cookie_status": "인증 쿠키 저장 상태: {status}",
+        "settings.cookie_menu": (
+            "1. 브라우저 로그인으로 가져오기"
+            "\n2. 직접 입력"
+            "\n3. 저장된 쿠키 삭제"
+            "\n4. 뒤로 가기"
+        ),
+        "settings.browser_menu": (
+            "\n1. Chrome"
+            "\n2. Microsoft Edge"
+            "\n3. Firefox"
+            "\n4. 뒤로 가기"
+        ),
+        "settings.browser_login_notice": (
+            "{browser} 새 창을 엽니다. 새 창에서 NAVER 계정에 직접 로그인하세요. "
+            "이 프로그램은 아이디나 비밀번호를 입력받지 않습니다."
+        ),
+        "settings.browser_login_wait": (
+            "브라우저에서 로그인을 완료한 뒤 여기로 돌아와 Enter를 누르세요: "
+        ),
+        "settings.browser_cookies_missing": (
+            "브라우저에서 다음 인증 쿠키를 찾지 못했습니다: {cookies}. "
+            "NAVER 로그인을 완료했는지 확인하세요."
+        ),
+        "settings.browser_cookies_saved": (
+            "브라우저의 NID_AUT 및 NID_SES 쿠키를 저장했습니다."
+        ),
+        "settings.browser_login_error": (
+            "브라우저 로그인을 시작하거나 쿠키를 가져오지 못했습니다: {error}"
+        ),
+        "settings.cookies_deleted": "저장된 인증 쿠키를 삭제했습니다.",
         "settings.dns_title": "--- DNS-over-HTTPS 설정 ---",
         "settings.doh_url": "DoH URL: {url}",
         "settings.dns_menu": (
@@ -406,7 +438,7 @@ TRANSLATIONS = {
             "\n2. Recording Settings"
             "\n3. HEVC Settings (High Efficiency Video Coding)"
             "\n4. AV1 Settings"
-            "\n5. Cookie Settings (for adult verification)"
+            "\n5. NAVER Cookie Settings (adult and membership verification)"
             "\n6. DNS-over-HTTPS Settings"
             "\n7. Toggle Logging"
             "\n8. Language Settings"
@@ -437,7 +469,7 @@ TRANSLATIONS = {
             "\n2. 录制设置"
             "\n3. HEVC 设置（高效率视频编码）"
             "\n4. AV1 设置"
-            "\n5. Cookie 设置（用于成人认证）"
+            "\n5. NAVER Cookie 设置（成人认证、会员认证）"
             "\n6. DNS-over-HTTPS 设置"
             "\n7. 开启/关闭日志"
             "\n8. 语言设置"
@@ -468,7 +500,7 @@ TRANSLATIONS = {
             "\n2. 錄製設定"
             "\n3. HEVC 設定（高效率視訊編碼）"
             "\n4. AV1 設定"
-            "\n5. Cookie 設定（用於成人驗證）"
+            "\n5. NAVER Cookie 設定（成人驗證、會員驗證）"
             "\n6. DNS-over-HTTPS 設定"
             "\n7. 開啟/關閉記錄"
             "\n8. 語言設定"
@@ -499,7 +531,7 @@ TRANSLATIONS = {
             "\n2. 録画設定"
             "\n3. HEVC 設定（高効率ビデオ符号化）"
             "\n4. AV1 設定"
-            "\n5. Cookie 設定（成人認証用）"
+            "\n5. NAVER Cookie 設定（成人認証・メンバーシップ認証）"
             "\n6. DNS-over-HTTPS 設定"
             "\n7. ログのオン/オフ"
             "\n8. 言語設定"
@@ -638,6 +670,16 @@ TRANSLATIONS["en"].update({
     "settings.prompt_ses": "Enter SES: ",
     "settings.prompt_aut": "Enter AUT: ",
     "settings.cookies_saved": "Cookie information has been successfully saved.",
+    "settings.cookie_title": "--- Cookie Settings ---",
+    "settings.cookie_status": "Authentication cookie status: {status}",
+    "settings.cookie_menu": "1. Import via Browser Login\n2. Enter Manually\n3. Delete Saved Cookies\n4. Go Back",
+    "settings.browser_menu": "\n1. Chrome\n2. Microsoft Edge\n3. Firefox\n4. Go Back",
+    "settings.browser_login_notice": "A new {browser} window will open. Sign in to your NAVER account directly in that window. This program does not collect your ID or password.",
+    "settings.browser_login_wait": "After completing the login in the browser, return here and press Enter: ",
+    "settings.browser_cookies_missing": "The following authentication cookies were not found in the browser: {cookies}. Make sure you completed the NAVER login.",
+    "settings.browser_cookies_saved": "Saved the browser NID_AUT and NID_SES cookies.",
+    "settings.browser_login_error": "Could not start the browser login or import cookies: {error}",
+    "settings.cookies_deleted": "Deleted the saved authentication cookies.",
     "settings.dns_title": "--- DNS-over-HTTPS Settings ---",
     "settings.doh_url": "DoH URL: {url}",
     "settings.dns_menu": "1. Toggle Enable/Disable\n2. Set DNS-over-HTTPS URL\n3. Reset to Default URL\n4. Go Back",
@@ -810,6 +852,16 @@ TRANSLATIONS["zh-CN"].update({
     "settings.prompt_ses": "请输入 SES：",
     "settings.prompt_aut": "请输入 AUT：",
     "settings.cookies_saved": "Cookie 信息已成功保存。",
+    "settings.cookie_title": "--- Cookie 设置 ---",
+    "settings.cookie_status": "身份验证 Cookie 保存状态：{status}",
+    "settings.cookie_menu": "1. 通过浏览器登录导入\n2. 手动输入\n3. 删除已保存的 Cookie\n4. 返回",
+    "settings.browser_menu": "\n1. Chrome\n2. Microsoft Edge\n3. Firefox\n4. 返回",
+    "settings.browser_login_notice": "将打开新的 {browser} 窗口。请直接在该窗口中登录 NAVER 账号。本程序不会收集您的账号或密码。",
+    "settings.browser_login_wait": "在浏览器中完成登录后，请返回此处并按 Enter：",
+    "settings.browser_cookies_missing": "在浏览器中找不到以下身份验证 Cookie：{cookies}。请确认已完成 NAVER 登录。",
+    "settings.browser_cookies_saved": "已保存浏览器中的 NID_AUT 和 NID_SES Cookie。",
+    "settings.browser_login_error": "无法启动浏览器登录或导入 Cookie：{error}",
+    "settings.cookies_deleted": "已删除保存的身份验证 Cookie。",
     "settings.dns_title": "--- DNS-over-HTTPS 设置 ---",
     "settings.doh_url": "DoH URL：{url}",
     "settings.dns_menu": "1. 切换启用/禁用\n2. 设置 DNS-over-HTTPS URL\n3. 重置为默认 URL\n4. 返回",
@@ -901,6 +953,16 @@ TRANSLATIONS["zh-TW"].update({
     "settings.prompt_ses": "請輸入 SES：",
     "settings.prompt_aut": "請輸入 AUT：",
     "settings.cookies_saved": "Cookie 資訊已成功儲存。",
+    "settings.cookie_title": "--- Cookie 設定 ---",
+    "settings.cookie_status": "驗證 Cookie 儲存狀態：{status}",
+    "settings.cookie_menu": "1. 透過瀏覽器登入匯入\n2. 手動輸入\n3. 刪除已儲存的 Cookie\n4. 返回",
+    "settings.browser_menu": "\n1. Chrome\n2. Microsoft Edge\n3. Firefox\n4. 返回",
+    "settings.browser_login_notice": "將開啟新的 {browser} 視窗。請直接在該視窗中登入 NAVER 帳號。本程式不會收集您的帳號或密碼。",
+    "settings.browser_login_wait": "在瀏覽器中完成登入後，請返回此處並按 Enter：",
+    "settings.browser_cookies_missing": "在瀏覽器中找不到以下驗證 Cookie：{cookies}。請確認已完成 NAVER 登入。",
+    "settings.browser_cookies_saved": "已儲存瀏覽器中的 NID_AUT 和 NID_SES Cookie。",
+    "settings.browser_login_error": "無法啟動瀏覽器登入或匯入 Cookie：{error}",
+    "settings.cookies_deleted": "已刪除儲存的驗證 Cookie。",
     "settings.dns_title": "--- DNS-over-HTTPS 設定 ---",
     "settings.doh_url": "DoH URL：{url}",
     "settings.dns_menu": "1. 切換啟用/停用\n2. 設定 DNS-over-HTTPS URL\n3. 重設為預設 URL\n4. 返回",
@@ -992,6 +1054,16 @@ TRANSLATIONS["ja"].update({
     "settings.prompt_ses": "SES を入力してください: ",
     "settings.prompt_aut": "AUT を入力してください: ",
     "settings.cookies_saved": "Cookie 情報を保存しました。",
+    "settings.cookie_title": "--- Cookie 設定 ---",
+    "settings.cookie_status": "認証 Cookie の保存状態: {status}",
+    "settings.cookie_menu": "1. ブラウザログインから取得\n2. 手動入力\n3. 保存済み Cookie を削除\n4. 戻る",
+    "settings.browser_menu": "\n1. Chrome\n2. Microsoft Edge\n3. Firefox\n4. 戻る",
+    "settings.browser_login_notice": "新しい {browser} ウィンドウを開きます。そのウィンドウで NAVER アカウントに直接ログインしてください。このプログラムは ID やパスワードを収集しません。",
+    "settings.browser_login_wait": "ブラウザでログインを完了したら、ここに戻って Enter キーを押してください: ",
+    "settings.browser_cookies_missing": "ブラウザで次の認証 Cookie が見つかりませんでした: {cookies}。NAVER へのログインが完了しているか確認してください。",
+    "settings.browser_cookies_saved": "ブラウザの NID_AUT と NID_SES Cookie を保存しました。",
+    "settings.browser_login_error": "ブラウザログインを開始できないか、Cookie を取得できませんでした: {error}",
+    "settings.cookies_deleted": "保存済みの認証 Cookie を削除しました。",
     "settings.dns_title": "--- DNS-over-HTTPS 設定 ---",
     "settings.doh_url": "DoH URL: {url}",
     "settings.dns_menu": "1. 有効/無効を切り替え\n2. DNS-over-HTTPS URL を設定\n3. 既定 URL に戻す\n4. 戻る",

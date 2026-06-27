@@ -92,7 +92,7 @@ If the settings screen closed after installation, run `settings.bat` on Windows 
 
 5. If the information you entered is correct, enter `Y`.
 
-> **Tip:** To record broadcasts that require adult verification, enter the cookie values (NID_AUT, NID_SES) from **5. Cookie Settings** in the settings menu.
+> **Tip:** To record broadcasts that require adult or membership verification, open **5. NAVER Cookie Settings** and either sign in to NAVER directly in a new Chrome, Microsoft Edge, or Firefox window to import the cookies (NID_AUT, NID_SES), or enter the values manually. The browser login method may require an internet connection to prepare a compatible driver on first use.
 > The save extension can be selected from `ts`, `mkv`, or `webm` in **2. Recording Settings**, and the same menu lets you set whether recording files are split every few hours or minutes. AV1 encoding can be enabled in **4. AV1 Settings**. If you have DNS problems, set and enable a DoH URL in **6. DNS-over-HTTPS Settings**. The language can be changed in **8. Language Settings** among Korean, English, Simplified Chinese, Traditional Chinese, and Japanese.
 
 ---

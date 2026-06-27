@@ -92,7 +92,7 @@
 
 5. 如果輸入的資訊正確，請輸入 `Y`。
 
-> **提示：** 要錄製需要成人驗證的直播，需要在設定選單的 **5. Cookie Settings** 中輸入 Cookie 值（NID_AUT、NID_SES）。
+> **提示：** 要錄製需要成人驗證或會員驗證的直播，請在設定選單的 **5. NAVER Cookie 設定** 中選擇透過新的 Chrome、Microsoft Edge 或 Firefox 視窗直接登入 NAVER 並匯入 Cookie（NID_AUT、NID_SES），或手動輸入 Cookie 值。首次使用瀏覽器登入方式時，準備相容的驅動程式可能需要網路連線。
 > 儲存副檔名可在 **2. Recording Settings** 中從 `ts`、`mkv`、`webm` 中選擇，同一選單還可以設定是否每隔幾小時或幾分鐘分割錄製檔案。AV1 編碼可在 **4. AV1 Settings** 中啟用。遇到 DNS 問題時，可在 **6. DNS-over-HTTPS Settings** 中設定並啟用 DoH 地址。語言可在 **8. Language Settings** 中從韓語、英語、簡體中文、繁體中文、日語中選擇。
 
 ---

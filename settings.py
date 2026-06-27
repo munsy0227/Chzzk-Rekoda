@@ -31,6 +31,13 @@ ALLOWED_OUTPUT_FORMATS = {"ts", "mkv", "webm"}
 DEFAULT_RECORDING_SPLIT_MINUTES = 0
 MAX_RECORDING_SPLIT_MINUTES = 10080
 DEFAULT_DOH_URL = "https://dns.adguard-dns.com/dns-query"
+NAVER_LOGIN_URL = "https://nid.naver.com/nidlogin.login"
+AUTH_COOKIE_NAMES = ("NID_AUT", "NID_SES")
+BROWSER_LOGIN_OPTIONS = {
+    "1": ("chrome", "Chrome"),
+    "2": ("edge", "Microsoft Edge"),
+    "3": ("firefox", "Firefox"),
+}
 
 default_config = {
     "channels": [],
@@ -418,6 +425,55 @@ def print_language_menu():
         print(f"{idx}. {name} ({code})")
 
 
+def import_cookies_from_browser(browser):
+    driver = None
+    try:
+        from selenium import webdriver
+
+        driver_factories = {
+            "chrome": webdriver.Chrome,
+            "edge": webdriver.Edge,
+            "firefox": webdriver.Firefox,
+        }
+        driver = driver_factories[browser]()
+        driver.get(NAVER_LOGIN_URL)
+        input(t("settings.browser_login_wait"))
+
+        browser_cookies = {
+            cookie.get("name"): sanitize_cookie(cookie.get("value"))
+            for cookie in driver.get_cookies()
+            if cookie.get("name") in AUTH_COOKIE_NAMES
+        }
+        missing = [
+            name for name in AUTH_COOKIE_NAMES if not browser_cookies.get(name)
+        ]
+        if missing:
+            print(
+                t(
+                    "settings.browser_cookies_missing",
+                    cookies=", ".join(missing),
+                )
+            )
+            return False
+
+        config["cookies"] = {
+            name: browser_cookies[name] for name in AUTH_COOKIE_NAMES
+        }
+        save_config(config)
+        print(t("settings.browser_cookies_saved"))
+        return True
+    except Exception as error:
+        message = str(error).strip().splitlines()[0] or type(error).__name__
+        print(t("settings.browser_login_error", error=message))
+        return False
+    finally:
+        if driver is not None:
+            try:
+                driver.quit()
+            except Exception:
+                pass
+
+
 def select_language(value):
     text = value.strip()
     options = language_options()
@@ -798,12 +854,57 @@ while True:
                 try_again()
 
     elif choice == "5":
-        ses = sanitize_cookie(input(t("settings.prompt_ses")))
-        aut = sanitize_cookie(input(t("settings.prompt_aut")))
-        config["cookies"]["NID_SES"] = ses
-        config["cookies"]["NID_AUT"] = aut
-        save_config(config)
-        print(t("settings.cookies_saved"))
+        while True:
+            has_cookies = all(
+                config["cookies"].get(name) for name in AUTH_COOKIE_NAMES
+            )
+            print("\n" + t("settings.cookie_title"))
+            print(
+                t(
+                    "settings.cookie_status",
+                    status=state_label(current_language(), has_cookies),
+                )
+            )
+            print(t("settings.cookie_menu"))
+            cookie_choice = str(input(t("settings.prompt_choice"))).strip()
+
+            if cookie_choice == "1":
+                print(t("settings.browser_menu"))
+                browser_choice = str(
+                    input(t("settings.prompt_choice"))
+                ).strip()
+                browser_option = BROWSER_LOGIN_OPTIONS.get(browser_choice)
+                if browser_option is None:
+                    if browser_choice != "4":
+                        try_again()
+                    continue
+
+                browser, browser_name = browser_option
+                print(
+                    t(
+                        "settings.browser_login_notice",
+                        browser=browser_name,
+                    )
+                )
+                import_cookies_from_browser(browser)
+
+            elif cookie_choice == "2":
+                ses = sanitize_cookie(input(t("settings.prompt_ses")))
+                aut = sanitize_cookie(input(t("settings.prompt_aut")))
+                config["cookies"]["NID_SES"] = ses
+                config["cookies"]["NID_AUT"] = aut
+                save_config(config)
+                print(t("settings.cookies_saved"))
+
+            elif cookie_choice == "3":
+                config["cookies"] = {"NID_SES": "", "NID_AUT": ""}
+                save_config(config)
+                print(t("settings.cookies_deleted"))
+
+            elif cookie_choice == "4":
+                break
+            else:
+                try_again()
 
     elif choice == "6":
         while True:

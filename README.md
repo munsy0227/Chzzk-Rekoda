@@ -92,7 +92,7 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 
 5. 입력한 정보가 맞다면 `Y`를 입력하세요.
 
-> **팁:** 성인 인증이 필요한 방송을 녹화하려면 설정 메뉴의 **5번 (Cookie Settings)** 에서 쿠키값(NID_AUT, NID_SES)을 입력해야 합니다.
+> **팁:** 성인 인증이나 멤버십 인증이 필요한 방송을 녹화하려면 설정 메뉴의 **5번 (네이버 쿠키 설정)** 에서 Chrome, Microsoft Edge 또는 Firefox로 NAVER에 직접 로그인해 쿠키(NID_AUT, NID_SES)를 가져오거나 쿠키값을 수동으로 입력하세요. 브라우저 로그인 방식은 새 브라우저 창을 사용하며, 첫 실행 시 호환 드라이버 준비를 위해 인터넷 연결이 필요할 수 있습니다.
 > 저장 확장자는 설정 메뉴의 **2번 (Recording Settings)** 에서 `ts`, `mkv`, `webm` 중 선택할 수 있고, 같은 메뉴에서 녹화 파일을 몇 시간 또는 몇 분마다 분할할지도 설정할 수 있습니다. AV1 인코딩은 **4번 (AV1 Settings)** 에서 켤 수 있습니다. DNS 문제가 있을 때는 **6번 (DNS-over-HTTPS Settings)** 에서 DoH 주소를 설정하고 켤 수 있습니다. 언어는 **8번 (Language Settings)** 에서 한국어, 영어, 중국어 간체/정체, 일본어 중 선택할 수 있습니다.
 
 ---
