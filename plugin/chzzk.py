@@ -1,6 +1,7 @@
 import logging
 import re
 import time
+from http.cookies import SimpleCookie
 from typing import Any, Dict, Tuple, Union, TypedDict, Optional, List
 from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
@@ -16,6 +17,34 @@ from streamlink.stream.hls import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def has_auth_cookies(session: Any) -> bool:
+    http = getattr(session, "http", None)
+    cookie_values: Dict[str, str] = {}
+
+    cookie_jar = getattr(http, "cookies", None)
+    if cookie_jar is not None:
+        get_dict = getattr(cookie_jar, "get_dict", None)
+        if callable(get_dict):
+            cookie_values.update(get_dict())
+
+    headers = getattr(http, "headers", {})
+    cookie_header = headers.get("Cookie", "") if headers is not None else ""
+    if cookie_header:
+        parsed_cookies = SimpleCookie()
+        parsed_cookies.load(cookie_header)
+        cookie_values.update(
+            {
+                name: morsel.value
+                for name, morsel in parsed_cookies.items()
+            }
+        )
+
+    return all(
+        str(cookie_values.get(name, "")).strip()
+        for name in ("NID_AUT", "NID_SES")
+    )
 
 
 def stream_error_status_code(err: StreamError) -> Optional[int]:
@@ -168,6 +197,7 @@ class LiveDetail(TypedDict):
     liveTitle: Union[str, None]
     liveCategory: Union[str, None]
     adult: bool
+    membershipBenefitType: Optional[str]
     channel: str
     media: List[Dict[str, str]]
 
@@ -233,6 +263,7 @@ class ChzzkAPI:
                 "liveTitle": validate.any(str, None),
                 "liveCategory": validate.any(str, None),
                 "adult": bool,
+                validate.optional("membershipBenefitType"): validate.any(str, None),
                 "channel": validate.all(
                     {"channelName": str},
                     validate.get("channelName"),
@@ -267,6 +298,7 @@ class ChzzkAPI:
                 "liveCategory",
                 "liveTitle",
                 "adult",
+                "membershipBenefitType",
             ),
         )
 
@@ -299,15 +331,41 @@ class Chzzk(Plugin):
         if data is None:
             return None
 
-        if len(data) < 7:
+        if len(data) < 8:
             log.error("Incomplete data received from API.")
             return None
 
-        media, status, self.id, self.author, self.category, self.title, adult = data
+        (
+            media,
+            status,
+            self.id,
+            self.author,
+            self.category,
+            self.title,
+            adult,
+            membership_benefit_type,
+        ) = data
         if status != self._STATUS_OPEN:
             log.error("The stream is unavailable")
             return None
+        if (
+            membership_benefit_type == "MEMBER_ONLY"
+            and not has_auth_cookies(self.session)
+        ):
+            log.error(
+                "This stream can be recorded with a Naver Plus Membership or "
+                "Cheat Key subscription. Set both NID_AUT and NID_SES cookie "
+                "values."
+            )
+            return None
         if media is None:
+            if membership_benefit_type == "MEMBER_ONLY":
+                log.error(
+                    "This stream requires a Naver Plus Membership or Cheat Key "
+                    "subscription. Check that NID_AUT and NID_SES are valid for "
+                    "the subscribed account."
+                )
+                return None
             log.error(f"This stream is {'for adults only' if adult else 'unavailable'}")
             return None
 

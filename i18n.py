@@ -247,6 +247,16 @@ TRANSLATIONS = {
         "record.json_load_error": "{file_path}에서 JSON을 불러오는 중 오류: {error}",
         "record.channel_not_live": "'{channel_name}' 채널은 현재 방송 중이 아닙니다.",
         "record.channel_blocked": "'{channel_name}' 채널은 차단되어 있습니다.",
+        "record.member_only_cookies_required": (
+            "'{channel_name}' 채널은 멤버십 전용 방송입니다. 네이버플러스 멤버십 "
+            "또는 치트키 구독 계정의 NID_AUT와 NID_SES 쿠키 값을 모두 지정해야 "
+            "녹화할 수 있습니다."
+        ),
+        "record.member_only_access_required": (
+            "'{channel_name}' 채널의 멤버십 재생 권한을 확인할 수 없습니다. "
+            "네이버플러스 멤버십 또는 치트키 구독 계정의 올바른 NID_AUT와 "
+            "NID_SES 쿠키 값인지 확인하세요."
+        ),
         "record.http_live_info_error": (
             "{channel_name}의 라이브 정보를 가져오는 중 HTTP 오류가 발생했습니다: "
             "{error}"
@@ -660,6 +670,16 @@ TRANSLATIONS["en"].update({
     "record.json_load_error": "Error loading JSON from {file_path}: {error}",
     "record.channel_not_live": "The channel '{channel_name}' is not currently live.",
     "record.channel_blocked": "The channel '{channel_name}' is blocked.",
+    "record.member_only_cookies_required": (
+        "'{channel_name}' is a membership-only stream. To record it, set both "
+        "NID_AUT and NID_SES cookie values from an account with a Naver Plus "
+        "Membership or Cheat Key subscription."
+    ),
+    "record.member_only_access_required": (
+        "Membership playback access could not be verified for '{channel_name}'. "
+        "Check that NID_AUT and NID_SES are valid for an account with a Naver "
+        "Plus Membership or Cheat Key subscription."
+    ),
     "record.http_live_info_error": "HTTP error occurred while fetching live info for {channel_name}: {error}",
     "record.live_info_failed": "Failed to fetch live info for {channel_name}: {error}",
     "record.filename_too_long": "Filename '{filename}' is too long. Shortening to '{shortened}'.",
@@ -1019,6 +1039,14 @@ TRANSLATIONS["zh-CN"].update({
     "record.json_load_error": "从 {file_path} 加载 JSON 时出错：{error}",
     "record.channel_not_live": "'{channel_name}' 频道当前未开播。",
     "record.channel_blocked": "'{channel_name}' 频道已被阻止。",
+    "record.member_only_cookies_required": (
+        "'{channel_name}' 是会员专享直播。仅可使用已开通 Naver Plus 会员或 "
+        "Cheat Key 订阅账号的 NID_AUT 和 NID_SES Cookie 值进行录制。"
+    ),
+    "record.member_only_access_required": (
+        "无法验证 '{channel_name}' 的会员播放权限。请确认 NID_AUT 和 NID_SES "
+        "是已开通 Naver Plus 会员或 Cheat Key 订阅账号的有效 Cookie 值。"
+    ),
     "record.http_live_info_error": "获取 {channel_name} 的直播信息时发生 HTTP 错误：{error}",
     "record.live_info_failed": "无法获取 {channel_name} 的直播信息：{error}",
     "record.filename_too_long": "文件名 '{filename}' 过长。将缩短为 '{shortened}'。",
@@ -1093,6 +1121,14 @@ TRANSLATIONS["zh-TW"].update({
     "record.json_load_error": "從 {file_path} 載入 JSON 時發生錯誤：{error}",
     "record.channel_not_live": "'{channel_name}' 頻道目前未開播。",
     "record.channel_blocked": "'{channel_name}' 頻道已被封鎖。",
+    "record.member_only_cookies_required": (
+        "'{channel_name}' 是會員專屬直播。僅可使用已開通 Naver Plus 會員或 "
+        "Cheat Key 訂閱帳號的 NID_AUT 和 NID_SES Cookie 值進行錄製。"
+    ),
+    "record.member_only_access_required": (
+        "無法驗證 '{channel_name}' 的會員播放權限。請確認 NID_AUT 和 NID_SES "
+        "是已開通 Naver Plus 會員或 Cheat Key 訂閱帳號的有效 Cookie 值。"
+    ),
     "record.http_live_info_error": "取得 {channel_name} 的直播資訊時發生 HTTP 錯誤：{error}",
     "record.live_info_failed": "無法取得 {channel_name} 的直播資訊：{error}",
     "record.filename_too_long": "檔案名稱 '{filename}' 過長。將縮短為 '{shortened}'。",
@@ -1167,6 +1203,16 @@ TRANSLATIONS["ja"].update({
     "record.json_load_error": "{file_path} から JSON を読み込み中にエラー: {error}",
     "record.channel_not_live": "'{channel_name}' チャンネルは現在配信中ではありません。",
     "record.channel_blocked": "'{channel_name}' チャンネルはブロックされています。",
+    "record.member_only_cookies_required": (
+        "'{channel_name}' はメンバーシップ限定配信です。録画するには、"
+        "Naver Plus メンバーシップまたはチートキーを購読しているアカウントの "
+        "NID_AUT と NID_SES の Cookie 値を両方指定してください。"
+    ),
+    "record.member_only_access_required": (
+        "'{channel_name}' のメンバーシップ再生権限を確認できませんでした。"
+        "Naver Plus メンバーシップまたはチートキーを購読しているアカウントの "
+        "有効な NID_AUT と NID_SES の Cookie 値か確認してください。"
+    ),
     "record.http_live_info_error": "{channel_name} のライブ情報取得中に HTTP エラーが発生しました: {error}",
     "record.live_info_failed": "{channel_name} のライブ情報を取得できませんでした: {error}",
     "record.filename_too_long": "ファイル名 '{filename}' が長すぎます。'{shortened}' に短縮します。",

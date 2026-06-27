@@ -762,6 +762,13 @@ def cookie_header_from(cookies: Dict[str, str]) -> str:
     return f"NID_AUT={nid_aut}; NID_SES={nid_ses}"
 
 
+def has_auth_cookies(cookies: Dict[str, str]) -> bool:
+    return all(
+        sanitize_cookie_value(cookies.get(name, ""))
+        for name in ("NID_AUT", "NID_SES")
+    )
+
+
 def get_auth_headers(cookies: Dict[str, str]) -> Dict[str, str]:
     return {
         "User-Agent": "Mozilla/5.0 (X11; Unix x86_64)",
@@ -805,7 +812,10 @@ async def get_session_cookies() -> Dict[str, str]:
 
 
 async def get_live_info(
-    channel: Dict[str, Any], headers: Dict[str, str], session: aiohttp.ClientSession
+    channel: Dict[str, Any],
+    headers: Dict[str, str],
+    cookies: Dict[str, str],
+    session: aiohttp.ClientSession,
 ) -> Tuple[str, Dict[str, Any]]:
     logger.debug(f"Fetching live info for channel: {channel.get('name', 'Unknown')}")
     try:
@@ -820,6 +830,33 @@ async def get_live_info(
 
             content = data.get("content", {})
             status = content.get("status", "")
+            is_member_only = (
+                content.get("membershipBenefitType") == "MEMBER_ONLY"
+            )
+            if (
+                status == "OPEN"
+                and is_member_only
+                and not has_auth_cookies(cookies)
+            ):
+                logger.warning(
+                    tr(
+                        "record.member_only_cookies_required",
+                        channel_name=channel.get("name", tr("common.unknown")),
+                    )
+                )
+                return "MEMBER_ONLY_AUTH_REQUIRED", {}
+            if (
+                status == "OPEN"
+                and is_member_only
+                and content.get("livePlaybackJson") is None
+            ):
+                logger.warning(
+                    tr(
+                        "record.member_only_access_required",
+                        channel_name=channel.get("name", tr("common.unknown")),
+                    )
+                )
+                return "MEMBER_ONLY_ACCESS_REQUIRED", {}
             if status == "CLOSE":
                 logger.info(
                     tr("record.channel_not_live", channel_name=channel.get("name", tr("common.unknown")))
@@ -1623,7 +1660,7 @@ async def record_stream(
                         cookies = await get_session_cookies()
                         headers = get_auth_headers(cookies)
                         status, live_info = await get_live_info(
-                            channel, headers, session
+                            channel, headers, cookies, session
                         )
                         if status == "OPEN":
                             break
