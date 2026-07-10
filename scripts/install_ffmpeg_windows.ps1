@@ -5,12 +5,17 @@ $ProjectRoot = Split-Path -Parent $PSScriptRoot
 $FfmpegDir = Join-Path $ProjectRoot "ffmpeg"
 $DownloadUrl = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
 $ChecksumUrl = "$DownloadUrl.sha256"
-$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("chzzk-rekoda-ffmpeg-" + [System.Guid]::NewGuid().ToString("N"))
+$InstallId = [System.Guid]::NewGuid().ToString("N")
+$TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("chzzk-rekoda-ffmpeg-" + $InstallId)
 $ZipPath = Join-Path $TempRoot "ffmpeg-release-essentials.zip"
 $ChecksumPath = Join-Path $TempRoot "ffmpeg-release-essentials.zip.sha256"
 $ExtractDir = Join-Path $TempRoot "extract"
-$StagingDir = Join-Path $ProjectRoot "ffmpeg.new"
-$BackupDir = Join-Path $ProjectRoot "ffmpeg.old"
+$StagingDir = Join-Path $ProjectRoot ("ffmpeg.new-" + $InstallId)
+$BackupDir = Join-Path $ProjectRoot ("ffmpeg.old-" + $InstallId)
+$InstallMutex = [System.Threading.Mutex]::new(
+    $false, "Local\ChzzkRekodaFfmpegInstall"
+)
+$InstallMutexAcquired = $false
 
 function Enable-Tls12 {
     try {
@@ -79,6 +84,12 @@ function Verify-Sha256 {
 }
 
 try {
+    try {
+        $InstallMutexAcquired = $InstallMutex.WaitOne()
+    } catch [System.Threading.AbandonedMutexException] {
+        $InstallMutexAcquired = $true
+    }
+
     Enable-Tls12
     New-Item -ItemType Directory -Path $TempRoot, $ExtractDir -Force | Out-Null
 
@@ -98,27 +109,79 @@ try {
     }
 
     $sourceRoot = Split-Path -Parent (Split-Path -Parent $ffmpegExe.FullName)
-    Remove-Item -LiteralPath $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $BackupDir -Recurse -Force -ErrorAction SilentlyContinue
     Copy-Item -LiteralPath $sourceRoot -Destination $StagingDir -Recurse -Force
 
-    if (Test-Path -LiteralPath $FfmpegDir) {
-        Move-Item -LiteralPath $FfmpegDir -Destination $BackupDir -Force
-    }
-    Move-Item -LiteralPath $StagingDir -Destination $FfmpegDir -Force
-    Remove-Item -LiteralPath $BackupDir -Recurse -Force -ErrorAction SilentlyContinue
-
-    $installedFfmpeg = Join-Path $FfmpegDir "bin\ffmpeg.exe"
-    if (-not (Test-Path -LiteralPath $installedFfmpeg)) {
-        throw "Installed ffmpeg.exe was not found at $installedFfmpeg"
+    $stagedFfmpeg = Join-Path $StagingDir "bin\ffmpeg.exe"
+    if (-not (Test-Path -LiteralPath $stagedFfmpeg)) {
+        throw $stagedFfmpeg
     }
 
-    & $installedFfmpeg -version | Select-Object -First 1
+    & $stagedFfmpeg -version | Select-Object -First 1 | Out-Null
     if ($LASTEXITCODE -ne 0) {
-        throw "Installed ffmpeg.exe did not run successfully."
+        throw $LASTEXITCODE
+    }
+
+    $hadOriginal = Test-Path -LiteralPath $FfmpegDir
+    $originalMoved = $false
+    try {
+        if ($hadOriginal) {
+            Move-Item -LiteralPath $FfmpegDir -Destination $BackupDir -Force
+            $originalMoved = $true
+        }
+
+        Move-Item -LiteralPath $StagingDir -Destination $FfmpegDir -Force
+
+        $installedFfmpeg = Join-Path $FfmpegDir "bin\ffmpeg.exe"
+        if (-not (Test-Path -LiteralPath $installedFfmpeg)) {
+            throw "Installed ffmpeg.exe was not found at $installedFfmpeg"
+        }
+
+        & $installedFfmpeg -version | Select-Object -First 1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Installed ffmpeg.exe did not run successfully."
+        }
+    } catch {
+        $installError = $_
+        $rollbackError = $null
+
+        if ($originalMoved -or -not $hadOriginal) {
+            try {
+                if (Test-Path -LiteralPath $FfmpegDir) {
+                    Remove-Item -LiteralPath $FfmpegDir -Recurse -Force -ErrorAction Stop
+                }
+            } catch {
+                $rollbackError = $_
+            }
+        }
+
+        if ($originalMoved -and $null -eq $rollbackError) {
+            try {
+                Move-Item -LiteralPath $BackupDir -Destination $FfmpegDir -Force
+            } catch {
+                $rollbackError = $_
+            }
+        }
+
+        if ($null -ne $rollbackError) {
+            throw $rollbackError
+        }
+        throw $installError
+    }
+
+    if (Test-Path -LiteralPath $BackupDir) {
+        try {
+            Remove-Item -LiteralPath $BackupDir -Recurse -Force -ErrorAction Stop
+        } catch {
+            Write-Warning $_
+        }
     }
 
     Write-Host "ffmpeg installed successfully: $installedFfmpeg"
 } finally {
     Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $StagingDir -Recurse -Force -ErrorAction SilentlyContinue
+    if ($InstallMutexAcquired) {
+        $InstallMutex.ReleaseMutex()
+    }
+    $InstallMutex.Dispose()
 }
