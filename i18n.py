@@ -56,8 +56,25 @@ TRANSLATIONS = {
             "config.json을 불러오는 중 오류가 발생했습니다: {error}. "
             "기본값/마이그레이션을 사용합니다."
         ),
+        "settings.corrupt_config_backed_up": (
+            "손상된 config.json을 {backup_path}에 보존했습니다."
+        ),
+        "settings.corrupt_config_backup_error": (
+            "손상된 config.json을 백업하지 못해 안전을 위해 종료합니다. "
+            "원본은 덮어쓰지 않았습니다: {error}"
+        ),
+        "settings.config_read_error": (
+            "config.json을 읽지 못해 안전을 위해 종료합니다. "
+            "파일을 덮어쓰지 않았습니다: {error}"
+        ),
         "settings.migrating_old_settings": "이전 설정 파일에서 설정을 마이그레이션합니다...",
         "settings.invalid_channel_skipped": "잘못된 채널 ID를 건너뜁니다: {channel_id}",
+        "settings.invalid_channels_reset": (
+            "채널 목록 형식이 올바르지 않아 빈 목록으로 초기화합니다."
+        ),
+        "settings.duplicate_channel_skipped": (
+            "중복 채널 ID의 이후 항목을 건너뜁니다: {channel_id}"
+        ),
         "settings.try_again": "다시 시도해 주세요.\n",
         "settings.main_title": "치지직 자동 녹화 설정",
         "settings.main_menu": (
@@ -65,7 +82,7 @@ TRANSLATIONS = {
             "\n2. 녹화 설정"
             "\n3. HEVC 설정 (고효율 비디오 코딩)"
             "\n4. AV1 설정"
-            "\n5. 네이버 쿠키 설정 (성인 인증, 맴버십 인증)"
+            "\n5. 네이버 쿠키 설정 (성인 인증, 멤버십 인증)"
             "\n6. DNS-over-HTTPS 설정"
             "\n7. 로그 켜기/끄기"
             "\n8. 언어 설정"
@@ -604,8 +621,27 @@ TRANSLATIONS["en"].update({
     "settings.config_saved": "Configuration saved to config.json.",
     "settings.config_save_error": "Error saving configuration: {error}",
     "settings.error_loading_config": "Error loading config.json: {error}. Using defaults/migration.",
+    "settings.corrupt_config_backed_up": (
+        "Preserved the invalid config.json at {backup_path}."
+    ),
+    "settings.corrupt_config_backup_error": (
+        "Could not back up the invalid config.json, so setup is exiting "
+        "without overwriting the original: {error}"
+    ),
+    "settings.config_read_error": (
+        "Could not read config.json, so setup is exiting without "
+        "overwriting it: {error}"
+    ),
     "settings.migrating_old_settings": "Migrating settings from old files...",
     "settings.invalid_channel_skipped": "Skipping invalid channel ID: {channel_id}",
+    "settings.invalid_channels_reset": (
+        "The channel list is not valid, so it has been reset to an "
+        "empty list."
+    ),
+    "settings.duplicate_channel_skipped": (
+        "Skipping a later entry with the duplicate channel ID: "
+        "{channel_id}"
+    ),
     "settings.try_again": "Please try again.\n",
     "settings.channel_menu": "\n1. Add Channel\n2. Delete Channel\n3. Toggle Channel Recording\n4. Go Back",
     "settings.prompt_channel_id": "Enter the unique ID of the streamer channel you want to add: ",
@@ -786,8 +822,24 @@ TRANSLATIONS["zh-CN"].update({
     "settings.config_saved": "设置已保存到 config.json。",
     "settings.config_save_error": "保存设置时出错：{error}",
     "settings.error_loading_config": "加载 config.json 时出错：{error}。将使用默认值/迁移。",
+    "settings.corrupt_config_backed_up": (
+        "已将损坏的 config.json 保存在 {backup_path}。"
+    ),
+    "settings.corrupt_config_backup_error": (
+        "无法备份损坏的 config.json。为避免覆盖原文件，"
+        "设置程序将安全退出：{error}"
+    ),
+    "settings.config_read_error": (
+        "无法读取 config.json。为避免覆盖该文件，设置程序将安全退出：{error}"
+    ),
     "settings.migrating_old_settings": "正在从旧文件迁移设置...",
     "settings.invalid_channel_skipped": "跳过无效的频道 ID：{channel_id}",
+    "settings.invalid_channels_reset": (
+        "频道列表格式无效，已重置为空列表。"
+    ),
+    "settings.duplicate_channel_skipped": (
+        "跳过频道 ID 重复的后续项目：{channel_id}"
+    ),
     "settings.try_again": "请重试。\n",
     "settings.channel_menu": "\n1. 添加频道\n2. 删除频道\n3. 开启/关闭频道录制\n4. 返回",
     "settings.prompt_channel_id": "请输入要添加的主播频道唯一 ID：",
@@ -887,8 +939,24 @@ TRANSLATIONS["zh-TW"].update({
     "settings.config_saved": "設定已儲存到 config.json。",
     "settings.config_save_error": "儲存設定時發生錯誤：{error}",
     "settings.error_loading_config": "載入 config.json 時發生錯誤：{error}。將使用預設值/遷移。",
+    "settings.corrupt_config_backed_up": (
+        "已將損壞的 config.json 保存在 {backup_path}。"
+    ),
+    "settings.corrupt_config_backup_error": (
+        "無法備份損壞的 config.json。為避免覆寫原始檔案，"
+        "設定程式將安全結束：{error}"
+    ),
+    "settings.config_read_error": (
+        "無法讀取 config.json。為避免覆寫該檔案，設定程式將安全結束：{error}"
+    ),
     "settings.migrating_old_settings": "正在從舊檔案遷移設定...",
     "settings.invalid_channel_skipped": "略過無效的頻道 ID：{channel_id}",
+    "settings.invalid_channels_reset": (
+        "頻道清單格式無效，已重設為空白清單。"
+    ),
+    "settings.duplicate_channel_skipped": (
+        "略過頻道 ID 重複的後續項目：{channel_id}"
+    ),
     "settings.try_again": "請再試一次。\n",
     "settings.channel_menu": "\n1. 新增頻道\n2. 刪除頻道\n3. 開啟/關閉頻道錄製\n4. 返回",
     "settings.prompt_channel_id": "請輸入要新增的實況主頻道唯一 ID：",
@@ -988,8 +1056,26 @@ TRANSLATIONS["ja"].update({
     "settings.config_saved": "設定を config.json に保存しました。",
     "settings.config_save_error": "設定の保存中にエラーが発生しました: {error}",
     "settings.error_loading_config": "config.json の読み込み中にエラーが発生しました: {error}。既定値/移行を使用します。",
+    "settings.corrupt_config_backed_up": (
+        "破損した config.json を {backup_path} に保存しました。"
+    ),
+    "settings.corrupt_config_backup_error": (
+        "破損した config.json をバックアップできなかったため、"
+        "元のファイルを上書きせず安全に終了します: {error}"
+    ),
+    "settings.config_read_error": (
+        "config.json を読み込めなかったため、ファイルを上書きせず"
+        "安全に終了します: {error}"
+    ),
     "settings.migrating_old_settings": "古いファイルから設定を移行しています...",
     "settings.invalid_channel_skipped": "無効なチャンネル ID をスキップします: {channel_id}",
+    "settings.invalid_channels_reset": (
+        "チャンネル一覧の形式が無効なため、空の一覧にリセットしました。"
+    ),
+    "settings.duplicate_channel_skipped": (
+        "チャンネル ID が重複する後続の項目をスキップします: "
+        "{channel_id}"
+    ),
     "settings.try_again": "もう一度試してください。\n",
     "settings.channel_menu": "\n1. チャンネルを追加\n2. チャンネルを削除\n3. チャンネル録画のオン/オフ\n4. 戻る",
     "settings.prompt_channel_id": "追加する配信者チャンネルの固有 ID を入力してください: ",

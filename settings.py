@@ -101,6 +101,18 @@ ALLOWED_ENCODERS = {
     "hevc_vaapi",
     "hevc_videotoolbox",
 }
+LIBX265_PRESETS = {
+    "ultrafast",
+    "superfast",
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+    "placebo",
+}
 ALLOWED_AV1_ENCODERS = {
     "libsvtav1",
     "libaom-av1",
@@ -304,8 +316,64 @@ def create_output_directory(output_dir):
     return True
 
 
+def backup_corrupt_config():
+    directory = os.path.dirname(config_file_path)
+    fd = None
+    backup_path = None
+    try:
+        fd, backup_path = tempfile.mkstemp(
+            prefix="config.", suffix=".corrupt", dir=directory
+        )
+        with open(config_file_path, "rb") as source:
+            with os.fdopen(fd, "wb") as backup:
+                fd = None
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    backup.write(chunk)
+                backup.flush()
+                os.fsync(backup.fileno())
+        return backup_path
+    except BaseException:
+        if fd is not None:
+            os.close(fd)
+        if backup_path and os.path.exists(backup_path):
+            try:
+                os.remove(backup_path)
+            except OSError:
+                pass
+        raise
+
+
 def format_split_interval(minutes, language=DEFAULT_LANGUAGE):
     return localized_split_interval(language, minutes)
+
+
+def normalize_channel_identifier(
+    value,
+    fallback_index,
+    used_identifiers,
+    reserved_identifiers=None,
+):
+    reserved_identifiers = reserved_identifiers or set()
+    identifier = str(value or f"ch{fallback_index}").strip()
+    if (
+        SAFE_FFMPEG_VALUE.fullmatch(identifier)
+        and identifier not in used_identifiers
+    ):
+        return identifier
+
+    base_identifier = f"ch{fallback_index}"
+    identifier = base_identifier
+    suffix = 2
+    while (
+        identifier in used_identifiers
+        or identifier in reserved_identifiers
+    ):
+        identifier = f"{base_identifier}_{suffix}"
+        suffix += 1
+    return identifier
 
 
 def normalize_config(config):
@@ -341,8 +409,30 @@ def normalize_config(config):
         MAX_RECORDING_SPLIT_MINUTES,
     )
 
+    raw_delays = config.get("delays", {})
+    delays = {
+        str(key): clamp_int(value, 0, 0, 3600)
+        for key, value in raw_delays.items()
+    } if isinstance(raw_delays, dict) else {}
+
+    raw_channels = config.get("channels", [])
+    if not isinstance(raw_channels, list):
+        print(translate(language, "settings.invalid_channels_reset"))
+        raw_channels = []
+
+    reserved_identifiers = {
+        str(channel.get("identifier", "")).strip()
+        for channel in raw_channels
+        if isinstance(channel, dict)
+        and SAFE_FFMPEG_VALUE.fullmatch(
+            str(channel.get("identifier", "")).strip()
+        )
+    }
     channels = []
-    for index, channel in enumerate(config.get("channels", []), start=1):
+    channel_delays = {}
+    seen_channel_ids = set()
+    used_identifiers = set()
+    for index, channel in enumerate(raw_channels, start=1):
         if not isinstance(channel, dict):
             continue
         channel_id = str(channel.get("id", "")).strip()
@@ -355,19 +445,41 @@ def normalize_config(config):
                 )
             )
             continue
+        if channel_id in seen_channel_ids:
+            print(
+                translate(
+                    language,
+                    "settings.duplicate_channel_skipped",
+                    channel_id=channel_id,
+                )
+            )
+            continue
+
+        seen_channel_ids.add(channel_id)
+        original_identifier = str(
+            channel.get("identifier") or f"ch{index}"
+        ).strip()
+        identifier = normalize_channel_identifier(
+            original_identifier,
+            index,
+            used_identifiers,
+            reserved_identifiers,
+        )
+        used_identifiers.add(identifier)
         channel["id"] = channel_id
         channel["name"] = CONTROL_CHARS.sub("", str(channel.get("name") or channel_id)).strip()
         channel["output_dir"] = str(channel.get("output_dir") or ".").strip() or "."
-        channel["identifier"] = str(channel.get("identifier") or f"ch{index}").strip()
+        channel["identifier"] = identifier
         channel["active"] = "off" if channel.get("active") == "off" else "on"
         channels.append(channel)
-    config["channels"] = channels
 
-    delays = config.get("delays", {})
-    config["delays"] = {
-        str(key): clamp_int(value, 0, 0, 3600)
-        for key, value in delays.items()
-    } if isinstance(delays, dict) else {}
+        if original_identifier in delays:
+            channel_delays[identifier] = delays[original_identifier]
+        elif identifier in delays:
+            channel_delays[identifier] = delays[identifier]
+
+    config["channels"] = channels
+    config["delays"] = channel_delays
 
     hevc = deep_merge_defaults(config.get("hevc_settings", {}), default_config["hevc_settings"])
     hevc["enable"] = bool(hevc.get("enable"))
@@ -376,7 +488,11 @@ def normalize_config(config):
     hevc["bitrate"] = normalize_bitrate(hevc.get("bitrate"), "2500k")
     hevc["max_bitrate"] = normalize_bitrate(hevc.get("max_bitrate"), "10000k")
     preset = str(hevc.get("preset") or "ultrafast").strip()
-    hevc["preset"] = preset if SAFE_FFMPEG_VALUE.fullmatch(preset) else "ultrafast"
+    if not SAFE_FFMPEG_VALUE.fullmatch(preset):
+        preset = "ultrafast"
+    if hevc["encoder"] == "libx265" and preset not in LIBX265_PRESETS:
+        preset = "ultrafast"
+    hevc["preset"] = preset
     config["hevc_settings"] = hevc
 
     av1 = deep_merge_defaults(config.get("av1_settings", {}), default_config["av1_settings"])
@@ -412,7 +528,18 @@ def load_config():
                 if config != raw_config:
                     save_config(config)
                 return config
-        except (json.JSONDecodeError, OSError) as e:
+        except (json.JSONDecodeError, UnicodeError) as e:
+            try:
+                backup_path = backup_corrupt_config()
+            except OSError as backup_error:
+                print(
+                    translate(
+                        DEFAULT_LANGUAGE,
+                        "settings.corrupt_config_backup_error",
+                        error=backup_error,
+                    )
+                )
+                raise SystemExit(1) from backup_error
             print(
                 translate(
                     DEFAULT_LANGUAGE,
@@ -420,6 +547,22 @@ def load_config():
                     error=e,
                 )
             )
+            print(
+                translate(
+                    DEFAULT_LANGUAGE,
+                    "settings.corrupt_config_backed_up",
+                    backup_path=backup_path,
+                )
+            )
+        except OSError as e:
+            print(
+                translate(
+                    DEFAULT_LANGUAGE,
+                    "settings.config_read_error",
+                    error=e,
+                )
+            )
+            raise SystemExit(1) from e
 
     # Migration Logic (if config.json doesn't exist or failed to load)
     print(translate(DEFAULT_LANGUAGE, "settings.migrating_old_settings"))
@@ -497,12 +640,19 @@ def load_config():
             pass
 
     # Save migrated config
+    config = normalize_config(config)
     save_config(config)
     return config
 
 
 def save_config(config):
-    config = normalize_config(config)
+    normalized_config = normalize_config(config)
+    if isinstance(config, dict):
+        config.clear()
+        config.update(normalized_config)
+    else:
+        config = normalized_config
+
     directory = os.path.dirname(config_file_path)
     fd = None
     temp_path = None
@@ -531,6 +681,7 @@ def save_config(config):
                 error=e,
             )
         )
+        raise SystemExit(1) from e
     finally:
         if fd is not None:
             os.close(fd)
@@ -774,7 +925,14 @@ def add_selected_channel(channel):
                 return
 
             current_count = len(config["channels"])
-            identifier = f"ch{current_count + 1}"
+            used_identifiers = {
+                item.get("identifier") for item in config["channels"]
+            }
+            identifier = normalize_channel_identifier(
+                f"ch{current_count + 1}",
+                current_count + 1,
+                used_identifiers,
+            )
             config["channels"].append(
                 {
                     "id": channel_id,
