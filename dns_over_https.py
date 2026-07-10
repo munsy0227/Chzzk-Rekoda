@@ -78,18 +78,25 @@ class DnsOverHttpsResolver:
         try:
             response = self._query(hostname, qtype)
             addresses, cnames, ttl = self._parse_response(response, qtype)
+            child_expirations: list[float] = []
             if not addresses and cnames:
                 for cname in cnames:
-                    if cname.rstrip(".").lower() == cache_key[0]:
+                    cname_key = (cname.rstrip(".").lower(), qtype)
+                    if cname_key[0] == cache_key[0]:
                         continue
                     addresses.extend(
                         self._resolve_qtype(cname, qtype, depth=depth + 1)
                     )
+                    with self._cache_lock:
+                        child_cached = self._cache.get(cname_key)
+                    if child_cached is not None:
+                        child_expirations.append(child_cached[0])
 
             unique_addresses = tuple(dict.fromkeys(addresses))
-            expires_at = now + max(
-                min(ttl, MAX_CACHE_TTL_SECONDS), MIN_CACHE_TTL_SECONDS
-            )
+            cache_ttl = max(0, min(ttl, MAX_CACHE_TTL_SECONDS))
+            expires_at = now + cache_ttl
+            if child_expirations:
+                expires_at = min(expires_at, *child_expirations)
             with self._cache_lock:
                 self._cache[cache_key] = (expires_at, unique_addresses)
             return unique_addresses
@@ -99,7 +106,10 @@ class DnsOverHttpsResolver:
     def _query(self, hostname: str, qtype: int) -> dns.message.Message:
         query = dns.message.make_query(hostname, qtype, use_edns=True)
         response_wire = self._post_dns_message(query.to_wire())
-        return dns.message.from_wire(response_wire)
+        response = dns.message.from_wire(response_wire)
+        if not query.is_response(response):
+            raise dns.exception.FormError
+        return response
 
     def _post_dns_message(self, body: bytes) -> bytes:
         request = self._build_http_request(body)
@@ -167,9 +177,13 @@ class DnsOverHttpsResolver:
         return ()
 
     def _build_http_request(self, body: bytes) -> bytes:
+        host = f"[{self.host}]" if ":" in self.host else self.host
+        if self.port != 443:
+            host = f"{host}:{self.port}"
+
         headers = [
             f"POST {self.path} HTTP/1.1",
-            f"Host: {self.host}",
+            f"Host: {host}",
             "Accept: application/dns-message",
             "Content-Type: application/dns-message",
             f"Content-Length: {len(body)}",
@@ -227,19 +241,61 @@ class DnsOverHttpsResolver:
         addresses: list[str] = []
         cnames: list[str] = []
         ttl_values: list[int] = []
+
+        if not response.question:
+            raise socket.gaierror(socket.EAI_FAIL)
+
+        question = response.question[0]
+        if question.rdtype != qtype:
+            raise socket.gaierror(socket.EAI_FAIL)
+
+        def normalize_name(name) -> str:
+            return name.to_text(omit_final_dot=True).lower()
+
+        address_records: dict[str, list[tuple[str, int]]] = {}
+        cname_records: dict[str, list[tuple[str, str, int]]] = {}
         for section in (response.answer, response.additional):
             for rrset in section:
-                ttl_values.append(rrset.ttl)
+                owner = normalize_name(rrset.name)
                 for item in rrset:
                     if qtype == dns.rdatatype.A and item.rdtype == dns.rdatatype.A:
-                        addresses.append(item.address)
+                        address_records.setdefault(owner, []).append(
+                            (item.address, rrset.ttl)
+                        )
                     elif (
                         qtype == dns.rdatatype.AAAA
                         and item.rdtype == dns.rdatatype.AAAA
                     ):
-                        addresses.append(item.address)
+                        address_records.setdefault(owner, []).append(
+                            (item.address, rrset.ttl)
+                        )
                     elif item.rdtype == dns.rdatatype.CNAME:
-                        cnames.append(item.target.to_text(omit_final_dot=True))
+                        target = normalize_name(item.target)
+                        cname_records.setdefault(owner, []).append(
+                            (
+                                target,
+                                item.target.to_text(omit_final_dot=True),
+                                rrset.ttl,
+                            )
+                        )
+
+        pending = [normalize_name(question.name)]
+        visited: set[str] = set()
+        while pending:
+            owner = pending.pop(0)
+            if owner in visited:
+                continue
+            visited.add(owner)
+
+            for address, ttl in address_records.get(owner, []):
+                addresses.append(address)
+                ttl_values.append(ttl)
+
+            for target, display_target, ttl in cname_records.get(owner, []):
+                cnames.append(display_target)
+                ttl_values.append(ttl)
+                if target not in visited:
+                    pending.append(target)
 
         return addresses, cnames, min(ttl_values, default=MIN_CACHE_TTL_SECONDS)
 

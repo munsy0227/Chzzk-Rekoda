@@ -166,14 +166,33 @@ class ChzzkHLSStream(HLSStream):
 
     def _get_expire_time(self, url: str) -> Optional[int]:
         """
-        Extract the expiration time from the URL's 'exp' parameter.
+        Extract the expiration time from the URL's signed token.
         """
         parsed_url = urlparse(url)
         qs = parse_qs(parsed_url.query)
-        exp_values = qs.get("exp")
-        if exp_values and exp_values[0].isdigit():
-            return int(exp_values[0])
+
+        for exp_value in qs.get("exp", []):
+            if exp_value.isdigit():
+                return int(exp_value)
+
+        for token_name in ("hdnts", "hdntl"):
+            for token in qs.get(token_name, []):
+                expire = self._get_token_expire_time(token)
+                if expire is not None:
+                    return expire
+
+        for path_part in parsed_url.path.split("/"):
+            token_name, separator, token = path_part.partition("=")
+            if separator and token_name in ("hdnts", "hdntl"):
+                expire = self._get_token_expire_time(token)
+                if expire is not None:
+                    return expire
         return None
+
+    @staticmethod
+    def _get_token_expire_time(token: str) -> Optional[int]:
+        match = re.search(r"(?:^|~)exp=(\d+)(?:~|$)", token)
+        return int(match.group(1)) if match else None
 
     def _should_refresh(self) -> bool:
         """
@@ -306,7 +325,8 @@ class ChzzkAPI:
 @pluginmatcher(
     name="live",
     pattern=re.compile(
-        r"https?://chzzk\.naver\.com/live/(?P<channel_id>[A-Za-z0-9_-]{1,128})",
+        r"https?://chzzk\.naver\.com/live/"
+        r"(?P<channel_id>[A-Za-z0-9_-]{1,128})(?=$|[/?#])",
     ),
 )
 class Chzzk(Plugin):
