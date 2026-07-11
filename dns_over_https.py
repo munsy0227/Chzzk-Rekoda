@@ -52,6 +52,11 @@ class DnsOverHttpsResolver:
         self.bootstrap_ips = self._normalize_bootstrap_ips(bootstrap_ips)
         self.timeout = timeout
         self._context = ssl.create_default_context()
+        if hasattr(self._context, "minimum_version") and hasattr(ssl, "TLSVersion"):
+            self._context.minimum_version = ssl.TLSVersion.TLSv1_2
+        else:
+            self._context.options |= getattr(ssl, "OP_NO_TLSv1", 0)
+            self._context.options |= getattr(ssl, "OP_NO_TLSv1_1", 0)
         self._cache: dict[tuple[str, int], tuple[float, tuple[str, ...]]] = {}
         self._cache_lock = threading.Lock()
 
