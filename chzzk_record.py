@@ -276,6 +276,67 @@ LIBX265_PRESETS = {
     "veryslow",
     "placebo",
 }
+NVENC_P_LEVEL_PRESETS = {f"p{number}" for number in range(1, 8)}
+HEVC_NVENC_PRESETS = NVENC_P_LEVEL_PRESETS | {
+    "default",
+    "slow",
+    "medium",
+    "fast",
+    "hp",
+    "hq",
+    "bd",
+    "ll",
+    "llhq",
+    "llhp",
+    "lossless",
+    "losslesshp",
+}
+AV1_NVENC_PRESETS = NVENC_P_LEVEL_PRESETS | {
+    "default",
+    "slow",
+    "medium",
+    "fast",
+}
+ALL_NVENC_PRESETS = HEVC_NVENC_PRESETS | AV1_NVENC_PRESETS
+QSV_NAMED_PRESETS = {
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+}
+QSV_PRESETS = QSV_NAMED_PRESETS | {str(number) for number in range(8)}
+HEVC_AMF_PRESETS = {"speed", "balanced", "quality"}
+AV1_AMF_PRESETS = {"speed", "balanced", "quality", "high_quality"}
+SVT_AV1_PRESETS = {str(number) for number in range(-2, 14)}
+LIBAOM_AV1_PRESETS = {str(number) for number in range(9)}
+ENCODER_PRESETS = {
+    "libx265": LIBX265_PRESETS,
+    "hevc_nvenc": HEVC_NVENC_PRESETS,
+    "hevc_qsv": QSV_PRESETS,
+    "hevc_amf": HEVC_AMF_PRESETS,
+    "libsvtav1": SVT_AV1_PRESETS,
+    "libaom-av1": LIBAOM_AV1_PRESETS,
+    "av1_nvenc": AV1_NVENC_PRESETS,
+    "av1_qsv": QSV_PRESETS,
+    "av1_amf": AV1_AMF_PRESETS,
+}
+ENCODER_DEFAULT_PRESETS = {
+    "libx265": "ultrafast",
+    "hevc_nvenc": "p4",
+    "hevc_qsv": "medium",
+    "hevc_amf": "balanced",
+    "hevc_vaapi": "auto",
+    "hevc_videotoolbox": "auto",
+    "libsvtav1": "8",
+    "libaom-av1": "6",
+    "av1_nvenc": "p4",
+    "av1_qsv": "medium",
+    "av1_amf": "balanced",
+    "av1_vaapi": "auto",
+}
 KNOWN_AV1_ENCODERS = {
     "libsvtav1",
     "libaom-av1",
@@ -297,6 +358,24 @@ RESERVED_BYTES = MAX_HASH_LENGTH + 1  # Hash length and one underscore
 
 # Global variables for graceful shutdown
 shutdown_event = asyncio.Event()
+
+
+def normalize_encoder_preset(encoder: str, value: Any) -> str:
+    default = ENCODER_DEFAULT_PRESETS[encoder]
+    preset = default if value is None else str(value).strip().lower()
+    if not preset:
+        preset = default
+    options = ENCODER_PRESETS.get(encoder)
+    if options is None:
+        return default
+    if encoder in {"hevc_nvenc", "av1_nvenc"}:
+        if preset in {"ultrafast", "superfast", "veryfast", "faster"}:
+            return "p1"
+        if preset in {"slower", "veryslow"}:
+            return "p6"
+    if encoder == "hevc_amf" and "fast" in preset:
+        return "speed"
+    return preset if preset in options else default
 
 
 # Helper functions
@@ -412,12 +491,9 @@ def normalize_hevc_settings(value: Any) -> Dict[str, Any]:
     settings["max_bitrate"] = normalize_bitrate(
         settings.get("max_bitrate"), defaults["max_bitrate"]
     )
-    preset = str(settings.get("preset", defaults["preset"])).strip()
-    if not SAFE_FFMPEG_VALUE.fullmatch(preset):
-        preset = defaults["preset"]
-    if encoder == "libx265" and preset not in LIBX265_PRESETS:
-        preset = defaults["preset"]
-    settings["preset"] = preset
+    settings["preset"] = normalize_encoder_preset(
+        encoder, settings.get("preset")
+    )
     return settings
 
 
@@ -443,8 +519,9 @@ def normalize_av1_settings(value: Any) -> Dict[str, Any]:
     settings["max_bitrate"] = normalize_bitrate(
         settings.get("max_bitrate"), defaults["max_bitrate"]
     )
-    preset = str(settings.get("preset", defaults["preset"])).strip()
-    settings["preset"] = preset if SAFE_FFMPEG_VALUE.fullmatch(preset) else defaults["preset"]
+    settings["preset"] = normalize_encoder_preset(
+        encoder, settings.get("preset")
+    )
     return settings
 
 
@@ -1264,13 +1341,18 @@ def capped_vbr_args(bitrate: str, max_bitrate: str, bufsize: str) -> List[str]:
 
 
 def numeric_preset(value: Any, default: str) -> str:
-    text = str(value or default).strip()
-    return text if text.isdigit() else default
+    text = default if value is None else str(value).strip()
+    if not text:
+        return default
+    is_integer = text.isdigit() or (
+        text.startswith("-") and text[1:].isdigit()
+    )
+    return text if is_integer else default
 
 
 def nvenc_preset(value: Any, default: str = "p4") -> str:
-    text = str(value or default).strip().lower()
-    if text.startswith("p") and len(text) == 2 and text[1].isdigit():
+    text = default if value is None else str(value).strip().lower()
+    if text in ALL_NVENC_PRESETS:
         return text
     if "fast" in text or "super" in text or "ultra" in text:
         return "p1"
@@ -1476,14 +1558,9 @@ async def resolve_av1_settings_for_recording(
             continue
         fallback_settings = dict(active_settings)
         fallback_settings["encoder"] = fallback_encoder
-        if fallback_encoder == "libsvtav1":
-            fallback_settings["preset"] = numeric_preset(
-                fallback_settings.get("preset"), "8"
-            )
-        else:
-            fallback_settings["preset"] = numeric_preset(
-                fallback_settings.get("preset"), "6"
-            )
+        fallback_settings["preset"] = ENCODER_DEFAULT_PRESETS[
+            fallback_encoder
+        ]
         fallback_works, fallback_message = await probe_av1_encoder_nonblocking(
             ffmpeg_path, fallback_settings
         )
@@ -1551,6 +1628,8 @@ def build_hevc_probe_args(hevc_settings: Dict[str, Any]) -> List[str]:
         return [
             "-c:v",
             "hevc_amf",
+            "-quality",
+            preset,
             "-usage",
             "transcoding",
             "-rc",
@@ -1793,6 +1872,8 @@ def build_av1_encoding_args(
         encoding_args = [
             "-c:v",
             "av1_amf",
+            "-quality",
+            preset,
             "-usage",
             "transcoding",
             "-rc",
@@ -2164,6 +2245,8 @@ async def record_stream(
                                 encoding_args = [
                                     "-c:v",
                                     "hevc_amf",
+                                    "-quality",
+                                    preset,
                                     "-usage",
                                     "transcoding",
                                     "-rc",
@@ -2179,11 +2262,6 @@ async def record_stream(
                                     "-c:a",
                                     "copy",
                                 ]
-                                if "fast" in preset:
-                                    encoding_args.extend(["-quality", "speed"])
-                                else:
-                                    encoding_args.extend(["-quality", "balanced"])
-
                             elif encoder == "hevc_vaapi":
                                 encoding_args = [
                                     "-vf",

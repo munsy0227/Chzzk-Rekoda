@@ -170,7 +170,7 @@ TRANSLATIONS = {
             "\n2. 인코더 설정 (libx265, hevc_nvenc, hevc_qsv 등)"
             "\n3. 목표 비트레이트 설정 (예: 6000k)"
             "\n4. 최대 비트레이트 설정 (예: 8000k)"
-            "\n5. 프리셋 설정 (ultrafast, superfast 등)"
+            "\n5. 프리셋 설정 (인코더별 전체 옵션 안내)"
             "\n6. 뒤로 가기"
         ),
         "settings.av1_menu": (
@@ -178,7 +178,7 @@ TRANSLATIONS = {
             "\n2. 인코더 설정 (libsvtav1, libaom-av1, av1_nvenc 등)"
             "\n3. 목표 비트레이트 설정 (예: 6000k)"
             "\n4. 최대 비트레이트 설정 (예: 8000k)"
-            "\n5. 프리셋 설정 (libsvtav1/libaom-av1: 0-13, NVENC: p1-p7)"
+            "\n5. 프리셋 설정 (인코더별 전체 옵션 안내)"
             "\n6. 뒤로 가기"
         ),
         "settings.encoding_toggled": "{codec} 인코딩이 {state}되었습니다.",
@@ -187,12 +187,58 @@ TRANSLATIONS = {
         "settings.invalid_encoder": "잘못된 인코더 이름입니다.",
         "settings.prompt_target_bitrate": "목표 비트레이트를 입력하세요 (예: 6000k): ",
         "settings.prompt_max_bitrate": "최대 비트레이트를 입력하세요 (예: 10000k): ",
-        "settings.hevc_preset_options": (
-            "옵션: ultrafast(권장), superfast, veryfast, faster, fast, medium"
+        "settings.preset_help_x265": (
+            "libx265 프리셋 (빠름/낮은 압축 효율 → 느림/높은 압축 효율):\n"
+            "ultrafast → superfast → veryfast → faster → fast → medium → "
+            "slow → slower → veryslow → placebo\n"
+            "placebo는 처리 비용이 매우 커서 일반적인 녹화에는 권장하지 않습니다."
         ),
-        "settings.hevc_preset_note": (
-            "참고: NVENC는 p1-p7을 사용하세요. QSV는 veryfast-veryslow를 "
-            "사용하세요."
+        "settings.preset_help_hevc_nvenc": (
+            "HEVC NVENC 권장 프리셋:\n"
+            "p1(가장 빠름/가장 낮은 화질), p2(더 빠름/낮은 화질), "
+            "p3(빠름), p4(균형/기본값), p5(느림/좋은 화질), "
+            "p6(더 느림/더 좋은 화질), p7(가장 느림/가장 좋은 화질)\n"
+            "FFmpeg 버전별 호환 별칭: default, slow, medium, fast, hp, hq, "
+            "bd, ll, llhq, llhp, lossless, losslesshp"
+        ),
+        "settings.preset_help_av1_nvenc": (
+            "AV1 NVENC 권장 프리셋:\n"
+            "p1(가장 빠름/가장 낮은 화질), p2(더 빠름/낮은 화질), "
+            "p3(빠름), p4(균형/기본값), p5(느림/좋은 화질), "
+            "p6(더 느림/더 좋은 화질), p7(가장 느림/가장 좋은 화질)\n"
+            "FFmpeg 버전별 호환 별칭: default, slow, medium, fast"
+        ),
+        "settings.preset_help_qsv": (
+            "QSV 프리셋 (빠름 → 고화질):\n"
+            "veryfast, faster, fast, medium(기본값), slow, slower, veryslow\n"
+            "숫자형 옵션: 7, 6, 5, 4, 3, 2, 1 (위 이름과 같은 순서), "
+            "0(FFmpeg 자동값)"
+        ),
+        "settings.preset_help_hevc_amf": (
+            "HEVC AMF 프리셋 (빠름 → 고화질):\n"
+            "speed, balanced(기본값), quality"
+        ),
+        "settings.preset_help_av1_amf": (
+            "AV1 AMF 프리셋 (빠름 → 고화질):\n"
+            "speed, balanced(기본값), quality, high_quality\n"
+            "high_quality는 최신 FFmpeg와 AMF 드라이버에서만 지원될 수 있습니다."
+        ),
+        "settings.preset_help_svtav1": (
+            "SVT-AV1 프리셋: -2(FFmpeg/라이브러리 자동값), "
+            "-1(품질 참조용·매우 느림), 0(가장 높은 압축 효율)부터 "
+            "13(가장 빠름/가장 낮은 압축 효율)까지\n"
+            "전체 옵션: -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8(기본값), "
+            "9, 10, 11, 12, 13\n"
+            "지원되는 최댓값과 특수값 동작은 FFmpeg/SVT-AV1 버전에 따라 다릅니다."
+        ),
+        "settings.preset_help_libaom": (
+            "libaom-AV1 프리셋(cpu-used): 0(가장 느림/가장 높은 압축 효율)부터 "
+            "8(가장 빠름/가장 낮은 압축 효율)까지\n"
+            "전체 옵션: 0, 1, 2, 3, 4, 5, 6(기본값), 7, 8"
+        ),
+        "settings.preset_unsupported": (
+            "{encoder}는 이 메뉴에서 사용할 FFmpeg -preset 옵션을 "
+            "제공하지 않습니다."
         ),
         "settings.prompt_preset": "프리셋 이름을 입력하세요: ",
         "settings.invalid_preset": "잘못된 프리셋 이름입니다.",
@@ -691,16 +737,23 @@ TRANSLATIONS["en"].update({
     "settings.target_bitrate": "Target Bitrate: {bitrate}",
     "settings.max_bitrate": "Max Bitrate: {bitrate}",
     "settings.preset": "Preset: {preset}",
-    "settings.hevc_menu": "1. Toggle Enable/Disable\n2. Set Encoder (libx265, hevc_nvenc, hevc_qsv, etc.)\n3. Set Target Bitrate (e.g., 6000k)\n4. Set Max Bitrate (e.g., 8000k)\n5. Set Preset (ultrafast, superfast, etc.)\n6. Go Back",
-    "settings.av1_menu": "1. Toggle Enable/Disable\n2. Set Encoder (libsvtav1, libaom-av1, av1_nvenc, etc.)\n3. Set Target Bitrate (e.g., 6000k)\n4. Set Max Bitrate (e.g., 8000k)\n5. Set Preset (libsvtav1/libaom-av1: 0-13, NVENC: p1-p7)\n6. Go Back",
+    "settings.hevc_menu": "1. Toggle Enable/Disable\n2. Set Encoder (libx265, hevc_nvenc, hevc_qsv, etc.)\n3. Set Target Bitrate (e.g., 6000k)\n4. Set Max Bitrate (e.g., 8000k)\n5. Set Preset (shows every option for the encoder)\n6. Go Back",
+    "settings.av1_menu": "1. Toggle Enable/Disable\n2. Set Encoder (libsvtav1, libaom-av1, av1_nvenc, etc.)\n3. Set Target Bitrate (e.g., 6000k)\n4. Set Max Bitrate (e.g., 8000k)\n5. Set Preset (shows every option for the encoder)\n6. Go Back",
     "settings.encoding_toggled": "{codec} encoding has been {state}.",
     "settings.available_encoders": "\nAvailable Encoders:",
     "settings.prompt_encoder": "Enter encoder name: ",
     "settings.invalid_encoder": "Invalid encoder name.",
     "settings.prompt_target_bitrate": "Enter target bitrate (e.g., 6000k): ",
     "settings.prompt_max_bitrate": "Enter max bitrate (e.g., 10000k): ",
-    "settings.hevc_preset_options": "Options: ultrafast (rec), superfast, veryfast, faster, fast, medium",
-    "settings.hevc_preset_note": "Note: For NVENC, use p1-p7. For QSV, use veryfast-veryslow.",
+    "settings.preset_help_x265": "libx265 presets (fast/lower compression efficiency → slow/higher compression efficiency):\nultrafast → superfast → veryfast → faster → fast → medium → slow → slower → veryslow → placebo\nplacebo has an extreme processing cost and is not recommended for normal recording.",
+    "settings.preset_help_hevc_nvenc": "HEVC NVENC recommended presets:\np1 (fastest/lowest quality), p2 (faster/lower quality), p3 (fast), p4 (balanced/default), p5 (slow/good quality), p6 (slower/better quality), p7 (slowest/best quality)\nFFmpeg version-dependent compatibility aliases: default, slow, medium, fast, hp, hq, bd, ll, llhq, llhp, lossless, losslesshp",
+    "settings.preset_help_av1_nvenc": "AV1 NVENC recommended presets:\np1 (fastest/lowest quality), p2 (faster/lower quality), p3 (fast), p4 (balanced/default), p5 (slow/good quality), p6 (slower/better quality), p7 (slowest/best quality)\nFFmpeg version-dependent compatibility aliases: default, slow, medium, fast",
+    "settings.preset_help_qsv": "QSV presets (speed → quality):\nveryfast, faster, fast, medium (default), slow, slower, veryslow\nNumeric options: 7, 6, 5, 4, 3, 2, 1 (same order as the names above), and 0 (FFmpeg automatic)",
+    "settings.preset_help_hevc_amf": "HEVC AMF presets (speed → quality):\nspeed, balanced (default), quality",
+    "settings.preset_help_av1_amf": "AV1 AMF presets (speed → quality):\nspeed, balanced (default), quality, high_quality\nhigh_quality may require a recent FFmpeg build and AMF driver.",
+    "settings.preset_help_svtav1": "SVT-AV1 presets: -2 (FFmpeg/library automatic), -1 (quality-reference/very slow), and 0 (highest compression efficiency) through 13 (fastest/lowest compression efficiency)\nAll options: -2, -1, 0, 1, 2, 3, 4, 5, 6, 7, 8 (default), 9, 10, 11, 12, 13\nThe maximum and special-value behavior depend on the FFmpeg/SVT-AV1 version.",
+    "settings.preset_help_libaom": "libaom-AV1 presets (cpu-used): 0 (slowest/highest compression efficiency) through 8 (fastest/lowest compression efficiency)\nAll options: 0, 1, 2, 3, 4, 5, 6 (default), 7, 8",
+    "settings.preset_unsupported": "{encoder} does not provide an FFmpeg -preset option that can be used from this menu.",
     "settings.prompt_preset": "Enter preset name: ",
     "settings.invalid_preset": "Invalid preset name.",
     "settings.prompt_ses": "Enter SES: ",
@@ -889,16 +942,23 @@ TRANSLATIONS["zh-CN"].update({
     "settings.target_bitrate": "目标码率：{bitrate}",
     "settings.max_bitrate": "最大码率：{bitrate}",
     "settings.preset": "预设：{preset}",
-    "settings.hevc_menu": "1. 切换启用/禁用\n2. 设置编码器（libx265、hevc_nvenc、hevc_qsv 等）\n3. 设置目标码率（例如 6000k）\n4. 设置最大码率（例如 8000k）\n5. 设置预设（ultrafast、superfast 等）\n6. 返回",
-    "settings.av1_menu": "1. 切换启用/禁用\n2. 设置编码器（libsvtav1、libaom-av1、av1_nvenc 等）\n3. 设置目标码率（例如 6000k）\n4. 设置最大码率（例如 8000k）\n5. 设置预设（libsvtav1/libaom-av1：0-13，NVENC：p1-p7）\n6. 返回",
+    "settings.hevc_menu": "1. 切换启用/禁用\n2. 设置编码器（libx265、hevc_nvenc、hevc_qsv 等）\n3. 设置目标码率（例如 6000k）\n4. 设置最大码率（例如 8000k）\n5. 设置预设（显示该编码器的全部选项）\n6. 返回",
+    "settings.av1_menu": "1. 切换启用/禁用\n2. 设置编码器（libsvtav1、libaom-av1、av1_nvenc 等）\n3. 设置目标码率（例如 6000k）\n4. 设置最大码率（例如 8000k）\n5. 设置预设（显示该编码器的全部选项）\n6. 返回",
     "settings.encoding_toggled": "{codec} 编码已{state}。",
     "settings.available_encoders": "\n可用编码器：",
     "settings.prompt_encoder": "请输入编码器名称：",
     "settings.invalid_encoder": "编码器名称无效。",
     "settings.prompt_target_bitrate": "请输入目标码率（例如 6000k）：",
     "settings.prompt_max_bitrate": "请输入最大码率（例如 10000k）：",
-    "settings.hevc_preset_options": "选项：ultrafast（推荐）、superfast、veryfast、faster、fast、medium",
-    "settings.hevc_preset_note": "注意：NVENC 请使用 p1-p7。QSV 请使用 veryfast-veryslow。",
+    "settings.preset_help_x265": "libx265 预设（速度快/压缩效率低 → 速度慢/压缩效率高）：\nultrafast → superfast → veryfast → faster → fast → medium → slow → slower → veryslow → placebo\nplacebo 的处理开销极高，不建议用于普通录制。",
+    "settings.preset_help_hevc_nvenc": "HEVC NVENC 推荐预设：\np1（最快/画质最低）、p2（较快/画质较低）、p3（快速）、p4（均衡/默认）、p5（较慢/画质良好）、p6（更慢/画质更好）、p7（最慢/画质最佳）\n因 FFmpeg 版本而异的兼容别名：default、slow、medium、fast、hp、hq、bd、ll、llhq、llhp、lossless、losslesshp",
+    "settings.preset_help_av1_nvenc": "AV1 NVENC 推荐预设：\np1（最快/画质最低）、p2（较快/画质较低）、p3（快速）、p4（均衡/默认）、p5（较慢/画质良好）、p6（更慢/画质更好）、p7（最慢/画质最佳）\n因 FFmpeg 版本而异的兼容别名：default、slow、medium、fast",
+    "settings.preset_help_qsv": "QSV 预设（速度 → 画质）：\nveryfast、faster、fast、medium（默认）、slow、slower、veryslow\n数字选项：7、6、5、4、3、2、1（与上述名称顺序相同），以及 0（FFmpeg 自动值）",
+    "settings.preset_help_hevc_amf": "HEVC AMF 预设（速度 → 画质）：\nspeed、balanced（默认）、quality",
+    "settings.preset_help_av1_amf": "AV1 AMF 预设（速度 → 画质）：\nspeed、balanced（默认）、quality、high_quality\nhigh_quality 可能需要较新的 FFmpeg 版本和 AMF 驱动程序。",
+    "settings.preset_help_svtav1": "SVT-AV1 预设：-2（FFmpeg/编码库自动值）、-1（画质参考/速度极慢），以及从 0（压缩效率最高）至 13（最快/压缩效率最低）\n全部选项：-2、-1、0、1、2、3、4、5、6、7、8（默认）、9、10、11、12、13\n最大值及特殊值的行为取决于 FFmpeg/SVT-AV1 版本。",
+    "settings.preset_help_libaom": "libaom-AV1 预设（cpu-used）：0（最慢/压缩效率最高）至 8（最快/压缩效率最低）\n全部选项：0、1、2、3、4、5、6（默认）、7、8",
+    "settings.preset_unsupported": "{encoder} 不提供可在此菜单中使用的 FFmpeg -preset 选项。",
     "settings.prompt_preset": "请输入预设名称：",
     "settings.invalid_preset": "预设名称无效。",
     "settings.prompt_ses": "请输入 SES：",
@@ -1006,16 +1066,23 @@ TRANSLATIONS["zh-TW"].update({
     "settings.target_bitrate": "目標位元率：{bitrate}",
     "settings.max_bitrate": "最大位元率：{bitrate}",
     "settings.preset": "預設：{preset}",
-    "settings.hevc_menu": "1. 切換啟用/停用\n2. 設定編碼器（libx265、hevc_nvenc、hevc_qsv 等）\n3. 設定目標位元率（例如 6000k）\n4. 設定最大位元率（例如 8000k）\n5. 設定預設（ultrafast、superfast 等）\n6. 返回",
-    "settings.av1_menu": "1. 切換啟用/停用\n2. 設定編碼器（libsvtav1、libaom-av1、av1_nvenc 等）\n3. 設定目標位元率（例如 6000k）\n4. 設定最大位元率（例如 8000k）\n5. 設定預設（libsvtav1/libaom-av1：0-13，NVENC：p1-p7）\n6. 返回",
+    "settings.hevc_menu": "1. 切換啟用/停用\n2. 設定編碼器（libx265、hevc_nvenc、hevc_qsv 等）\n3. 設定目標位元率（例如 6000k）\n4. 設定最大位元率（例如 8000k）\n5. 設定預設（顯示該編碼器的全部選項）\n6. 返回",
+    "settings.av1_menu": "1. 切換啟用/停用\n2. 設定編碼器（libsvtav1、libaom-av1、av1_nvenc 等）\n3. 設定目標位元率（例如 6000k）\n4. 設定最大位元率（例如 8000k）\n5. 設定預設（顯示該編碼器的全部選項）\n6. 返回",
     "settings.encoding_toggled": "{codec} 編碼已{state}。",
     "settings.available_encoders": "\n可用編碼器：",
     "settings.prompt_encoder": "請輸入編碼器名稱：",
     "settings.invalid_encoder": "編碼器名稱無效。",
     "settings.prompt_target_bitrate": "請輸入目標位元率（例如 6000k）：",
     "settings.prompt_max_bitrate": "請輸入最大位元率（例如 10000k）：",
-    "settings.hevc_preset_options": "選項：ultrafast（建議）、superfast、veryfast、faster、fast、medium",
-    "settings.hevc_preset_note": "注意：NVENC 請使用 p1-p7。QSV 請使用 veryfast-veryslow。",
+    "settings.preset_help_x265": "libx265 預設（速度快/壓縮效率低 → 速度慢/壓縮效率高）：\nultrafast → superfast → veryfast → faster → fast → medium → slow → slower → veryslow → placebo\nplacebo 的處理成本極高，不建議用於一般錄製。",
+    "settings.preset_help_hevc_nvenc": "HEVC NVENC 建議預設：\np1（最快/畫質最低）、p2（較快/畫質較低）、p3（快速）、p4（均衡/預設）、p5（較慢/畫質良好）、p6（更慢/畫質更好）、p7（最慢/畫質最佳）\n依 FFmpeg 版本而異的相容別名：default、slow、medium、fast、hp、hq、bd、ll、llhq、llhp、lossless、losslesshp",
+    "settings.preset_help_av1_nvenc": "AV1 NVENC 建議預設：\np1（最快/畫質最低）、p2（較快/畫質較低）、p3（快速）、p4（均衡/預設）、p5（較慢/畫質良好）、p6（更慢/畫質更好）、p7（最慢/畫質最佳）\n依 FFmpeg 版本而異的相容別名：default、slow、medium、fast",
+    "settings.preset_help_qsv": "QSV 預設（速度 → 畫質）：\nveryfast、faster、fast、medium（預設）、slow、slower、veryslow\n數字選項：7、6、5、4、3、2、1（與上述名稱順序相同），以及 0（FFmpeg 自動值）",
+    "settings.preset_help_hevc_amf": "HEVC AMF 預設（速度 → 畫質）：\nspeed、balanced（預設）、quality",
+    "settings.preset_help_av1_amf": "AV1 AMF 預設（速度 → 畫質）：\nspeed、balanced（預設）、quality、high_quality\nhigh_quality 可能需要較新的 FFmpeg 版本與 AMF 驅動程式。",
+    "settings.preset_help_svtav1": "SVT-AV1 預設：-2（FFmpeg/編碼庫自動值）、-1（畫質參考/速度極慢），以及從 0（壓縮效率最高）至 13（最快/壓縮效率最低）\n全部選項：-2、-1、0、1、2、3、4、5、6、7、8（預設）、9、10、11、12、13\n最大值及特殊值的行為取決於 FFmpeg/SVT-AV1 版本。",
+    "settings.preset_help_libaom": "libaom-AV1 預設（cpu-used）：0（最慢/壓縮效率最高）至 8（最快/壓縮效率最低）\n全部選項：0、1、2、3、4、5、6（預設）、7、8",
+    "settings.preset_unsupported": "{encoder} 不提供可在此選單中使用的 FFmpeg -preset 選項。",
     "settings.prompt_preset": "請輸入預設名稱：",
     "settings.invalid_preset": "預設名稱無效。",
     "settings.prompt_ses": "請輸入 SES：",
@@ -1125,16 +1192,23 @@ TRANSLATIONS["ja"].update({
     "settings.target_bitrate": "目標ビットレート: {bitrate}",
     "settings.max_bitrate": "最大ビットレート: {bitrate}",
     "settings.preset": "プリセット: {preset}",
-    "settings.hevc_menu": "1. 有効/無効を切り替え\n2. エンコーダーを設定 (libx265, hevc_nvenc, hevc_qsv など)\n3. 目標ビットレートを設定 (例: 6000k)\n4. 最大ビットレートを設定 (例: 8000k)\n5. プリセットを設定 (ultrafast, superfast など)\n6. 戻る",
-    "settings.av1_menu": "1. 有効/無効を切り替え\n2. エンコーダーを設定 (libsvtav1, libaom-av1, av1_nvenc など)\n3. 目標ビットレートを設定 (例: 6000k)\n4. 最大ビットレートを設定 (例: 8000k)\n5. プリセットを設定 (libsvtav1/libaom-av1: 0-13, NVENC: p1-p7)\n6. 戻る",
+    "settings.hevc_menu": "1. 有効/無効を切り替え\n2. エンコーダーを設定 (libx265, hevc_nvenc, hevc_qsv など)\n3. 目標ビットレートを設定 (例: 6000k)\n4. 最大ビットレートを設定 (例: 8000k)\n5. プリセットを設定 (エンコーダーごとの全オプションを表示)\n6. 戻る",
+    "settings.av1_menu": "1. 有効/無効を切り替え\n2. エンコーダーを設定 (libsvtav1, libaom-av1, av1_nvenc など)\n3. 目標ビットレートを設定 (例: 6000k)\n4. 最大ビットレートを設定 (例: 8000k)\n5. プリセットを設定 (エンコーダーごとの全オプションを表示)\n6. 戻る",
     "settings.encoding_toggled": "{codec} エンコードを{state}にしました。",
     "settings.available_encoders": "\n使用可能なエンコーダー:",
     "settings.prompt_encoder": "エンコーダー名を入力してください: ",
     "settings.invalid_encoder": "エンコーダー名が無効です。",
     "settings.prompt_target_bitrate": "目標ビットレートを入力してください (例: 6000k): ",
     "settings.prompt_max_bitrate": "最大ビットレートを入力してください (例: 10000k): ",
-    "settings.hevc_preset_options": "オプション: ultrafast（推奨）, superfast, veryfast, faster, fast, medium",
-    "settings.hevc_preset_note": "注: NVENC は p1-p7 を使用してください。QSV は veryfast-veryslow を使用してください。",
+    "settings.preset_help_x265": "libx265 プリセット（高速/低圧縮効率 → 低速/高圧縮効率）：\nultrafast → superfast → veryfast → faster → fast → medium → slow → slower → veryslow → placebo\nplacebo は処理負荷が非常に高いため、通常の録画には推奨しません。",
+    "settings.preset_help_hevc_nvenc": "HEVC NVENC 推奨プリセット：\np1（最速/最低画質）、p2（より高速/低画質）、p3（高速）、p4（バランス/既定値）、p5（低速/高画質）、p6（より低速/より高画質）、p7（最低速/最高画質）\nFFmpeg のバージョンによって異なる互換エイリアス：default、slow、medium、fast、hp、hq、bd、ll、llhq、llhp、lossless、losslesshp",
+    "settings.preset_help_av1_nvenc": "AV1 NVENC 推奨プリセット：\np1（最速/最低画質）、p2（より高速/低画質）、p3（高速）、p4（バランス/既定値）、p5（低速/高画質）、p6（より低速/より高画質）、p7（最低速/最高画質）\nFFmpeg のバージョンによって異なる互換エイリアス：default、slow、medium、fast",
+    "settings.preset_help_qsv": "QSV プリセット（速度 → 画質）：\nveryfast、faster、fast、medium（既定値）、slow、slower、veryslow\n数値オプション：7、6、5、4、3、2、1（上記の名前と同じ順序）、および 0（FFmpeg の自動値）",
+    "settings.preset_help_hevc_amf": "HEVC AMF プリセット（速度 → 画質）：\nspeed、balanced（既定値）、quality",
+    "settings.preset_help_av1_amf": "AV1 AMF プリセット（速度 → 画質）：\nspeed、balanced（既定値）、quality、high_quality\nhigh_quality には新しい FFmpeg ビルドと AMF ドライバーが必要な場合があります。",
+    "settings.preset_help_svtav1": "SVT-AV1 プリセット：-2（FFmpeg/ライブラリの自動値）、-1（画質リファレンス/非常に低速）、および 0（最高圧縮効率）から 13（最速/最低圧縮効率）まで\n全オプション：-2、-1、0、1、2、3、4、5、6、7、8（既定値）、9、10、11、12、13\n最大値と特殊値の動作は FFmpeg/SVT-AV1 のバージョンによって異なります。",
+    "settings.preset_help_libaom": "libaom-AV1 プリセット（cpu-used）：0（最低速/最高圧縮効率）から 8（最速/最低圧縮効率）まで\n全オプション：0、1、2、3、4、5、6（既定値）、7、8",
+    "settings.preset_unsupported": "{encoder} には、このメニューで使用できる FFmpeg の -preset オプションがありません。",
     "settings.prompt_preset": "プリセット名を入力してください: ",
     "settings.invalid_preset": "プリセット名が無効です。",
     "settings.prompt_ses": "SES を入力してください: ",

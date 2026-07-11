@@ -113,6 +113,66 @@ LIBX265_PRESETS = {
     "veryslow",
     "placebo",
 }
+NVENC_P_LEVEL_PRESETS = {f"p{number}" for number in range(1, 8)}
+HEVC_NVENC_PRESETS = NVENC_P_LEVEL_PRESETS | {
+    "default",
+    "slow",
+    "medium",
+    "fast",
+    "hp",
+    "hq",
+    "bd",
+    "ll",
+    "llhq",
+    "llhp",
+    "lossless",
+    "losslesshp",
+}
+AV1_NVENC_PRESETS = NVENC_P_LEVEL_PRESETS | {
+    "default",
+    "slow",
+    "medium",
+    "fast",
+}
+QSV_NAMED_PRESETS = {
+    "veryfast",
+    "faster",
+    "fast",
+    "medium",
+    "slow",
+    "slower",
+    "veryslow",
+}
+QSV_PRESETS = QSV_NAMED_PRESETS | {str(number) for number in range(8)}
+HEVC_AMF_PRESETS = {"speed", "balanced", "quality"}
+AV1_AMF_PRESETS = {"speed", "balanced", "quality", "high_quality"}
+SVT_AV1_PRESETS = {str(number) for number in range(-2, 14)}
+LIBAOM_AV1_PRESETS = {str(number) for number in range(9)}
+ENCODER_PRESETS = {
+    "libx265": LIBX265_PRESETS,
+    "hevc_nvenc": HEVC_NVENC_PRESETS,
+    "hevc_qsv": QSV_PRESETS,
+    "hevc_amf": HEVC_AMF_PRESETS,
+    "libsvtav1": SVT_AV1_PRESETS,
+    "libaom-av1": LIBAOM_AV1_PRESETS,
+    "av1_nvenc": AV1_NVENC_PRESETS,
+    "av1_qsv": QSV_PRESETS,
+    "av1_amf": AV1_AMF_PRESETS,
+}
+ENCODER_DEFAULT_PRESETS = {
+    "libx265": "ultrafast",
+    "hevc_nvenc": "p4",
+    "hevc_qsv": "medium",
+    "hevc_amf": "balanced",
+    "hevc_vaapi": "auto",
+    "hevc_videotoolbox": "auto",
+    "libsvtav1": "8",
+    "libaom-av1": "6",
+    "av1_nvenc": "p4",
+    "av1_qsv": "medium",
+    "av1_amf": "balanced",
+    "av1_vaapi": "auto",
+}
 ALLOWED_AV1_ENCODERS = {
     "libsvtav1",
     "libaom-av1",
@@ -121,6 +181,44 @@ ALLOWED_AV1_ENCODERS = {
     "av1_amf",
     "av1_vaapi",
 }
+
+
+def normalize_encoder_preset(encoder, value):
+    default = ENCODER_DEFAULT_PRESETS[encoder]
+    preset = default if value is None else str(value).strip().lower()
+    if not preset:
+        preset = default
+    options = ENCODER_PRESETS.get(encoder)
+    if options is None:
+        return default
+    if encoder in {"hevc_nvenc", "av1_nvenc"}:
+        if preset in {"ultrafast", "superfast", "veryfast", "faster"}:
+            return "p1"
+        if preset in {"slower", "veryslow"}:
+            return "p6"
+    if encoder == "hevc_amf" and "fast" in preset:
+        return "speed"
+    return preset if preset in options else default
+
+
+def print_preset_help(encoder, t):
+    help_keys = {
+        "libx265": "settings.preset_help_x265",
+        "hevc_nvenc": "settings.preset_help_hevc_nvenc",
+        "hevc_qsv": "settings.preset_help_qsv",
+        "hevc_amf": "settings.preset_help_hevc_amf",
+        "libsvtav1": "settings.preset_help_svtav1",
+        "libaom-av1": "settings.preset_help_libaom",
+        "av1_nvenc": "settings.preset_help_av1_nvenc",
+        "av1_qsv": "settings.preset_help_qsv",
+        "av1_amf": "settings.preset_help_av1_amf",
+    }
+    key = help_keys.get(encoder)
+    if key is None:
+        print(t("settings.preset_unsupported", encoder=encoder))
+        return False
+    print(t(key))
+    return True
 
 
 def deep_merge_defaults(config, defaults):
@@ -487,12 +585,9 @@ def normalize_config(config):
         hevc["encoder"] = "libx265"
     hevc["bitrate"] = normalize_bitrate(hevc.get("bitrate"), "2500k")
     hevc["max_bitrate"] = normalize_bitrate(hevc.get("max_bitrate"), "10000k")
-    preset = str(hevc.get("preset") or "ultrafast").strip()
-    if not SAFE_FFMPEG_VALUE.fullmatch(preset):
-        preset = "ultrafast"
-    if hevc["encoder"] == "libx265" and preset not in LIBX265_PRESETS:
-        preset = "ultrafast"
-    hevc["preset"] = preset
+    hevc["preset"] = normalize_encoder_preset(
+        hevc["encoder"], hevc.get("preset")
+    )
     config["hevc_settings"] = hevc
 
     av1 = deep_merge_defaults(config.get("av1_settings", {}), default_config["av1_settings"])
@@ -501,8 +596,9 @@ def normalize_config(config):
         av1["encoder"] = "libsvtav1"
     av1["bitrate"] = normalize_bitrate(av1.get("bitrate"), "2500k")
     av1["max_bitrate"] = normalize_bitrate(av1.get("max_bitrate"), "10000k")
-    av1_preset = str(av1.get("preset") or "8").strip()
-    av1["preset"] = av1_preset if SAFE_FFMPEG_VALUE.fullmatch(av1_preset) else "8"
+    av1["preset"] = normalize_encoder_preset(
+        av1["encoder"], av1.get("preset")
+    )
     if av1["enable"]:
         hevc["enable"] = False
     config["av1_settings"] = av1
@@ -1196,6 +1292,9 @@ while True:
                 new_encoder = input(t("settings.prompt_encoder")).strip()
                 if new_encoder in ALLOWED_ENCODERS:
                     hevc["encoder"] = new_encoder
+                    hevc["preset"] = normalize_encoder_preset(
+                        new_encoder, hevc.get("preset")
+                    )
                     save_config(config)
                 else:
                     print(t("settings.invalid_encoder"))
@@ -1213,11 +1312,11 @@ while True:
                 save_config(config)
 
             elif choice3 == "5":
-                print(t("settings.hevc_preset_options"))
-                print(t("settings.hevc_preset_note"))
+                if not print_preset_help(hevc["encoder"], t):
+                    continue
                 new_preset = input(t("settings.prompt_preset")).strip()
-                if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
-                    hevc["preset"] = new_preset
+                if new_preset.lower() in ENCODER_PRESETS[hevc["encoder"]]:
+                    hevc["preset"] = new_preset.lower()
                     save_config(config)
                 else:
                     print(t("settings.invalid_preset"))
@@ -1258,6 +1357,9 @@ while True:
                 new_encoder = input(t("settings.prompt_encoder")).strip()
                 if new_encoder in ALLOWED_AV1_ENCODERS:
                     av1["encoder"] = new_encoder
+                    av1["preset"] = normalize_encoder_preset(
+                        new_encoder, av1.get("preset")
+                    )
                     save_config(config)
                 else:
                     print(t("settings.invalid_encoder"))
@@ -1275,9 +1377,11 @@ while True:
                 save_config(config)
 
             elif choice4 == "5":
+                if not print_preset_help(av1["encoder"], t):
+                    continue
                 new_preset = input(t("settings.prompt_preset")).strip()
-                if SAFE_FFMPEG_VALUE.fullmatch(new_preset):
-                    av1["preset"] = new_preset
+                if new_preset.lower() in ENCODER_PRESETS[av1["encoder"]]:
+                    av1["preset"] = new_preset.lower()
                     save_config(config)
                 else:
                     print(t("settings.invalid_preset"))
