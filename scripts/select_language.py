@@ -2,6 +2,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -14,6 +15,8 @@ from i18n import language_display_name, language_options, normalize_language
 
 CONFIG_FILE_PATH = BASE_DIR / "config.json"
 DEFAULT_PROMPT_LANGUAGE = "ko"
+CONFIG_REPLACE_ATTEMPTS = 5
+CONFIG_REPLACE_RETRY_SECONDS = 0.2
 
 
 MESSAGES = {
@@ -81,7 +84,20 @@ def save_config(config):
             fd = None
             json.dump(config, file, indent=2, ensure_ascii=False)
             file.write("\n")
-        os.replace(temp_path, CONFIG_FILE_PATH)
+        for attempt in range(CONFIG_REPLACE_ATTEMPTS):
+            try:
+                os.replace(temp_path, CONFIG_FILE_PATH)
+                temp_path = None
+                break
+            except PermissionError:
+                if attempt == CONFIG_REPLACE_ATTEMPTS - 1:
+                    with CONFIG_FILE_PATH.open("w", encoding="utf-8") as file:
+                        json.dump(config, file, indent=2, ensure_ascii=False)
+                        file.write("\n")
+                        file.flush()
+                        os.fsync(file.fileno())
+                    break
+                time.sleep(CONFIG_REPLACE_RETRY_SECONDS)
         if os.name != "nt":
             try:
                 os.chmod(CONFIG_FILE_PATH, 0o600)

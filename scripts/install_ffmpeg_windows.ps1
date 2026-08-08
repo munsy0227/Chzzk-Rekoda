@@ -116,9 +116,10 @@ try {
         throw $stagedFfmpeg
     }
 
-    & $stagedFfmpeg -version | Select-Object -First 1 | Out-Null
-    if ($LASTEXITCODE -ne 0) {
-        throw $LASTEXITCODE
+    $stagedVersionOutput = & $stagedFfmpeg -version
+    $stagedExitCode = $LASTEXITCODE
+    if ($stagedExitCode -ne 0) {
+        throw "Staged ffmpeg.exe did not run successfully. Exit code: $stagedExitCode"
     }
 
     $hadOriginal = Test-Path -LiteralPath $FfmpegDir
@@ -136,10 +137,12 @@ try {
             throw "Installed ffmpeg.exe was not found at $installedFfmpeg"
         }
 
-        & $installedFfmpeg -version | Select-Object -First 1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Installed ffmpeg.exe did not run successfully."
+        $installedVersionOutput = & $installedFfmpeg -version
+        $installedExitCode = $LASTEXITCODE
+        if ($installedExitCode -ne 0) {
+            throw "Installed ffmpeg.exe did not run successfully. Exit code: $installedExitCode"
         }
+        $installedVersionOutput | Select-Object -First 1
     } catch {
         $installError = $_
         $rollbackError = $null

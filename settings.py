@@ -2,6 +2,7 @@ import os
 import json
 import re
 import tempfile
+import time
 from copy import deepcopy
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
@@ -48,6 +49,8 @@ BROWSER_LOGIN_OPTIONS = {
     "2": ("edge", "Microsoft Edge"),
     "3": ("firefox", "Firefox"),
 }
+CONFIG_REPLACE_ATTEMPTS = 5
+CONFIG_REPLACE_RETRY_SECONDS = 0.2
 
 default_config = {
     "channels": [],
@@ -760,7 +763,20 @@ def save_config(config):
             fd = None
             json.dump(config, f, indent=2, ensure_ascii=False)
             f.write("\n")
-        os.replace(temp_path, config_file_path)
+        for attempt in range(CONFIG_REPLACE_ATTEMPTS):
+            try:
+                os.replace(temp_path, config_file_path)
+                temp_path = None
+                break
+            except PermissionError:
+                if attempt == CONFIG_REPLACE_ATTEMPTS - 1:
+                    with open(config_file_path, "w", encoding="utf-8") as f:
+                        json.dump(config, f, indent=2, ensure_ascii=False)
+                        f.write("\n")
+                        f.flush()
+                        os.fsync(f.fileno())
+                    break
+                time.sleep(CONFIG_REPLACE_RETRY_SECONDS)
         if os.name != "nt":
             try:
                 os.chmod(config_file_path, 0o600)
