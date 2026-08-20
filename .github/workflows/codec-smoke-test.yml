@@ -24,7 +24,6 @@ jobs:
     env:
       CHANNEL_ID: 64a90ba95d1f9feb0a798a20bbf0f40c
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
-      LOG_DIR: ${{ runner.temp }}/chzzk-codec-logs
 
     steps:
       - name: Check out repository
@@ -63,6 +62,7 @@ jobs:
 
       - name: Record and verify every codec
         run: |
+          LOG_DIR="$RUNNER_TEMP/chzzk-codec-logs"
           mkdir -p "$LOG_DIR"
 
           for codec in h264 hevc av1; do

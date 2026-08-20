@@ -24,7 +24,6 @@ jobs:
     env:
       CHANNEL_ID: 64a90ba95d1f9feb0a798a20bbf0f40c
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
-      OUTPUT_DIR: ${{ runner.temp }}/chzzk-long-recording
 
     steps:
       - name: Check out repository
@@ -45,6 +44,9 @@ jobs:
 
       - name: Configure long recording test
         run: |
+          OUTPUT_DIR="$RUNNER_TEMP/chzzk-long-recording"
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> "$GITHUB_ENV"
+
           if [[ ! "$DURATION_MINUTES" =~ ^[0-9]+$ ]] \
             || (( DURATION_MINUTES < 270 || DURATION_MINUTES > 330 )); then
             echo "::error::duration_minutes must be between 270 and 330."
