@@ -143,16 +143,25 @@ jobs:
                 \( -name '*.ts' -o -name '*.mkv' -o -name '*.webm' \) \
                 -print
             } | sort | tail -n 1)"
-            actual_codec="$({
+            probe_output="$({
               ffprobe \
                 -v error \
-                -select_streams v:0 \
+                -select_streams v \
                 -show_entries stream=codec_name \
                 -of default=noprint_wrappers=1:nokey=1 \
                 "$latest_file"
             })"
+            actual_codec="$({
+              printf '%s\n' "$probe_output" \
+                | sed '/^$/d' \
+                | sort -u \
+                | paste -sd, -
+            })"
 
-            if [[ "$actual_codec" != "$expected_codec" ]]; then
+            if [[ -z "$actual_codec" ]]; then
+              echo "::error title=Missing video stream::$codec produced no video codec metadata."
+              exit 1
+            elif [[ "$actual_codec" != "$expected_codec" ]]; then
               echo "::error title=Unexpected codec::$codec produced $actual_codec instead of $expected_codec."
               exit 1
             fi
