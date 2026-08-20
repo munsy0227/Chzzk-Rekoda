@@ -1,0 +1,173 @@
+name: Codec smoke test
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: Recording duration per codec in minutes (5-20)
+        required: true
+        default: "10"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chzzk-recording-integration-test
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: Record H.264, HEVC, and AV1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    env:
+      CHANNEL_ID: 64a90ba95d1f9feb0a798a20bbf0f40c
+      DURATION_MINUTES: ${{ inputs.duration_minutes }}
+      LOG_DIR: ${{ runner.temp }}/chzzk-codec-logs
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install FFmpeg and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          uv sync --locked
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -F libx265 > /dev/null
+          ffmpeg -hide_banner -encoders 2>/dev/null | grep -F libsvtav1 > /dev/null
+
+      - name: Validate test input
+        run: |
+          if [[ ! "$DURATION_MINUTES" =~ ^[0-9]+$ ]] \
+            || (( DURATION_MINUTES < 5 || DURATION_MINUTES > 20 )); then
+            echo "::error::duration_minutes must be between 5 and 20."
+            exit 1
+          fi
+
+      - name: Verify that the test channel is live
+        run: |
+          uv run --no-sync streamlink \
+            --plugin-dirs plugin \
+            --stream-url \
+            "https://chzzk.naver.com/live/$CHANNEL_ID" \
+            best > /dev/null
+
+      - name: Record and verify every codec
+        run: |
+          mkdir -p "$LOG_DIR"
+
+          for codec in h264 hevc av1; do
+            output_dir="$RUNNER_TEMP/chzzk-codec-$codec"
+            mkdir -p "$output_dir"
+
+            case "$codec" in
+              h264)
+                output_format="ts"
+                hevc_settings='{"enable": false}'
+                av1_settings='{"enable": false}'
+                expected_codec="h264"
+                ;;
+              hevc)
+                output_format="ts"
+                hevc_settings='{
+                  "enable": true,
+                  "encoder": "libx265",
+                  "bitrate": "2500k",
+                  "max_bitrate": "10000k",
+                  "preset": "ultrafast"
+                }'
+                av1_settings='{"enable": false}'
+                expected_codec="hevc"
+                ;;
+              av1)
+                output_format="mkv"
+                hevc_settings='{"enable": false}'
+                av1_settings='{
+                  "enable": true,
+                  "encoder": "libsvtav1",
+                  "bitrate": "2500k",
+                  "max_bitrate": "10000k",
+                  "preset": "13"
+                }'
+                expected_codec="av1"
+                ;;
+            esac
+
+            jq -n \
+              --arg channel_id "$CHANNEL_ID" \
+              --arg channel_name "GitHub Actions $codec codec smoke" \
+              --arg output_dir "$output_dir" \
+              --arg output_format "$output_format" \
+              --argjson hevc_settings "$hevc_settings" \
+              --argjson av1_settings "$av1_settings" \
+              '{
+                channels: [{
+                  id: $channel_id,
+                  name: $channel_name,
+                  output_dir: $output_dir,
+                  identifier: "codec_smoke",
+                  active: "on"
+                }],
+                delays: {codec_smoke: 0},
+                timeout: 30,
+                stream_segment_threads: 2,
+                output_format: $output_format,
+                recording_split_minutes: 5,
+                hevc_settings: $hevc_settings,
+                av1_settings: $av1_settings,
+                log_enabled: true,
+                cookies: {NID_SES: "", NID_AUT: ""},
+                dns_settings: {enable: false},
+                language: "en"
+              }' > config.json
+
+            : > log.log
+            bash scripts/run_long_recording_test.sh \
+              "$DURATION_MINUTES" \
+              180 \
+              "$output_dir"
+            cp log.log "$LOG_DIR/$codec.log"
+
+            latest_file="$({
+              find "$output_dir" \
+                -type f \
+                \( -name '*.ts' -o -name '*.mkv' -o -name '*.webm' \) \
+                -print
+            } | sort | tail -n 1)"
+            actual_codec="$({
+              ffprobe \
+                -v error \
+                -select_streams v:0 \
+                -show_entries stream=codec_name \
+                -of default=noprint_wrappers=1:nokey=1 \
+                "$latest_file"
+            })"
+
+            if [[ "$actual_codec" != "$expected_codec" ]]; then
+              echo "::error title=Unexpected codec::$codec produced $actual_codec instead of $expected_codec."
+              exit 1
+            fi
+
+            echo "Verified $codec output: $latest_file"
+          done
+
+      - name: Upload codec test logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: codec-smoke-logs-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/chzzk-codec-logs
+            log.log
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 9
