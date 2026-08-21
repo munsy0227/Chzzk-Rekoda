@@ -2082,7 +2082,9 @@ async def record_stream(
                             str(ffmpeg_path),
                             "--ffmpeg-copyts",
                             "--ffmpeg-start-at-zero",
-                            "--hls-segment-stream-data",
+                            # Keep segment streaming disabled so Streamlink can
+                            # retry a timed-out download before forwarding any
+                            # partial HLS data to ffmpeg.
                         ]
 
                         stream_process = await active_attempt.start_streamlink(

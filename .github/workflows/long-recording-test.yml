@@ -1,0 +1,104 @@
+name: Long recording test
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration_minutes:
+        description: Recording duration in minutes (270-330)
+        required: true
+        default: "300"
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chzzk-recording-integration-test
+  cancel-in-progress: false
+
+jobs:
+  record:
+    name: Record CHZZK stream
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      CHANNEL_ID: 64a90ba95d1f9feb0a798a20bbf0f40c
+      DURATION_MINUTES: ${{ inputs.duration_minutes }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Install FFmpeg and Python dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          uv sync --locked
+
+      - name: Configure long recording test
+        run: |
+          OUTPUT_DIR="$RUNNER_TEMP/chzzk-long-recording"
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> "$GITHUB_ENV"
+
+          if [[ ! "$DURATION_MINUTES" =~ ^[0-9]+$ ]] \
+            || (( DURATION_MINUTES < 270 || DURATION_MINUTES > 330 )); then
+            echo "::error::duration_minutes must be between 270 and 330."
+            exit 1
+          fi
+
+          mkdir -p "$OUTPUT_DIR"
+          jq -n \
+            --arg channel_id "$CHANNEL_ID" \
+            --arg output_dir "$OUTPUT_DIR" \
+            '{
+              channels: [{
+                id: $channel_id,
+                name: "GitHub Actions long recording",
+                output_dir: $output_dir,
+                identifier: "long_recording",
+                active: "on"
+              }],
+              delays: {long_recording: 0},
+              timeout: 30,
+              stream_segment_threads: 2,
+              output_format: "ts",
+              recording_split_minutes: 5,
+              hevc_settings: {enable: false},
+              av1_settings: {enable: false},
+              log_enabled: true,
+              cookies: {NID_SES: "", NID_AUT: ""},
+              dns_settings: {enable: false},
+              language: "en"
+            }' > config.json
+
+      - name: Verify that the test channel is live
+        run: |
+          uv run --no-sync streamlink \
+            --plugin-dirs plugin \
+            --stream-url \
+            "https://chzzk.naver.com/live/$CHANNEL_ID" \
+            best > /dev/null
+
+      - name: Run long recording test
+        run: |
+          bash scripts/run_long_recording_test.sh \
+            "$DURATION_MINUTES" \
+            180 \
+            "$OUTPUT_DIR"
+
+      - name: Upload recorder log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: long-recording-log-${{ github.run_id }}
+          path: log.log
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 9
