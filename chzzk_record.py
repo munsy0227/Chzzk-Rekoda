@@ -56,6 +56,14 @@ DEFAULT_RECORDING_SPLIT_MINUTES = 0
 MAX_RECORDING_SPLIT_MINUTES = 10080
 FFMPEG_FINALIZE_TIMEOUT_SECONDS = 60
 RECORDING_SHUTDOWN_TIMEOUT_SECONDS = 90
+STREAMLINK_SEGMENT_ATTEMPTS = 6
+STREAMLINK_SEGMENT_TIMEOUT_SECONDS = 15
+STREAMLINK_PLAYLIST_RELOAD_ATTEMPTS = 6
+STREAMLINK_OUTPUT_TIMEOUT_SECONDS = 90
+STREAMLINK_RECONNECT_BASE_DELAY_SECONDS = 2
+STREAMLINK_RECONNECT_MAX_DELAY_SECONDS = 30
+STREAMLINK_STABLE_RECORDING_SECONDS = 60
+STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 
 # Global console instance for Rich
@@ -429,6 +437,14 @@ def clamp_int(value: Any, default: int, min_value: int, max_value: int) -> int:
     except (TypeError, ValueError):
         return default
     return max(min_value, min(max_value, parsed))
+
+
+def streamlink_reconnect_delay(failure_count: int) -> int:
+    capped_failure_count = min(max(failure_count, 1), 5)
+    delay = STREAMLINK_RECONNECT_BASE_DELAY_SECONDS * (
+        2 ** (capped_failure_count - 1)
+    )
+    return min(delay, STREAMLINK_RECONNECT_MAX_DELAY_SECONDS)
 
 
 def normalize_bitrate(value: Any, default: str) -> str:
@@ -1953,6 +1969,7 @@ async def record_stream(
     active_attempt: Optional[RecordingProcessSandbox] = None
     runtime_av1_failures: Dict[str, str] = {}
     runtime_hevc_failures: Dict[str, str] = {}
+    consecutive_streamlink_failures = 0
 
     try:
         while not shutdown_event.is_set():
@@ -2065,6 +2082,8 @@ async def record_stream(
                         reserved_output_path = temp_output_path
 
                     active_attempt = RecordingProcessSandbox(channel_name, channel_id)
+                    streamlink_retry_delay: Optional[int] = None
+                    attempt_started_at = time.monotonic()
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
@@ -2073,6 +2092,14 @@ async def record_stream(
                             stream_url,
                             "best",
                             "--hls-live-restart",
+                            "--stream-segment-attempts",
+                            str(STREAMLINK_SEGMENT_ATTEMPTS),
+                            "--stream-segment-timeout",
+                            str(STREAMLINK_SEGMENT_TIMEOUT_SECONDS),
+                            "--hls-playlist-reload-attempts",
+                            str(STREAMLINK_PLAYLIST_RELOAD_ATTEMPTS),
+                            "--stream-timeout",
+                            str(STREAMLINK_OUTPUT_TIMEOUT_SECONDS),
                             "--plugin-dirs",
                             str(PLUGIN_DIR_PATH),
                             "--stream-segment-threads",
@@ -2419,7 +2446,11 @@ async def record_stream(
                                 "cancelled" if task_cancelled else "shutdown"
                             )
                             stop_after_attempt = True
-                            await terminate_process(stream_process, "streamlink")
+                            await terminate_process(
+                                stream_process,
+                                "streamlink",
+                                timeout=STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS,
+                            )
                             await drain_task(pipe_task, timeout=10)
                             if not await wait_for_task_completion(
                                 ffmpeg_wait_task,
@@ -2457,6 +2488,21 @@ async def record_stream(
 
                         ffmpeg_returncode = ffmpeg_process.returncode
                         stream_returncode = stream_process.returncode
+                        if (
+                            completed_by == "streamlink"
+                            and stream_returncode not in (0, None)
+                            and not shutdown_event.is_set()
+                        ):
+                            attempt_duration = time.monotonic() - attempt_started_at
+                            if attempt_duration >= STREAMLINK_STABLE_RECORDING_SECONDS:
+                                consecutive_streamlink_failures = 0
+                            consecutive_streamlink_failures += 1
+                            streamlink_retry_delay = streamlink_reconnect_delay(
+                                consecutive_streamlink_failures
+                            )
+                        elif completed_by != "shutdown":
+                            consecutive_streamlink_failures = 0
+
                         retry_with_software = False
                         if (
                             ffmpeg_returncode not in (0, None)
@@ -2586,6 +2632,24 @@ async def record_stream(
                                 with contextlib.suppress(OSError):
                                     if reserved_output_path.stat().st_size == 0:
                                         reserved_output_path.unlink()
+
+                    if streamlink_retry_delay is not None:
+                        logger.info(
+                            tr(
+                                "record.streamlink_reconnect",
+                                channel_name=channel_name,
+                                delay=streamlink_retry_delay,
+                                attempt=consecutive_streamlink_failures,
+                            )
+                        )
+                        try:
+                            await asyncio.wait_for(
+                                shutdown_event.wait(),
+                                timeout=streamlink_retry_delay,
+                            )
+                            break
+                        except asyncio.TimeoutError:
+                            continue
 
                 except asyncio.CancelledError:
                     logger.info(tr("record.task_cancelled", channel_name=channel_name))
@@ -2762,6 +2826,8 @@ async def manage_recording_tasks():
 
 
 def handle_shutdown():
+    if shutdown_event.is_set():
+        return
     logger.info(tr("record.shutdown_signal"))
     shutdown_event.set()
 

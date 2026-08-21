@@ -430,6 +430,10 @@ TRANSLATIONS = {
             "{channel_name}의 streamlink가 실패했습니다. 원인은 위의 streamlink "
             "stderr 줄을 확인하세요."
         ),
+        "record.streamlink_reconnect": (
+            "{channel_name} 스트림에 {delay}초 후 다시 연결합니다 "
+            "(연속 실패 {attempt}회)."
+        ),
         "record.recording_stopped": "{channel_name} 녹화가 중지되었습니다.",
         "record.empty_segment_discarded": (
             "{channel_name}의 빈 녹화 세그먼트를 삭제했습니다: {path}"
@@ -835,6 +839,7 @@ TRANSLATIONS["en"].update({
     "record.stream_process_exited": "Stream recording process for {channel_name} exited with return code {returncode}.",
     "record.ffmpeg_failed": "ffmpeg failed for {channel_name}; see the ffmpeg stderr lines above for the root cause.",
     "record.streamlink_failed": "streamlink failed for {channel_name}; see the streamlink stderr lines above for the root cause.",
+    "record.streamlink_reconnect": "Reconnecting to {channel_name} in {delay} seconds (consecutive failure {attempt}).",
     "record.recording_stopped": "Recording stopped for {channel_name}.",
     "record.empty_segment_discarded": "Discarded empty recording segment for {channel_name}: {path}",
     "record.no_segments": "No recording segment files were created for {channel_name}.",
@@ -1303,6 +1308,7 @@ TRANSLATIONS["zh-CN"].update({
     "record.stream_process_exited": "{channel_name} 的流录制进程已退出，返回代码为 {returncode}。",
     "record.ffmpeg_failed": "{channel_name} 的 ffmpeg 失败；根本原因请查看上方 ffmpeg stderr 行。",
     "record.streamlink_failed": "{channel_name} 的 streamlink 失败；根本原因请查看上方 streamlink stderr 行。",
+    "record.streamlink_reconnect": "将在 {delay} 秒后重新连接 {channel_name}（连续失败 {attempt} 次）。",
     "record.recording_stopped": "{channel_name} 的录制已停止。",
     "record.empty_segment_discarded": "已删除 {channel_name} 的空录制分段：{path}",
     "record.no_segments": "{channel_name} 没有生成录制分段文件。",
@@ -1385,6 +1391,7 @@ TRANSLATIONS["zh-TW"].update({
     "record.stream_process_exited": "{channel_name} 的串流錄製程序已結束，返回碼為 {returncode}。",
     "record.ffmpeg_failed": "{channel_name} 的 ffmpeg 失敗；根本原因請查看上方 ffmpeg stderr 行。",
     "record.streamlink_failed": "{channel_name} 的 streamlink 失敗；根本原因請查看上方 streamlink stderr 行。",
+    "record.streamlink_reconnect": "將在 {delay} 秒後重新連線 {channel_name}（連續失敗 {attempt} 次）。",
     "record.recording_stopped": "{channel_name} 的錄製已停止。",
     "record.empty_segment_discarded": "已刪除 {channel_name} 的空錄製分段：{path}",
     "record.no_segments": "{channel_name} 沒有產生錄製分段檔案。",
@@ -1469,6 +1476,7 @@ TRANSLATIONS["ja"].update({
     "record.stream_process_exited": "{channel_name} のストリーム録画プロセスは戻りコード {returncode} で終了しました。",
     "record.ffmpeg_failed": "{channel_name} の ffmpeg が失敗しました。根本原因は上の ffmpeg stderr 行を確認してください。",
     "record.streamlink_failed": "{channel_name} の streamlink が失敗しました。根本原因は上の streamlink stderr 行を確認してください。",
+    "record.streamlink_reconnect": "{delay} 秒後に {channel_name} へ再接続します（連続失敗 {attempt} 回）。",
     "record.recording_stopped": "{channel_name} の録画を停止しました。",
     "record.empty_segment_discarded": "{channel_name} の空の録画セグメントを削除しました: {path}",
     "record.no_segments": "{channel_name} の録画セグメントファイルは作成されませんでした。",
