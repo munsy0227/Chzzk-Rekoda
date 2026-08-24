@@ -83,6 +83,30 @@ function Verify-Sha256 {
     }
 }
 
+function Install-StagedDirectory {
+    param(
+        [Parameter(Mandatory = $true)][string]$Source,
+        [Parameter(Mandatory = $true)][string]$Destination
+    )
+
+    try {
+        Move-Item -LiteralPath $Source -Destination $Destination -Force -ErrorAction Stop
+        return
+    } catch {
+        # Antivirus software can block renaming a directory that contains a
+        # newly downloaded executable while still allowing the files to be copied.
+    }
+
+    if (-not (Test-Path -LiteralPath $Source) -and (Test-Path -LiteralPath $Destination)) {
+        return
+    }
+
+    if (Test-Path -LiteralPath $Destination) {
+        Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction Stop
+    }
+    Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force -ErrorAction Stop
+}
+
 try {
     try {
         $InstallMutexAcquired = $InstallMutex.WaitOne()
@@ -130,7 +154,7 @@ try {
             $originalMoved = $true
         }
 
-        Move-Item -LiteralPath $StagingDir -Destination $FfmpegDir -Force
+        Install-StagedDirectory -Source $StagingDir -Destination $FfmpegDir
 
         $installedFfmpeg = Join-Path $FfmpegDir "bin\ffmpeg.exe"
         if (-not (Test-Path -LiteralPath $installedFfmpeg)) {
