@@ -65,6 +65,9 @@ STREAMLINK_RECONNECT_MAX_DELAY_SECONDS = 30
 STREAMLINK_STABLE_RECORDING_SECONDS = 60
 STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
+MAX_UI_LOG_MESSAGES = 1000
+UI_LOG_HISTORY_SIZE = 15
+UI_REFRESH_INTERVAL_SECONDS = 0.2
 
 # Global console instance for Rich
 console = Console()
@@ -74,7 +77,14 @@ channel_progress: Dict[str, Dict[str, Any]] = {}
 channel_progress_lock = asyncio.Lock()
 
 # Create a queue for log messages
-log_queue: asyncio.Queue = asyncio.Queue()
+log_queue: asyncio.Queue = asyncio.Queue(maxsize=MAX_UI_LOG_MESSAGES)
+
+# Share the last valid configuration across channel polling tasks.
+config_cache_path: Optional[Path] = None
+config_cache_signature: Optional[Tuple[int, int, int]] = None
+config_cache_value: Dict[str, Any] = {}
+config_cache_lock = asyncio.Lock()
+config_cache_unavailable = False
 
 # Cache language lookups; the live UI asks for translated labels often.
 language_cache_mtime_ns: Optional[int] = None
@@ -178,9 +188,12 @@ class QueueHandler(logging.Handler):
     def emit(self, record):
         msg = self.format(record)
         try:
+            if self.queue.full():
+                self.queue.get_nowait()
+                self.queue.task_done()
             self.queue.put_nowait(msg)
         except asyncio.QueueFull:
-            pass  # Handle the case where the queue is full
+            pass
 
 
 # Logger setup
@@ -826,12 +839,12 @@ async def setup_paths() -> Optional[Path]:
 
 
 async def load_json_async(file_path: Path) -> Any:
-    if not file_path.exists():
-        return None
     try:
         async with aiofiles.open(file_path, "rb") as file:
             content = await file.read()
             return orjson.loads(content)
+    except FileNotFoundError:
+        return None
     except orjson.JSONDecodeError as e:
         logger.error(tr("record.json_decode_error", file_path=file_path, error=e))
         return None
@@ -841,10 +854,43 @@ async def load_json_async(file_path: Path) -> Any:
 
 
 async def load_config_async() -> Dict[str, Any]:
-    config = await load_json_async(CONFIG_FILE_PATH)
-    if not isinstance(config, dict):
-        return {}
-    return config
+    global config_cache_path, config_cache_signature, config_cache_value
+    global config_cache_unavailable
+
+    async with config_cache_lock:
+        if config_cache_path != CONFIG_FILE_PATH:
+            config_cache_path = CONFIG_FILE_PATH
+            config_cache_signature = None
+            config_cache_value = {}
+            config_cache_unavailable = False
+
+        try:
+            stat = await asyncio.to_thread(CONFIG_FILE_PATH.stat)
+            signature = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        except OSError:
+            signature = None
+
+        if signature is not None and signature == config_cache_signature:
+            return config_cache_value
+
+        config = (
+            await load_json_async(CONFIG_FILE_PATH)
+            if signature is not None else None
+        )
+        if isinstance(config, dict):
+            config_cache_value = config
+            config_cache_signature = signature
+            config_cache_unavailable = False
+        else:
+            # A partial save or temporarily inaccessible file must not cancel
+            # active recordings or drop the authentication cookies.
+            if not config_cache_unavailable:
+                logger.warning(
+                    tr("record.config_reload_kept", file_path=CONFIG_FILE_PATH)
+                )
+            config_cache_unavailable = True
+            config_cache_signature = None
+        return config_cache_value
 
 
 async def load_settings() -> (
@@ -1094,10 +1140,14 @@ def shorten_segment_template(base_name: str, extension: str) -> str:
 
 
 def segment_template_regex(template_name: str) -> re.Pattern:
-    pattern = re.escape(template_name).replace(
-        re.escape("%03d"), r"(?P<index>\d+)"
-    )
+    prefix, _, suffix = template_name.rpartition("%03d")
+    pattern = re.escape(prefix) + r"(?P<index>\d+)" + re.escape(suffix)
     return re.compile(f"^{pattern}$")
+
+
+def segment_filename(template_name: str, index: int) -> str:
+    prefix, _, suffix = template_name.rpartition("%03d")
+    return f"{prefix}{index:03d}{suffix}"
 
 
 def segment_output_files(output_dir: Path, template_name: str) -> List[Path]:
@@ -1124,7 +1174,7 @@ def unique_segment_template(
     for index in range(1000):
         candidate_base = base_name if index == 0 else f"{base_name}_{index}"
         template_name = shorten_segment_template(candidate_base, extension)
-        first_segment = output_dir / template_name.replace("%03d", "001")
+        first_segment = output_dir / segment_filename(template_name, 1)
         try:
             with first_segment.open("xb"):
                 pass
@@ -1173,7 +1223,12 @@ def build_output_args(
                     "mpegts_flags=resend_headers:mpegts_copyts=0",
                 ]
             )
-        output_args.append(str(output_path))
+        # Only the final placeholder belongs to the segment muxer. Percent
+        # signs in the directory, channel name, or title are literal text.
+        prefix, placeholder, suffix = str(output_path).rpartition("%03d")
+        output_args.append(
+            prefix.replace("%", "%%") + placeholder + suffix.replace("%", "%%")
+        )
         return output_args
 
     if recording_format == "ts":
@@ -1259,9 +1314,12 @@ async def read_stream(
                 continue
 
             key, value = line_str.split("=", 1)
-            summary[key.strip()] = value.strip()
+            key = key.strip()
+            if key not in {"total_size", "out_time", "progress"}:
+                continue
+            summary[key] = value.strip()
 
-            if key.strip() == "progress":
+            if key == "progress":
                 total_size_str = summary.get("total_size", "0")
                 out_time_str = summary.get("out_time", "0")
 
@@ -1284,7 +1342,7 @@ async def read_stream(
                     bitrate_formatted = "N/A"
 
                 # Calculate download speed
-                current_time = time.time()
+                current_time = time.monotonic()
                 if prev_total_size is not None and prev_time is not None:
                     bytes_diff = total_size - prev_total_size
                     time_diff = current_time - prev_time
@@ -1977,7 +2035,6 @@ async def record_stream(
             if stream_url:
                 logger.debug(f"Found stream URL for channel: {channel_name}")
                 try:
-                    cookies = await get_session_cookies()
                     while not shutdown_event.is_set():
                         cookies = await get_session_cookies()
                         headers = get_auth_headers(cookies)
@@ -2060,7 +2117,7 @@ async def record_stream(
                             )
                         )
                         reserved_output_path = output_dir / (
-                            segment_output_template.replace("%03d", "001")
+                            segment_filename(segment_output_template, 1)
                         )
                         temp_output_path = None
                         final_output_path = None
@@ -2693,16 +2750,6 @@ async def record_stream(
 
 async def manage_recording_tasks():
     active_tasks: Dict[str, asyncio.Task] = {}
-    (
-        timeout,
-        stream_segment_threads,
-        channels,
-        delays,
-        hevc_settings,
-        av1_settings,
-        output_format,
-        recording_split_minutes,
-    ) = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
     ffmpeg_path = await setup_paths()
@@ -2832,7 +2879,7 @@ def handle_shutdown():
     shutdown_event.set()
 
 
-async def display_progress():
+async def display_progress(stop_event: asyncio.Event):
     layout = Layout()
 
     # Split the layout into upper and lower sections
@@ -2841,27 +2888,38 @@ async def display_progress():
         Layout(name="lower", ratio=3),
     )
 
-    log_messages = []  # List for log messages
+    log_messages = collections.deque(maxlen=UI_LOG_HISTORY_SIZE)
 
     with Live(layout, console=console, refresh_per_second=5, screen=False):
-        while not shutdown_event.is_set() or not log_queue.empty():
+        while not stop_event.is_set() or not log_queue.empty():
             # Update display for channel progress
             channel_panels = []
+            language = get_language_sync()
+            column_labels = [
+                translate(language, f"record.table_{column}")
+                for column in (
+                    "channel", "bitrate", "download_speed", "total_size",
+                    "out_time", "start_time",
+                )
+            ]
 
             async with channel_progress_lock:
                 if channel_progress:
                     for progress_data in channel_progress.values():
                         # Create a table for each channel
                         table = Table(show_header=True, header_style="bold magenta")
-                        table.add_column(tr("record.table_channel"), style="cyan", no_wrap=True)
-                        table.add_column(tr("record.table_bitrate"))
-                        table.add_column(tr("record.table_download_speed"))
-                        table.add_column(tr("record.table_total_size"))
-                        table.add_column(tr("record.table_out_time"))
-                        table.add_column(tr("record.table_start_time"))
+                        table.add_column(column_labels[0], style="cyan", no_wrap=True)
+                        for label in column_labels[1:]:
+                            table.add_column(label)
+
+                        channel_name = Text(
+                            progress_data.get(
+                                "channel_name", translate(language, "common.unknown")
+                            )
+                        )
 
                         table.add_row(
-                            progress_data.get("channel_name", "Unknown"),
+                            channel_name,
                             progress_data.get("bitrate", "N/A"),
                             progress_data.get("download_speed", "N/A"),
                             progress_data.get("total_size", "N/A"),
@@ -2870,14 +2928,15 @@ async def display_progress():
                         )
 
                         # Wrap each channel's table in a panel
-                        panel = Panel(
-                            table, title=progress_data.get("channel_name", "Unknown")
-                        )
+                        panel = Panel(table, title=channel_name)
                         channel_panels.append(panel)
                 else:
                     # Show a message if no channels are recording
                     channel_panels.append(
-                        Panel(tr("record.no_active_recordings"), title=tr("record.progress_title"))
+                        Panel(
+                            translate(language, "record.no_active_recordings"),
+                            title=translate(language, "record.progress_title"),
+                        )
                     )
 
             # Group all channel panels together
@@ -2886,20 +2945,25 @@ async def display_progress():
             layout["lower"].update(progress_display)
 
             # Update log messages
-            try:
-                while True:
-                    msg = await asyncio.wait_for(log_queue.get(), timeout=0.1)
-                    log_messages.append(msg)
-                    # Keep only the last 15 log messages
-                    log_messages = log_messages[-15:]
-            except (asyncio.QueueEmpty, asyncio.TimeoutError):
-                pass
+            for _ in range(MAX_UI_LOG_MESSAGES):
+                try:
+                    log_messages.extend(log_queue.get_nowait().splitlines())
+                    log_queue.task_done()
+                except asyncio.QueueEmpty:
+                    break
 
             # Update the log panel
-            log_text = Text("\n".join(log_messages))
-            layout["upper"].update(Panel(log_text, title=tr("record.logs_title")))
+            visible_log_lines = max(1, console.size.height // 4 - 2)
+            log_text = Text(
+                "\n".join(list(log_messages)[-visible_log_lines:]),
+                overflow="ellipsis",
+                no_wrap=True,
+            )
+            layout["upper"].update(
+                Panel(log_text, title=translate(language, "record.logs_title"))
+            )
 
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
 
 
 async def main() -> None:
@@ -2913,7 +2977,8 @@ async def main() -> None:
         # We'll handle KeyboardInterrupt exception instead.
         pass
 
-    display_task = asyncio.create_task(display_progress())
+    display_stop_event = asyncio.Event()
+    display_task = asyncio.create_task(display_progress(display_stop_event))
 
     try:
         await manage_recording_tasks()
@@ -2930,8 +2995,9 @@ async def main() -> None:
     finally:
         # Wait for display_progress to process remaining logs
         shutdown_event.set()
-        await display_task
         logger.info(tr("record.shutdown_complete"))
+        display_stop_event.set()
+        await display_task
 
 
 if __name__ == "__main__":

@@ -340,6 +340,9 @@ TRANSLATIONS = {
         "record.ffmpeg_not_found_path": "시스템 PATH에서 ffmpeg를 찾을 수 없습니다.",
         "record.json_decode_error": "{file_path}의 JSON 디코드 오류: {error}",
         "record.json_load_error": "{file_path}에서 JSON을 불러오는 중 오류: {error}",
+        "record.config_reload_kept": (
+            "{file_path}의 설정을 다시 불러오지 못해 현재 설정을 유지합니다."
+        ),
         "record.channel_not_live": "'{channel_name}' 채널은 현재 방송 중이 아닙니다.",
         "record.channel_blocked": "'{channel_name}' 채널은 차단되어 있습니다.",
         "record.member_only_cookies_required": (
@@ -803,6 +806,7 @@ TRANSLATIONS["en"].update({
     "record.ffmpeg_not_found_path": "ffmpeg not found on the system PATH.",
     "record.json_decode_error": "JSON decode error in {file_path}: {error}",
     "record.json_load_error": "Error loading JSON from {file_path}: {error}",
+    "record.config_reload_kept": "Could not reload settings from {file_path}. Keeping the current settings.",
     "record.channel_not_live": "The channel '{channel_name}' is not currently live.",
     "record.channel_blocked": "The channel '{channel_name}' is blocked.",
     "record.member_only_cookies_required": (
@@ -1274,6 +1278,7 @@ TRANSLATIONS["zh-CN"].update({
     "record.ffmpeg_not_found_path": "系统 PATH 中未找到 ffmpeg。",
     "record.json_decode_error": "{file_path} 中的 JSON 解码错误：{error}",
     "record.json_load_error": "从 {file_path} 加载 JSON 时出错：{error}",
+    "record.config_reload_kept": "无法从 {file_path} 重新加载设置。将保留当前设置。",
     "record.channel_not_live": "'{channel_name}' 频道当前未开播。",
     "record.channel_blocked": "'{channel_name}' 频道已被阻止。",
     "record.member_only_cookies_required": (
@@ -1357,6 +1362,7 @@ TRANSLATIONS["zh-TW"].update({
     "record.ffmpeg_not_found_path": "系統 PATH 中找不到 ffmpeg。",
     "record.json_decode_error": "{file_path} 中的 JSON 解碼錯誤：{error}",
     "record.json_load_error": "從 {file_path} 載入 JSON 時發生錯誤：{error}",
+    "record.config_reload_kept": "無法從 {file_path} 重新載入設定。將保留目前設定。",
     "record.channel_not_live": "'{channel_name}' 頻道目前未開播。",
     "record.channel_blocked": "'{channel_name}' 頻道已被封鎖。",
     "record.member_only_cookies_required": (
@@ -1440,6 +1446,7 @@ TRANSLATIONS["ja"].update({
     "record.ffmpeg_not_found_path": "システム PATH に ffmpeg が見つかりません。",
     "record.json_decode_error": "{file_path} の JSON デコードエラー: {error}",
     "record.json_load_error": "{file_path} から JSON を読み込み中にエラー: {error}",
+    "record.config_reload_kept": "{file_path} から設定を再読み込みできませんでした。現在の設定を維持します。",
     "record.channel_not_live": "'{channel_name}' チャンネルは現在配信中ではありません。",
     "record.channel_blocked": "'{channel_name}' チャンネルはブロックされています。",
     "record.member_only_cookies_required": (
