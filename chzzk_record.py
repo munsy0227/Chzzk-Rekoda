@@ -1134,10 +1134,14 @@ def shorten_segment_template(base_name: str, extension: str) -> str:
 
 
 def segment_template_regex(template_name: str) -> re.Pattern:
-    pattern = re.escape(template_name).replace(
-        re.escape("%03d"), r"(?P<index>\d+)"
-    )
+    prefix, _, suffix = template_name.rpartition("%03d")
+    pattern = re.escape(prefix) + r"(?P<index>\d+)" + re.escape(suffix)
     return re.compile(f"^{pattern}$")
+
+
+def segment_filename(template_name: str, index: int) -> str:
+    prefix, _, suffix = template_name.rpartition("%03d")
+    return f"{prefix}{index:03d}{suffix}"
 
 
 def segment_output_files(output_dir: Path, template_name: str) -> List[Path]:
@@ -1164,7 +1168,7 @@ def unique_segment_template(
     for index in range(1000):
         candidate_base = base_name if index == 0 else f"{base_name}_{index}"
         template_name = shorten_segment_template(candidate_base, extension)
-        first_segment = output_dir / template_name.replace("%03d", "001")
+        first_segment = output_dir / segment_filename(template_name, 1)
         try:
             with first_segment.open("xb"):
                 pass
@@ -1213,7 +1217,12 @@ def build_output_args(
                     "mpegts_flags=resend_headers:mpegts_copyts=0",
                 ]
             )
-        output_args.append(str(output_path))
+        # Only the final placeholder belongs to the segment muxer. Percent
+        # signs in the directory, channel name, or title are literal text.
+        prefix, placeholder, suffix = str(output_path).rpartition("%03d")
+        output_args.append(
+            prefix.replace("%", "%%") + placeholder + suffix.replace("%", "%%")
+        )
         return output_args
 
     if recording_format == "ts":
@@ -2099,7 +2108,7 @@ async def record_stream(
                             )
                         )
                         reserved_output_path = output_dir / (
-                            segment_output_template.replace("%03d", "001")
+                            segment_filename(segment_output_template, 1)
                         )
                         temp_output_path = None
                         final_output_path = None
