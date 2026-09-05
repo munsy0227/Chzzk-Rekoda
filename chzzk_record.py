@@ -76,6 +76,13 @@ channel_progress_lock = asyncio.Lock()
 # Create a queue for log messages
 log_queue: asyncio.Queue = asyncio.Queue()
 
+# Share the last valid configuration across channel polling tasks.
+config_cache_path: Optional[Path] = None
+config_cache_signature: Optional[Tuple[int, int, int]] = None
+config_cache_value: Dict[str, Any] = {}
+config_cache_lock = asyncio.Lock()
+config_cache_unavailable = False
+
 # Cache language lookups; the live UI asks for translated labels often.
 language_cache_mtime_ns: Optional[int] = None
 language_cache_value = DEFAULT_LANGUAGE
@@ -826,12 +833,12 @@ async def setup_paths() -> Optional[Path]:
 
 
 async def load_json_async(file_path: Path) -> Any:
-    if not file_path.exists():
-        return None
     try:
         async with aiofiles.open(file_path, "rb") as file:
             content = await file.read()
             return orjson.loads(content)
+    except FileNotFoundError:
+        return None
     except orjson.JSONDecodeError as e:
         logger.error(tr("record.json_decode_error", file_path=file_path, error=e))
         return None
@@ -841,10 +848,43 @@ async def load_json_async(file_path: Path) -> Any:
 
 
 async def load_config_async() -> Dict[str, Any]:
-    config = await load_json_async(CONFIG_FILE_PATH)
-    if not isinstance(config, dict):
-        return {}
-    return config
+    global config_cache_path, config_cache_signature, config_cache_value
+    global config_cache_unavailable
+
+    async with config_cache_lock:
+        if config_cache_path != CONFIG_FILE_PATH:
+            config_cache_path = CONFIG_FILE_PATH
+            config_cache_signature = None
+            config_cache_value = {}
+            config_cache_unavailable = False
+
+        try:
+            stat = await asyncio.to_thread(CONFIG_FILE_PATH.stat)
+            signature = (stat.st_mtime_ns, stat.st_size, stat.st_ino)
+        except OSError:
+            signature = None
+
+        if signature is not None and signature == config_cache_signature:
+            return config_cache_value
+
+        config = (
+            await load_json_async(CONFIG_FILE_PATH)
+            if signature is not None else None
+        )
+        if isinstance(config, dict):
+            config_cache_value = config
+            config_cache_signature = signature
+            config_cache_unavailable = False
+        else:
+            # A partial save or temporarily inaccessible file must not cancel
+            # active recordings or drop the authentication cookies.
+            if not config_cache_unavailable:
+                logger.warning(
+                    tr("record.config_reload_kept", file_path=CONFIG_FILE_PATH)
+                )
+            config_cache_unavailable = True
+            config_cache_signature = None
+        return config_cache_value
 
 
 async def load_settings() -> (
@@ -1977,7 +2017,6 @@ async def record_stream(
             if stream_url:
                 logger.debug(f"Found stream URL for channel: {channel_name}")
                 try:
-                    cookies = await get_session_cookies()
                     while not shutdown_event.is_set():
                         cookies = await get_session_cookies()
                         headers = get_auth_headers(cookies)
@@ -2693,16 +2732,6 @@ async def record_stream(
 
 async def manage_recording_tasks():
     active_tasks: Dict[str, asyncio.Task] = {}
-    (
-        timeout,
-        stream_segment_threads,
-        channels,
-        delays,
-        hevc_settings,
-        av1_settings,
-        output_format,
-        recording_split_minutes,
-    ) = await load_settings()
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
     ffmpeg_path = await setup_paths()
