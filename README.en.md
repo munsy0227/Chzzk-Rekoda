@@ -152,3 +152,21 @@ Names including "CHZZK" and "NAVER", as well as related names, marks, emblems, a
 
 ### Copyright and Terms Compliance
 This project does not claim ownership of streaming video, audio, or other third-party content, nor does it grant any license for such content. Users are responsible for checking and complying with applicable copyright laws, platform policies such as the CHZZK Terms of Service, and local laws. Responsibility for storage, reproduction, distribution, transmission, or commercial use through this project belongs solely to the user.
+
+## Qt ribbon GUI
+
+The GUI shares the existing CLI's `config.json`.
+
+```bash
+uv run --extra gui chzzk_gui.py
+```
+
+On Windows, run `chzzk_gui.bat`; on macOS/Linux, run `./chzzk_gui`. Qt is installed only for the optional GUI. The `settings` and `chzzk_record` CLIs remain available.
+
+- Use the ribbon to search by channel name or ID, add/edit/unregister channels, and change every recording setting. Hover over a setting or use F1/the help button for explanations.
+- CHZZK profile images appear as channel icons when available. Failed image lookups fall back to the first character of the name.
+- A **frame from the selected channel's current recording file updates every 5 seconds**. No audio is played. Insufficient data or unreadable frames show a message and retry. Disabling the preview does not stop recording.
+- Stop and window close wait for the existing recorder to finish its files. A process lock prevents duplicate CLI/GUI recording within the project. Conflicting settings edits ask you to reload instead of overwriting another editor's changes.
+- Saved recording options apply to new recording tasks. Restart the recorder to apply DNS and file logging changes.
+
+A desktop display environment and FFmpeg are required. Browser login opens a new browser and imports cookies automatically. Real browser login and Windows/macOS GUI behavior still require platform-specific verification.

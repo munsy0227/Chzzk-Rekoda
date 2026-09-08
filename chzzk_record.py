@@ -27,11 +27,6 @@ from i18n import (
     translate,
 )
 
-if platform.system() != "Windows":
-    import uvloop
-
-    uvloop.install()
-
 # Import Rich library components
 from rich.console import Console, Group
 from rich.live import Live
@@ -236,7 +231,7 @@ def setup_logger() -> logging.Logger:
     return logger
 
 
-logger = setup_logger()
+logger = logging.getLogger("Recorder")
 
 
 def install_internal_dns_resolver() -> None:
@@ -252,9 +247,7 @@ def install_internal_dns_resolver() -> None:
         logger.warning(tr("record.doh_install_failed", error=e))
 
 
-install_internal_dns_resolver()
-
-print(tr("record.startup_banner"))
+# Runtime initialization belongs to main(), so imports have no file/UI effects.
 
 # Constants
 LIVE_DETAIL_API = (
@@ -2456,6 +2449,11 @@ async def record_stream(
                                 "total_size": "N/A",
                                 "out_time": "N/A",
                                 "recording_start_time": recording_start_time,
+                                "output_path": str(temp_output_path or ""),
+                                "output_dir": str(output_dir),
+                                "segment_template": segment_output_template,
+                                "split_seconds": split_seconds,
+                                "title": live_title,
                             }
 
                         pipe_task = active_attempt.create_task(
@@ -2463,7 +2461,7 @@ async def record_stream(
                                 stream_process.stdout, ffmpeg_process.stdin, channel_name
                             )
                         )
-                        stream_stderr_task = active_attempt.create_task(
+                        active_attempt.create_task(
                             read_log_stream(stream_process.stderr, "streamlink", channel_id)
                         )
                         ffmpeg_stderr_task = active_attempt.create_task(
@@ -2966,7 +2964,11 @@ async def display_progress(stop_event: asyncio.Event):
             await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
 
 
-async def main() -> None:
+async def main(gui_events: bool = False) -> int:
+    setup_logger()
+    install_internal_dns_resolver()
+    if not gui_events:
+        print(tr("record.startup_banner"))
     # Register signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
     if platform.system() != "Windows":
@@ -2978,7 +2980,14 @@ async def main() -> None:
         pass
 
     display_stop_event = asyncio.Event()
-    display_task = asyncio.create_task(display_progress(display_stop_event))
+    if gui_events:
+        from recorder_bridge import JsonBridge
+
+        bridge = JsonBridge(sys.modules[__name__], loop)
+        display_task = asyncio.create_task(bridge.display(display_stop_event))
+    else:
+        display_task = asyncio.create_task(display_progress(display_stop_event))
+    exit_code = 0
 
     try:
         await manage_recording_tasks()
@@ -2991,6 +3000,7 @@ async def main() -> None:
         logger.info(tr("record.main_cancelled"))
         handle_shutdown()
     except Exception as e:
+        exit_code = 1
         logger.exception(tr("record.unhandled_error", error=e))
     finally:
         # Wait for display_progress to process remaining logs
@@ -2998,7 +3008,41 @@ async def main() -> None:
         logger.info(tr("record.shutdown_complete"))
         display_stop_event.set()
         await display_task
+    return exit_code
+
+
+def run():
+    import argparse
+    import json
+
+    from process_lock import FileLock
+
+    global CONFIG_FILE_PATH, LOG_FILE_PATH
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gui-events", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--config", type=Path, default=CONFIG_FILE_PATH)
+    args = parser.parse_args()
+    CONFIG_FILE_PATH = args.config.resolve()
+    LOG_FILE_PATH = CONFIG_FILE_PATH.parent / "log.log"
+    if platform.system() != "Windows":
+        import uvloop
+
+        uvloop.install()
+    lock = FileLock(BASE_DIR / ".recorder.lock")
+    try:
+        lock.__enter__()
+    except OSError:
+        message = tr("gui.recorder_busy")
+        if args.gui_events:
+            print(json.dumps({"version": 1, "event": "error", "message": message}), flush=True)
+        else:
+            print(message, file=sys.stderr)
+        return 1
+    try:
+        return asyncio.run(main(args.gui_events))
+    finally:
+        lock.__exit__(None, None, None)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(run())

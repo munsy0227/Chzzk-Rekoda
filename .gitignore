@@ -208,6 +208,9 @@ __marimo__/
 
 # Config File
 config.json
+config.json.lock
+.recorder.lock
+/.gui-validation/
 
 #temp
 .ts
