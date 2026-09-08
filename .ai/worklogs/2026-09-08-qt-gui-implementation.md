@@ -42,17 +42,25 @@
 
 ## 완료 상태와 미검증
 
-- 요청한 실제 Qt GUI, 전체 설정, 채널 프로필 이미지 조회, 현재 녹화 파일 미리보기와 CLI 공존 구현을 완료했다. 후속 로컬 커밋 작업은 아래에 기록한다. 원격 반영은 요청하지 않았다.
+- 요청한 실제 Qt GUI, 전체 설정, 채널 프로필 이미지 조회, 현재 녹화 파일 미리보기와 CLI 공존 구현을 완료했다. 후속 로컬 커밋과 사용자 요청에 따른 원격 반영은 아래에 기록한다.
 - 실제 NAVER 브라우저 로그인, Windows/macOS, 실제 CHZZK 장시간 녹화 및 하드웨어 인코더 실행은 아직 검증하지 않았다.
 - 작업 재개 시 확인된 기존 사용자 폴더 `아리사/`의 파일과 개인 설정은 테스트하거나 변경하지 않았다. 검증 설정에는 인증 정보를 넣지 않았다.
 
 ## 후속 요청: gui 브랜치와 로컬 커밋
 
 - 2026-09-08 사용자가 `gui` 브랜치를 만들어 현재 작업을 커밋하도록 요청했다. `main`의 `f6e3e53865c4c65d9fc1cb644ea75c448bbc9546`에서 원격 추적 없이 `gui`를 생성했다.
-- 지침 정리는 `19c776e` (`docs: centralize AI instructions under .ai`)로 먼저 커밋했다. GUI 구현, 공용 모듈, 의존성, 번역, README와 관련 `.ai` 기록/검증 화면은 후속 기능 커밋 단위로 묶는다.
+- 지침 정리는 `19c776e` (`docs: centralize AI instructions under .ai`)로 먼저 커밋했다. GUI 구현, 공용 모듈, 의존성, 번역, README와 관련 `.ai` 기록/검증 화면은 `e762ee3` (`feat: add Qt ribbon GUI with channel icons and recording previews`)로 커밋했다.
 - Git 작성자 설정이 비어 있어 최근 로컬 작업 커밋과 동일한 `Codex <codex@openai.com>`을 커밋 명령에만 지정했다. 전역/저장소 설정을 바꾸지 않았다.
 - 커밋 준비 중 수정 Python 파일의 문법 컴파일과 `git diff --check`를 다시 통과했다. 기능 검증은 위 결과를 참조한다.
-- 사용자 녹화 폴더 `아리사/`, 개인 설정, 무시되는 `.gui-validation/` 자료는 커밋 대상에서 제외한다. 원격 push와 PR 생성은 이번 요청 범위에 없다.
+- 사용자 녹화 폴더 `아리사/`, 개인 설정, 무시되는 `.gui-validation/` 자료는 커밋 대상에서 제외했다. 이 단계에서는 원격 push와 PR 생성을 요청하지 않았다.
+
+## 후속 요청: 원격 푸시
+
+- 2026-09-08 사용자가 `gui` 브랜치 푸시를 요청했다. 대상은 `origin`의 `munsy0227/Chzzk-Rekoda`, 로컬 HEAD는 `e762ee3d6593fda124e587d9e0882a14bb081b1d`이며 기능/지침 커밋 두 개를 포함한다.
+- 첫 `git push -u origin gui`는 HTTPS 인증 정보가 없어 실패했다. 네트워크가 허용된 환경에서도 `gh auth status`가 기존 계정 인증 만료를 확인했다. 기존 SSH 공개키도 해당 GitHub 계정 등록 키와 일치하지 않았다.
+- 연결된 GitHub 앱의 저장소 접근은 가능하지만, 제공된 API에는 작성자/시간을 포함한 기존 로컬 커밋 그대로의 전송 기능이 없어 커밋을 재작성하지 않았다. GitHub CLI 웹 인증을 완료하고 `gh auth git-credential`을 해당 Git 명령의 credential helper로 사용했다.
+- `origin/gui` 생성과 푸시를 완료했다. `git ls-remote --heads origin refs/heads/gui`가 `e762ee3d6593fda124e587d9e0882a14bb081b1d`를 반환해 기존 두 커밋이 로컬과 동일하게 원격에 반영됐음을 확인했다. 로컬 `gui`는 `origin/gui`를 추적한다.
+- 인증 코드, 토큰 및 쿠키는 이 기록에 저장하지 않았다. PR이나 다른 브랜치는 변경하지 않았다. 이 후속 기록은 별도 문서 커밋으로 관리한다.
 
 ## 참고 근거
 
