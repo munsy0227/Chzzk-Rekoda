@@ -37,8 +37,15 @@
 
 ## 완료 상태와 한계
 
-- 9개 요청의 코드 구현, 공용 CLI/GUI 설정 연결, 다국어/README 및 `.ai` 기록을 완료했다. 9월 9일 요청에 따른 커밋/푸시 결과는 아래 게시 기록으로 갱신한다.
+- 9개 요청의 코드 구현, 공용 CLI/GUI 설정 연결, 다국어/README 및 `.ai` 기록을 완료하고 `origin/gui`에 게시했다.
 - 실제 NAVER 계정 로그인, Windows/macOS의 네이티브 트레이, 장시간 실방송, 실제 GPU 인코딩은 미검증이다.
+
+## 커밋과 게시 확인
+
+- 2026-09-09: `d369c018246e437a4992701664bafb3ff0747f3b` — `feat: add channel recording controls and background Qt operation`. author/committer는 기존 GUI 커밋과 같은 `Codex <codex@openai.com>`이다.
+- `git push origin gui` 성공 후 `git ls-remote origin refs/heads/gui`가 위 커밋과 일치함을 확인했다. 구현 파일, 5개 언어 문서, 화면 캡처 및 한국어 폰트/라이선스 25개 파일을 포함했다.
+- 개인 녹화 폴더와 나머지 CJK 폰트는 로컬 미추적 파일로 남겼다. 검증용 `.gui-validation`과 개인 설정/쿠키는 포함하지 않았다.
+- 이 게시 확인 기록은 별도 문서 커밋으로 같은 브랜치에 반영한다.
 
 ## 참고
 
