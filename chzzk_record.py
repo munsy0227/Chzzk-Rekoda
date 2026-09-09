@@ -19,6 +19,12 @@ import aiofiles
 import aiohttp
 import orjson
 
+from config_store import normalize_h264_settings
+from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
+from recording_options import (
+    H264_ENCODERS, add_video_filters, effective_split,
+    normalize_channel_options, normalize_quality, quality_plan,
+)
 from dns_over_https import install_doh_dns
 from i18n import (
     DEFAULT_LANGUAGE,
@@ -372,6 +378,7 @@ RESERVED_BYTES = MAX_HASH_LENGTH + 1  # Hash length and one underscore
 
 # Global variables for graceful shutdown
 shutdown_event = asyncio.Event()
+H264_ENCODER_PROBE_LOCK = asyncio.Lock()
 
 
 def normalize_encoder_preset(encoder: str, value: Any) -> str:
@@ -596,7 +603,7 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
         used_identifiers.add(identifier)
 
         normalized.append(
-            {
+            normalize_channel_options({
                 **raw_channel,
                 "id": channel_id,
                 "name": sanitize_filename_component(
@@ -605,7 +612,7 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
                 "output_dir": str(raw_channel.get("output_dir") or "."),
                 "identifier": identifier,
                 "active": "off" if raw_channel.get("active") == "off" else "on",
-            }
+            })
         )
     return normalized
 
@@ -896,6 +903,8 @@ async def load_settings() -> (
         Dict[str, Any],
         str,
         int,
+        Dict[str, Any],
+        Dict[str, Any],
     ]
 ):
     config = await load_config_async()
@@ -924,6 +933,10 @@ async def load_settings() -> (
         config.get("recording_split_minutes"),
         config.get("recording_split_hours"),
     )
+    h264_settings = normalize_h264_settings(config.get("h264_settings"))
+    if h264_settings["enable"]:
+        hevc_settings["enable"] = av1_settings["enable"] = False
+    quality_settings = normalize_quality(config.get("quality_settings"))
 
     return (
         timeout,
@@ -934,6 +947,8 @@ async def load_settings() -> (
         av1_settings,
         output_format,
         recording_split_minutes,
+        h264_settings,
+        quality_settings,
     )
 
 
@@ -1082,6 +1097,79 @@ def shorten_filename(filename: str) -> str:
         return shortened_filename
 
     return filename
+
+
+def save_original_title(media_path: Path, title: str) -> None:
+    """Sidecar for each retained media file, including incomplete recordings."""
+    name = media_path.name.removesuffix(".part")
+    stem = Path(name).stem
+    for index in range(1000):
+        suffix = "" if index == 0 else ("_title" if index == 1 else f"_title_{index}")
+        sidecar = media_path.with_name(shorten_filename(f"{stem}{suffix}.txt"))
+        try:
+            with sidecar.open("x", encoding="utf-8", newline="") as output:
+                output.write(title)
+            return
+        except FileExistsError:
+            # Preserve unrelated notes, including non-UTF-8 files. Shorten each
+            # collision candidate separately to stay within filesystem limits.
+            with contextlib.suppress(UnicodeError):
+                with sidecar.open(encoding="utf-8", newline="") as existing:
+                    if existing.read() == title:
+                        return
+    raise FileExistsError(stem)
+
+
+async def discover_stream_qualities(stream_url, cookies, ffmpeg_path):
+    """Read Streamlink's actual quality names without exposing stream URLs."""
+    process = await create_isolated_subprocess_exec(
+        sys.executable, "-m", "streamlink", "--json", stream_url,
+        "--plugin-dirs", str(PLUGIN_DIR_PATH),
+        "--ffmpeg-ffmpeg", str(ffmpeg_path),
+        *streamlink_http_header_args(cookies),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        env=streamlink_subprocess_env(),
+    )
+    try:
+        async with asyncio.timeout(30):
+            data = bytearray()
+            while chunk := await process.stdout.read(65536):
+                data.extend(chunk)
+                if len(data) > 2 * 1024 * 1024:
+                    raise ValueError("quality_unavailable")
+            await process.wait()
+        if process.returncode:
+            raise ValueError("quality_unavailable")
+        payload = orjson.loads(data)
+        if not isinstance(payload, dict) or not isinstance(payload.get("streams"), dict):
+            raise ValueError("quality_unavailable")
+        return list(payload["streams"])
+    finally:
+        await terminate_process(process, "quality lookup")
+
+
+async def resolve_h264_settings(settings, ffmpeg_path, failures):
+    settings = normalize_h264_settings(settings)
+    if not settings["enable"]:
+        return settings
+    async with H264_ENCODER_PROBE_LOCK:
+        for encoder in dict.fromkeys((settings["encoder"], "libx264")):
+            candidate = dict(settings, encoder=encoder)
+            if encoder != settings["encoder"]:
+                candidate["preset"] = "veryfast"
+            if encoder in failures:
+                continue
+            task = asyncio.create_task(asyncio.to_thread(probe_h264_encoder, ffmpeg_path, candidate))
+            try:
+                works = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                await asyncio.shield(task)
+                raise
+            if works:
+                if encoder != settings["encoder"]:
+                    logger.warning(tr("gui.h264_fallback", encoder=settings["encoder"]))
+                return candidate
+    raise RuntimeError(tr("gui.h264_unavailable"))
 
 
 def unique_recording_paths(
@@ -1494,10 +1582,10 @@ NON_ENCODER_FAILURE_MARKERS = (
 def runtime_encoder_failure_diagnostic(
     message: str, encoder: Optional[str]
 ) -> Optional[str]:
-    if encoder not in HARDWARE_HEVC_ENCODERS | HARDWARE_AV1_ENCODERS:
+    if encoder not in HARDWARE_HEVC_ENCODERS | HARDWARE_AV1_ENCODERS | (H264_ENCODERS - {"libx264"}):
         return None
 
-    backend_markers = ENCODER_BACKEND_MARKERS.get(encoder, (encoder,))
+    backend_markers = ENCODER_BACKEND_MARKERS.get(encoder, ENCODER_BACKEND_MARKERS.get(encoder.replace("h264_", "hevc_"), (encoder,)))
     for line in message.splitlines():
         lowered = line.lower()
         if any(marker in lowered for marker in NON_ENCODER_FAILURE_MARKERS):
@@ -1993,11 +2081,18 @@ async def record_stream(
     av1_settings: Dict[str, Any],
     output_format: str,
     recording_split_minutes: int,
+    h264_settings: Optional[Dict[str, Any]] = None,
+    quality_settings: Optional[Dict[str, Any]] = None,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
-    recording_split_minutes = normalize_recording_split_minutes(recording_split_minutes)
+    recording_split_minutes = effective_split(channel, recording_split_minutes)
+    h264_settings = normalize_h264_settings(h264_settings)
+    quality_settings = normalize_quality(channel.get("quality_settings") or quality_settings)
+    if h264_settings["enable"]:
+        hevc_settings = dict(hevc_settings, enable=False)
+        av1_settings = dict(av1_settings, enable=False)
     split_seconds = recording_split_minutes * 60
     logger.info(tr("record.attempting_channel", channel_name=channel_name))
     if delay > 0:
@@ -2020,6 +2115,7 @@ async def record_stream(
     active_attempt: Optional[RecordingProcessSandbox] = None
     runtime_av1_failures: Dict[str, str] = {}
     runtime_hevc_failures: Dict[str, str] = {}
+    runtime_h264_failures: Dict[str, str] = {}
     consecutive_streamlink_failures = 0
 
     try:
@@ -2039,6 +2135,7 @@ async def record_stream(
                         if status == "CLOSE":
                             runtime_av1_failures.clear()
                             runtime_hevc_failures.clear()
+                            runtime_h264_failures.clear()
 
                         logger.info(
                             tr("record.waiting_live", channel_name=channel_name)
@@ -2052,6 +2149,17 @@ async def record_stream(
 
                     if shutdown_event.is_set():
                         break
+
+                    available = []
+                    if quality_settings["mode"] != "best" or quality_settings["fps"]:
+                        try:
+                            available = await discover_stream_qualities(stream_url, cookies, ffmpeg_path)
+                        except (ValueError, OSError, TimeoutError):
+                            raise RuntimeError(tr("gui.quality_unavailable")) from None
+                    try:
+                        plan = quality_plan(quality_settings, available)
+                    except ValueError:
+                        raise RuntimeError(tr("gui.quality_unavailable")) from None
 
                     active_av1_settings = (
                         await resolve_av1_settings_for_recording(
@@ -2084,13 +2192,31 @@ async def record_stream(
                         if enable_hevc
                         else None
                     )
+                    active_h264_settings = dict(h264_settings)
+                    if plan["filters"] and not enable_av1 and not enable_hevc:
+                        active_h264_settings["enable"] = True
+                    # WebM requires VP9/AV1. Explicit H.264 selects MKV instead.
+                    if output_format == "webm" and not h264_settings["enable"]:
+                        active_h264_settings["enable"] = False
+                    active_h264_settings = await resolve_h264_settings(
+                        active_h264_settings, ffmpeg_path, runtime_h264_failures
+                    )
+                    enable_h264 = active_h264_settings["enable"] and not enable_av1 and not enable_hevc
+                    if enable_h264:
+                        encoder = active_h264_settings["encoder"]
+                    logger.info(tr("gui.quality_selected", channel_name=channel_name,
+                                   quality=plan["stream"], filters=", ".join(plan["filters"]) or tr("gui.quality_original")))
 
                     current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                    original_live_title = str(live_info.get("liveTitle") or "")
                     live_title = sanitize_filename_component(
-                        live_info.get("liveTitle", ""), fallback="untitled"
+                        original_live_title, fallback="untitled"
                     )
                     output_dir = resolve_output_dir(channel.get("output_dir", "."))
                     recording_format = output_format
+                    if enable_h264 and recording_format == "webm":
+                        recording_format = "mkv"
+                        logger.warning(tr("gui.h264_webm_fallback"))
                     if enable_av1 and recording_format == "ts":
                         logger.warning(
                             tr("record.av1_ts_fallback", channel_name=channel_name)
@@ -2137,10 +2263,10 @@ async def record_stream(
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
-                            "streamlink",
+                            sys.executable, "-m", "streamlink",
                             "--stdout",
                             stream_url,
-                            "best",
+                            plan["stream"],
                             "--hls-live-restart",
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
@@ -2179,7 +2305,7 @@ async def record_stream(
                             enable_hevc
                             and recording_format != "webm"
                             and encoder == "hevc_vaapi"
-                        ) or (enable_av1 and av1_encoder == "av1_vaapi"):
+                        ) or (enable_av1 and av1_encoder == "av1_vaapi") or (enable_h264 and encoder == "h264_vaapi"):
                             # Attempt to use the default render device
                             base_input_args = [
                                 str(ffmpeg_path),
@@ -2406,6 +2532,9 @@ async def record_stream(
 
                             encoding_args.extend(common_hevc_args)
 
+                        elif enable_h264:
+                            encoding_args = build_h264_encoding_args(active_h264_settings, recording_format)
+                            encoding_args.extend(metadata_args)
                         else:
                             encoding_args = ["-c", "copy", *metadata_args]
                             if recording_format == "ts":
@@ -2416,6 +2545,7 @@ async def record_stream(
                                     ]
                                 )
 
+                        encoding_args = add_video_filters(encoding_args, plan["filters"])
                         output_path = (
                             segment_output_path
                             if split_seconds > 0
@@ -2453,7 +2583,7 @@ async def record_stream(
                                 "output_dir": str(output_dir),
                                 "segment_template": segment_output_template,
                                 "split_seconds": split_seconds,
-                                "title": live_title,
+                                "title": original_live_title,
                             }
 
                         pipe_task = active_attempt.create_task(
@@ -2574,6 +2704,8 @@ async def record_stream(
                                 runtime_av1_failures[av1_encoder] = runtime_failure
                             elif runtime_failure and enable_hevc and encoder:
                                 runtime_hevc_failures[encoder] = runtime_failure
+                            elif runtime_failure and enable_h264 and encoder:
+                                runtime_h264_failures[encoder] = runtime_failure
 
                             retry_with_software = (
                                 runtime_failure is not None
@@ -2633,6 +2765,10 @@ async def record_stream(
                                 )
 
                             for segment_path in saved_segments:
+                                try:
+                                    await asyncio.to_thread(save_original_title, segment_path, original_live_title)
+                                except (OSError, UnicodeError) as error:
+                                    logger.warning(tr("gui.title_save_failed", error=error))
                                 logger.info(
                                     tr("record.segment_saved", path=segment_path)
                                 )
@@ -2661,6 +2797,12 @@ async def record_stream(
                                 temp_output_path.replace(destination_path)
                                 final_output_path = destination_path
                                 logger.info(tr("record.saved", path=final_output_path))
+                            retained_path = final_output_path if final_output_path.exists() else temp_output_path
+                            if retained_path.exists() and retained_path.stat().st_size:
+                                try:
+                                    await asyncio.to_thread(save_original_title, retained_path, original_live_title)
+                                except (OSError, UnicodeError) as error:
+                                    logger.warning(tr("gui.title_save_failed", error=error))
 
                         # Remove progress data
                         async with channel_progress_lock:
@@ -2769,6 +2911,8 @@ async def manage_recording_tasks():
                     new_av1_settings,
                     new_output_format,
                     new_recording_split_minutes,
+                    new_h264_settings,
+                    new_quality_settings,
                 ) = await load_settings()
                 active_channels = 0
                 stopping_tasks: List[asyncio.Task] = []
@@ -2815,6 +2959,8 @@ async def manage_recording_tasks():
                                     new_av1_settings,
                                     new_output_format,
                                     new_recording_split_minutes,
+                                    new_h264_settings,
+                                    new_quality_settings,
                                 )
                             )
                             active_tasks[channel_id] = task

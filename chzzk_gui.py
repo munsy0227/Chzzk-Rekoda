@@ -20,6 +20,7 @@ def main():
     try:
         from PySide6.QtWidgets import QApplication
 
+        from gui.appearance import application_icon, apply_application_font
         from gui.common import HelpStyle, show_error
         from gui.window import MainWindow
     except ImportError:
@@ -28,6 +29,8 @@ def main():
     app = QApplication(sys.argv[:1])
     app.setApplicationName("CHZZK Rekoda")
     app.setStyle(HelpStyle())
+    apply_application_font(app)
+    app.setWindowIcon(application_icon())
     try:
         window = MainWindow(args.config)
     except (ConfigError, OSError) as error:

@@ -13,6 +13,13 @@ from urllib.parse import urlparse
 from i18n import DEFAULT_LANGUAGE, normalize_language, translate
 from i18n import format_split_interval as localized_split_interval
 from process_lock import FileLock
+from recording_options import (
+    H264_DEFAULTS,
+    H264_ENCODERS,
+    QUALITY_DEFAULTS,
+    normalize_channel_options,
+    normalize_quality,
+)
 
 
 class ConfigError(Exception):
@@ -78,6 +85,9 @@ default_config = {
     "stream_segment_threads": 2,
     "output_format": DEFAULT_OUTPUT_FORMAT,
     "recording_split_minutes": DEFAULT_RECORDING_SPLIT_MINUTES,
+    "quality_settings": deepcopy(QUALITY_DEFAULTS),
+    "h264_settings": deepcopy(H264_DEFAULTS),
+    "gui_settings": {"close_to_tray": True},
     "hevc_settings": {
         "enable": False,
         "encoder": "libx265",
@@ -222,6 +232,25 @@ ALLOWED_AV1_ENCODERS = {
     "av1_vaapi",
 }
 
+ENCODER_PRESETS.update(
+    {
+        "libx264": LIBX265_PRESETS,
+        "h264_nvenc": HEVC_NVENC_PRESETS,
+        "h264_qsv": QSV_PRESETS,
+        "h264_amf": HEVC_AMF_PRESETS,
+    }
+)
+ENCODER_DEFAULT_PRESETS.update(
+    {
+        "libx264": "veryfast",
+        "h264_nvenc": "p4",
+        "h264_qsv": "medium",
+        "h264_amf": "balanced",
+        "h264_vaapi": "auto",
+        "h264_videotoolbox": "auto",
+    }
+)
+
 
 def normalize_encoder_preset(encoder, value):
     default = ENCODER_DEFAULT_PRESETS[encoder]
@@ -231,12 +260,12 @@ def normalize_encoder_preset(encoder, value):
     options = ENCODER_PRESETS.get(encoder)
     if options is None:
         return default
-    if encoder in {"hevc_nvenc", "av1_nvenc"}:
+    if encoder in {"hevc_nvenc", "av1_nvenc", "h264_nvenc"}:
         if preset in {"ultrafast", "superfast", "veryfast", "faster"}:
             return "p1"
         if preset in {"slower", "veryslow"}:
             return "p6"
-    if encoder == "hevc_amf" and "fast" in preset:
+    if encoder in {"hevc_amf", "h264_amf"} and "fast" in preset:
         return "speed"
     return preset if preset in options else default
 
@@ -297,6 +326,19 @@ def normalize_dns_settings(value):
     )
     settings["enable"] = bool(settings.get("enable"))
     settings["doh_url"] = normalize_doh_url(settings.get("doh_url"))
+    return settings
+
+
+def normalize_h264_settings(value):
+    settings = deep_merge_defaults(value, H264_DEFAULTS)
+    settings["enable"] = bool(settings["enable"])
+    if settings["encoder"] not in H264_ENCODERS:
+        settings["encoder"] = "libx264"
+    for key in ("bitrate", "max_bitrate"):
+        settings[key] = normalize_bitrate(settings[key], H264_DEFAULTS[key])
+    settings["preset"] = normalize_encoder_preset(
+        settings["encoder"], settings["preset"]
+    )
     return settings
 
 
@@ -452,7 +494,7 @@ def normalize_config(config, notify=None):
         channel["output_dir"] = str(channel.get("output_dir") or ".").strip() or "."
         channel["identifier"] = identifier
         channel["active"] = "off" if channel.get("active") == "off" else "on"
-        channels.append(channel)
+        channels.append(normalize_channel_options(channel))
 
         if original_identifier in delays:
             channel_delays[identifier] = delays[original_identifier]
@@ -485,6 +527,18 @@ def normalize_config(config, notify=None):
     if av1["enable"]:
         hevc["enable"] = False
     config["av1_settings"] = av1
+    h264 = normalize_h264_settings(config.get("h264_settings"))
+    if h264["enable"]:
+        hevc["enable"] = av1["enable"] = False
+    config["h264_settings"] = h264
+    config["quality_settings"] = normalize_quality(config.get("quality_settings"))
+    gui = config.get("gui_settings")
+    config["gui_settings"] = {
+        **(gui if isinstance(gui, dict) else {}),
+        "close_to_tray": bool(gui.get("close_to_tray", True))
+        if isinstance(gui, dict)
+        else True,
+    }
 
     cookies = config.get("cookies", {})
     if not isinstance(cookies, dict):

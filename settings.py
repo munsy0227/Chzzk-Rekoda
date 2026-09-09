@@ -46,6 +46,7 @@ from i18n import (
     state_label,
     translate,
 )
+from recording_options import DIRECT_QUALITIES, H264_ENCODERS, normalize_quality
 
 
 def print_preset_help(encoder, t):
@@ -145,8 +146,8 @@ def import_cookies_from_browser(browser):
         print(t("settings.browser_cookies_saved"))
         return True
     except Exception as error:
-        message = str(error).strip().splitlines()[0] or type(error).__name__
-        print(t("settings.browser_login_error", error=message))
+        # Selenium exceptions may contain authenticated URLs; expose no values.
+        print(t("settings.browser_login_error", error=type(error).__name__))
         return False
 
 
@@ -331,6 +332,97 @@ def add_selected_channel(channel):
         try_again()
 
 
+def edit_quality(value):
+    result = normalize_quality(value)
+    mode = input(t("gui.cli_quality_prompt")).strip()
+    if not mode:
+        return result
+    if mode not in ("best", "custom", *DIRECT_QUALITIES):
+        raise ValueError(t("gui.invalid_quality"))
+    result["mode"] = mode
+    if mode == "custom":
+        for key in ("width", "height"):
+            text = input(t("gui." + key) + f" [{result[key]}]: ").strip()
+            if text:
+                result[key] = int(text)
+    text = input(t("gui.fps") + f" [{result['fps']}], 0: ").strip()
+    if text:
+        result["fps"] = float(text)
+    if normalize_quality(result) != result:
+        raise ValueError(t("gui.invalid_quality"))
+    return result
+
+
+def edit_h264():
+    while True:
+        codec = config["h264_settings"]
+        print_codec_settings("H.264", codec)
+        keys = ("enabled", "encoder", "bitrate", "max_bitrate", "preset", "close")
+        print("\n".join(f"{i}. {t('gui.' + key)}" for i, key in enumerate(keys, 1)))
+        choice = input(t("settings.prompt_choice")).strip()
+        if choice == "1":
+            codec["enable"] = not codec["enable"]
+            if codec["enable"]:
+                config["hevc_settings"]["enable"] = config["av1_settings"]["enable"] = (
+                    False
+                )
+        elif choice == "2":
+            print(", ".join(sorted(H264_ENCODERS)))
+            encoder = input(t("settings.prompt_encoder")).strip()
+            if encoder not in H264_ENCODERS:
+                print(t("settings.invalid_encoder"))
+                continue
+            codec["encoder"] = encoder
+            codec["preset"] = normalize_encoder_preset(encoder, None)
+        elif choice in ("3", "4"):
+            key = "bitrate" if choice == "3" else "max_bitrate"
+            codec[key] = normalize_bitrate(input(t("gui." + key) + ": "), codec[key])
+        elif choice == "5":
+            presets = ENCODER_PRESETS.get(codec["encoder"])
+            if not presets:
+                print(t("settings.preset_unsupported", encoder=codec["encoder"]))
+                continue
+            print(", ".join(sorted(presets)))
+            preset = input(t("settings.prompt_preset")).strip()
+            if preset not in presets:
+                print(t("settings.invalid_preset"))
+                continue
+            codec["preset"] = preset
+        elif choice == "6":
+            return
+        else:
+            try_again()
+            continue
+        save_config(config)
+
+
+def edit_channel_recording():
+    for index, channel in enumerate(config["channels"], 1):
+        print(f"{index}. {channel['name']}")
+    try:
+        index = int(input(t("gui.select_channel") + ": ")) - 1
+        if not 0 <= index < len(config["channels"]):
+            raise ValueError(t("settings.invalid_channel_number"))
+        channel = deepcopy(config["channels"][index])
+        interval = int(input(t("gui.cli_split_prompt")))
+        if not -1 <= interval <= MAX_RECORDING_SPLIT_MINUTES:
+            raise ValueError(t("settings.invalid_number"))
+        channel["recording_split_minutes"] = None if interval == -1 else interval
+        inherit = input(t("gui.cli_quality_inherit")).strip()
+        if inherit == "1":
+            channel["quality_settings"] = None
+        elif inherit == "2":
+            channel["quality_settings"] = edit_quality(
+                channel.get("quality_settings") or config["quality_settings"]
+            )
+        else:
+            raise ValueError(t("settings.invalid_number"))
+        config["channels"][index] = channel
+        save_config(config)
+    except ValueError:
+        print(t("gui.invalid_quality"))
+
+
 def main():
     global config, _store
     _store = ConfigStore(notify=print)
@@ -342,11 +434,13 @@ def main():
     while True:
         print(t("settings.main_title"))
         print(t("settings.main_menu"))
+        print(t("gui.cli_extra_menu"))
         choice = str(input(t("settings.prompt_choice"))).strip()
 
         if choice == "1":
             while True:
                 print(t("settings.channel_menu"))
+                print(t("gui.cli_channel_options"))
                 choice1 = str(input(t("settings.prompt_choice"))).strip()
                 if choice1 == "1":
                     print(t("settings.add_channel_menu"))
@@ -452,6 +546,8 @@ def main():
 
                 elif choice1 == "4":
                     break
+                elif choice1 == "5":
+                    edit_channel_recording()
                 else:
                     try_again()
 
@@ -577,6 +673,7 @@ def main():
                     hevc["enable"] = not hevc["enable"]
                     if hevc["enable"]:
                         config["av1_settings"]["enable"] = False
+                        config["h264_settings"]["enable"] = False
                     save_config(config)
                     print(
                         t(
@@ -642,6 +739,7 @@ def main():
                     av1["enable"] = not av1["enable"]
                     if av1["enable"]:
                         config["hevc_settings"]["enable"] = False
+                        config["h264_settings"]["enable"] = False
                     save_config(config)
                     print(
                         t(
@@ -816,6 +914,14 @@ def main():
                 )
             )
 
+        elif choice == "10":
+            edit_h264()
+        elif choice == "11":
+            try:
+                config["quality_settings"] = edit_quality(config["quality_settings"])
+                save_config(config)
+            except ValueError:
+                print(t("gui.invalid_quality"))
         elif choice == "9":
             print(t("settings.exiting"))
             break

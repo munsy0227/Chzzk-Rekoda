@@ -1,5 +1,6 @@
 from copy import deepcopy
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
@@ -18,12 +19,14 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
     QSplitter,
     QStyle,
+    QSystemTrayIcon,
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
@@ -38,6 +41,7 @@ from channel_service import (
     search_chzzk_channels,
 )
 from config_store import ConfigError, ConfigStore
+from gui.appearance import application_icon
 from gui.common import show_error
 from gui.services import BASE_DIR, Images, Jobs, Preview, Recorder, ffmpeg_executable
 from gui.settings_dialog import ChannelDialog, SettingsDialog
@@ -192,6 +196,10 @@ class MainWindow(QMainWindow):
         self.snapshots = {}
         self.engine_state = "idle"
         self.closing = False
+        self.tray = QSystemTrayIcon(application_icon(), self)
+        self.setWindowIcon(application_icon())
+        self.tray.activated.connect(self.tray_activated)
+        self.tray.show()
         self.last_frame = QPixmap()
         self.recorder.snapshot.connect(self.receive_status)
         self.recorder.changed.connect(self.engine_changed)
@@ -310,12 +318,22 @@ class MainWindow(QMainWindow):
                                 "basic",
                                 lambda: self.settings("basic"),
                                 QStyle.StandardPixmap.SP_FileDialogContentsView,
-                            )
+                            ),
+                            (
+                                "quality",
+                                lambda: self.settings("quality"),
+                                QStyle.StandardPixmap.SP_DesktopIcon,
+                            ),
                         ],
                     ),
                     (
                         "encoder",
                         [
+                            (
+                                "h264",
+                                lambda: self.settings("h264"),
+                                QStyle.StandardPixmap.SP_ComputerIcon,
+                            ),
                             (
                                 "hevc",
                                 lambda: self.settings("hevc"),
@@ -350,7 +368,12 @@ class MainWindow(QMainWindow):
                                 "app",
                                 lambda: self.settings("app"),
                                 QStyle.StandardPixmap.SP_FileDialogInfoView,
-                            )
+                            ),
+                            (
+                                "background",
+                                self.hide_to_tray,
+                                QStyle.StandardPixmap.SP_TitleBarMinButton,
+                            ),
                         ],
                     ),
                 ],
@@ -411,9 +434,12 @@ class MainWindow(QMainWindow):
         self.empty.setWordWrap(True)
         outer.addWidget(self.empty)
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.table = QTableWidget(0, 4)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            [self.t(k) for k in ("channels", "status", "duration", "size")]
+            [
+                self.t(k)
+                for k in ("channels", "broadcast_title", "status", "duration", "size")
+            ]
         )
         self.table.setIconSize(QSize(44, 44))
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
@@ -422,14 +448,20 @@ class MainWindow(QMainWindow):
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
         self.table.horizontalHeader().setSectionResizeMode(
-            0, QHeaderView.ResizeMode.Stretch
+            0, QHeaderView.ResizeMode.Interactive
         )
-        for index in range(1, 4):
+        self.table.setColumnWidth(0, 165)
+        self.table.horizontalHeader().setSectionResizeMode(
+            1, QHeaderView.ResizeMode.Stretch
+        )
+        for index in range(2, 5):
             self.table.horizontalHeader().setSectionResizeMode(
                 index, QHeaderView.ResizeMode.ResizeToContents
             )
         self.table.itemSelectionChanged.connect(self.select_channel)
         self.table.itemDoubleClicked.connect(self.edit_channel)
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.channel_menu)
         splitter.addWidget(self.table)
         preview_panel = QWidget()
         right = QVBoxLayout(preview_panel)
@@ -496,6 +528,7 @@ class MainWindow(QMainWindow):
         outer.addWidget(self.logs)
         self.setCentralWidget(root)
         self.populate()
+        self.build_tray_menu()
         self.engine_changed(self.engine_state)
         self.apply_style()
 
@@ -522,7 +555,7 @@ class MainWindow(QMainWindow):
             QToolButton:hover {{ background: {border}; }}
             QPushButton {{ padding: 7px 12px; border: 1px solid {border}; border-radius: 5px; }}
             QPushButton#primary {{ background: {accent}; color: {field}; }}
-            QLineEdit, QSpinBox, QComboBox {{ padding: 6px; min-height: 22px; background: {field}; color: {text}; border: 1px solid {border}; border-radius: 5px; }}
+            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ padding: 6px; min-height: 22px; background: {field}; color: {text}; border: 1px solid {border}; border-radius: 5px; }}
             QScrollArea {{ border: 0; background: {field}; }}
             QWidget#settingsPage {{ background: {field}; }}
             QListWidget::item {{ padding: 10px 6px; }}
@@ -554,7 +587,7 @@ class MainWindow(QMainWindow):
             name.setData(Qt.ItemDataRole.UserRole, channel["id"])
             name.setToolTip(channel["id"] + "\n" + self.t("icons_hint"))
             self.table.setItem(row, 0, name)
-            for column in range(1, 4):
+            for column in range(1, 5):
                 self.table.setItem(row, column, QTableWidgetItem())
             metadata = self.metadata.get(channel["id"], channel)
             self.images.request(metadata.get("image_url", ""))
@@ -574,9 +607,14 @@ class MainWindow(QMainWindow):
                 status = "inactive"
             if status not in ("recording", "waiting", "inactive", "stopping", "idle"):
                 status = "waiting"
-            self.table.item(row, 1).setText(self.t(status))
-            self.table.item(row, 2).setText(state.get("out_time", "") or "—")
-            self.table.item(row, 3).setText(state.get("total_size", "") or "—")
+            title = state.get("title", "")
+            self.table.item(row, 1).setText(title or "—")
+            self.table.item(row, 1).setToolTip(
+                "<qt>" + escape(title).replace("\n", "<br>") + "</qt>"
+            )
+            self.table.item(row, 2).setText(self.t(status))
+            self.table.item(row, 3).setText(state.get("out_time", "") or "—")
+            self.table.item(row, 4).setText(state.get("total_size", "") or "—")
         self.select_channel()
 
     def refresh_metadata(self):
@@ -731,6 +769,85 @@ class MainWindow(QMainWindow):
             except OSError as error:
                 show_error(self, self.t("error"), error)
 
+    def channel_menu(self, position):
+        item = self.table.itemAt(position)
+        if item is None:
+            return
+        self.table.selectRow(item.row())
+        channel = self.current_channel()
+        if not channel:
+            return
+        menu = QMenu(self)
+        menu.addAction(self.t("edit"), self.edit_channel)
+        menu.addAction(self.t("open_folder"), self.open_folder)
+        active = menu.addAction(self.t("active"))
+        active.setCheckable(True)
+        active.setChecked(channel["active"] == "on")
+        active.triggered.connect(self.toggle_channel_active)
+        menu.addSeparator()
+        menu.addAction(self.t("remove"), self.remove_channel)
+        menu.exec(self.table.viewport().mapToGlobal(position))
+        menu.deleteLater()
+
+    def toggle_channel_active(self, checked):
+        channel = self.current_channel()
+        if not channel:
+            return
+        candidate = deepcopy(self.config)
+        for current in candidate["channels"]:
+            if current["id"] == channel["id"]:
+                current["active"] = "on" if checked else "off"
+        self.save_channels(candidate)
+
+    def build_tray_menu(self):
+        old = self.tray.contextMenu()
+        menu = QMenu(self)
+        menu.addAction(self.t("show_window"), self.restore_window)
+        self.tray_start = menu.addAction(self.t("start"), self.start)
+        self.tray_stop = menu.addAction(self.t("stop"), self.recorder.stop)
+        menu.addSeparator()
+        menu.addAction(self.t("quit"), self.quit_application)
+        self.tray.setContextMenu(menu)
+        if old:
+            old.deleteLater()
+
+    def tray_activated(self, reason):
+        if reason in (
+            QSystemTrayIcon.ActivationReason.Trigger,
+            QSystemTrayIcon.ActivationReason.DoubleClick,
+        ):
+            self.restore_window()
+
+    def restore_window(self):
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def hide_to_tray(self):
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            QMessageBox.information(
+                self, self.t("background"), self.t("tray_unavailable")
+            )
+            return
+        self.tray.show()
+        self.hide()
+
+    def quit_application(self):
+        dialog = QApplication.activeModalWidget()
+        if isinstance(dialog, (SettingsDialog, ChannelDialog)):
+            dialog.reject()
+            if dialog.isVisible():
+                if getattr(dialog, "closing", False):
+                    dialog.finished.connect(
+                        self.quit_application, Qt.ConnectionType.SingleShotConnection
+                    )
+                return
+        elif dialog is not None:
+            self.restore_window()
+            return
+        self.closing = True
+        self.close()
+
     def start(self):
         try:
             self.config = self.store.load()
@@ -756,6 +873,9 @@ class MainWindow(QMainWindow):
     def engine_changed(self, state):
         self.engine_state = state
         self.state_label.setText(self.t(state))
+        self.tray.setToolTip(self.t("title") + " · " + self.t(state))
+        self.tray_start.setEnabled(state == "idle")
+        self.tray_stop.setEnabled(state in ("starting", "running"))
         for button in self.start_buttons:
             button.setEnabled(state == "idle")
         for button in self.stop_buttons:
@@ -855,6 +975,14 @@ class MainWindow(QMainWindow):
             self.close()
 
     def closeEvent(self, event):
+        if (
+            not self.closing
+            and self.config["gui_settings"]["close_to_tray"]
+            and QSystemTrayIcon.isSystemTrayAvailable()
+        ):
+            self.hide_to_tray()
+            event.ignore()
+            return
         self.closing = True
         self.preview.close()
         self.jobs.cancel_pending()
@@ -863,3 +991,5 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         event.accept()
+        self.tray.hide()
+        QTimer.singleShot(0, QApplication.instance().quit)

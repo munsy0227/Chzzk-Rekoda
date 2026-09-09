@@ -36,8 +36,12 @@ from config_store import (
     ConfigError,
 )
 from gui.common import FocusHelp, show_error
+from gui.recording_controls import QualityEditor, SplitEditor
 from gui.services import BASE_DIR
 from i18n import SUPPORTED_LANGUAGES, translate
+from recording_options import H264_ENCODERS
+
+CATEGORIES = ("basic", "quality", "h264", "hevc", "av1", "auth", "network", "app")
 
 
 class SettingsDialog(QDialog):
@@ -60,7 +64,7 @@ class SettingsDialog(QDialog):
         self.pages = QStackedWidget()
         content.addWidget(self.categories)
         content.addWidget(self.pages, 1)
-        for key in ("basic", "hevc", "av1", "auth", "network", "app"):
+        for key in CATEGORIES:
             self.categories.addItem(self.t(key))
             page = QWidget()
             page.setObjectName("settingsPage")
@@ -77,14 +81,12 @@ class SettingsDialog(QDialog):
             scroll.setWidgetResizable(True)
             scroll.setWidget(page)
             self.pages.addWidget(scroll)
-            if key in ("hevc", "av1"):
+            if key in ("h264", "hevc", "av1"):
                 self.codec(form, key)
             else:
                 getattr(self, "build_" + key)(form)
         self.categories.currentRowChanged.connect(self.pages.setCurrentIndex)
-        self.categories.setCurrentRow(
-            ("basic", "hevc", "av1", "auth", "network", "app").index(category)
-        )
+        self.categories.setCurrentRow(CATEGORIES.index(category))
         hint = QLabel(self.t("apply_hint"))
         hint.setWordWrap(True)
         hint.setObjectName("subtle")
@@ -99,7 +101,7 @@ class SettingsDialog(QDialog):
         actions.addWidget(cancel)
         actions.addWidget(self.save_button)
         layout.addLayout(actions)
-        for codec in ("hevc", "av1"):
+        for codec in ("h264", "hevc", "av1"):
             self.controls[codec + "_settings.enable"].toggled.connect(
                 lambda checked, codec=codec: self.exclusive(codec, checked)
             )
@@ -215,7 +217,11 @@ class SettingsDialog(QDialog):
             "enabled",
             "enabled_help",
         )
-        encoders = ALLOWED_ENCODERS if codec == "hevc" else ALLOWED_AV1_ENCODERS
+        encoders = {
+            "h264": H264_ENCODERS,
+            "hevc": ALLOWED_ENCODERS,
+            "av1": ALLOWED_AV1_ENCODERS,
+        }[codec]
         encoder = self.field(
             form,
             prefix + "encoder",
@@ -270,8 +276,15 @@ class SettingsDialog(QDialog):
 
     def exclusive(self, codec, checked):
         if checked:
-            other = "av1" if codec == "hevc" else "hevc"
-            self.controls[other + "_settings.enable"].setChecked(False)
+            for other in ("h264", "hevc", "av1"):
+                if other != codec:
+                    self.controls[other + "_settings.enable"].setChecked(False)
+
+    def build_quality(self, form):
+        self.quality_editor = QualityEditor(
+            self.config["quality_settings"], self.language, self
+        )
+        form.addRow(self.quality_editor)
 
     def build_auth(self, form):
         self.browser = self.combo(
@@ -335,6 +348,13 @@ class SettingsDialog(QDialog):
     def build_app(self, form):
         self.field(
             form,
+            "gui_settings.close_to_tray",
+            self.check(self.get("gui_settings.close_to_tray")),
+            "close_to_tray",
+            "tray_help",
+        )
+        self.field(
+            form,
             "language",
             self.combo(SUPPORTED_LANGUAGES.items(), self.language),
             "language",
@@ -367,8 +387,9 @@ class SettingsDialog(QDialog):
         result["recording_split_minutes"] = (
             self.split_number.value() * self.split_unit.currentData()
         )
+        result["quality_settings"] = self.quality_editor.value(validate)
         if validate:
-            for codec in ("hevc_settings", "av1_settings"):
+            for codec in ("h264_settings", "hevc_settings", "av1_settings"):
                 for key in ("bitrate", "max_bitrate"):
                     if not SAFE_BITRATE.fullmatch(result[codec][key].strip()):
                         raise ValueError(self.t("invalid_bitrate"))
@@ -395,11 +416,15 @@ class SettingsDialog(QDialog):
             self.login_process
             and self.login_process.state() != QProcess.ProcessState.NotRunning
         ):
-            self.login_process.write(b"cancel\n")
+            self.login_cancelling = True
+            if self.login_process.state() == QProcess.ProcessState.Running:
+                self.login_process.write(b"cancel\n")
             self.login_button.setEnabled(False)
             return
         process = QProcess(self)
         self.login_process = process
+        self.login_handled = False
+        self.login_cancelling = False
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONUTF8", "1")
         env.insert("SE_TIMEOUT", "30")
@@ -416,6 +441,13 @@ class SettingsDialog(QDialog):
                 else None
             )
         )
+        process.started.connect(
+            lambda: (
+                process.write(b"cancel\n")
+                if self.closing or self.login_cancelling
+                else None
+            )
+        )
         self.login_notice.setText(self.t("login_wait"))
         self.login_button.setText(self.t("login_cancel"))
         self.save_button.setEnabled(False)
@@ -425,30 +457,59 @@ class SettingsDialog(QDialog):
         )
 
     def read_login(self):
+        if self.login_process is None:
+            return
         self.cookie_data.extend(bytes(self.login_process.readAllStandardOutput()))
         if len(self.cookie_data) > 65536:
             self.cookie_data.clear()
             self.login_process.write(b"cancel\n")
 
     def login_done(self, code, status):
+        if self.login_handled:
+            return
+        self.login_handled = True
         self.read_login()
+        reason = "login_failed"
         try:
-            data = json.loads(self.cookie_data)
+            data = {}
+            for line in self.cookie_data.splitlines():
+                try:
+                    candidate = json.loads(line)
+                    if isinstance(candidate, dict):
+                        data = candidate
+                except (ValueError, UnicodeError):
+                    continue
+            allowed = {
+                "login_failed",
+                "login_driver_missing",
+                "login_browser_failed",
+                "login_window_closed",
+                "login_timeout",
+                "login_cancelled",
+            }
+            if data.get("error") in allowed:
+                reason = data["error"]
             cookies = data["cookies"]
-            if code or not all(
-                isinstance(cookies.get(name), str) and cookies[name]
-                for name in AUTH_COOKIE_NAMES
+            if (
+                code
+                or not isinstance(cookies, dict)
+                or not all(
+                    isinstance(cookies.get(name), str) and cookies[name]
+                    for name in AUTH_COOKIE_NAMES
+                )
             ):
                 raise ValueError()
             for name in AUTH_COOKIE_NAMES:
                 self.controls["cookies." + name].setText(cookies[name])
             self.login_notice.setText(self.t("login_received"))
         except (ValueError, KeyError, TypeError):
-            self.login_notice.setText(self.t("login_failed"))
+            self.login_notice.setText(self.t(reason))
         self.cookie_data.clear()
         self.login_button.setEnabled(True)
         self.login_button.setText(self.t("login"))
         self.save_button.setEnabled(True)
+        self.login_process.deleteLater()
+        self.login_process = None
         if self.closing:
             super().reject()
 
@@ -472,7 +533,8 @@ class SettingsDialog(QDialog):
             and self.login_process.state() != QProcess.ProcessState.NotRunning
         ):
             self.closing = True
-            self.login_process.write(b"cancel\n")
+            if self.login_process.state() == QProcess.ProcessState.Running:
+                self.login_process.write(b"cancel\n")
             self.setEnabled(False)
             return
         super().reject()
@@ -485,7 +547,7 @@ class ChannelDialog(QDialog):
         self.language = language
         self.delay_value = delay
         self.setWindowTitle(self.t("edit"))
-        self.resize(580, 330)
+        self.resize(650, 670)
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.name = QLineEdit(channel["name"])
@@ -506,6 +568,12 @@ class ChannelDialog(QDialog):
         path_row.addWidget(browse)
         form.addRow(self.t("path"), path_row)
         form.addRow(self.t("delay"), self.delay)
+        self.split = SplitEditor(channel.get("recording_split_minutes"), language, self)
+        form.addRow(self.t("split"), self.split)
+        self.quality = QualityEditor(
+            channel.get("quality_settings"), language, self, allow_inherit=True
+        )
+        form.addRow(self.quality)
         form.addRow(self.active)
         self.help_filter = FocusHelp(self)
         for widget in (self.name, self.path, self.delay, self.active):
@@ -543,4 +611,10 @@ class ChannelDialog(QDialog):
             active="on" if self.active.isChecked() else "off",
         )
         self.delay_value = self.delay.value()
+        try:
+            self.channel["quality_settings"] = self.quality.value()
+        except ValueError as error:
+            show_error(self, self.t("error"), error)
+            return
+        self.channel["recording_split_minutes"] = self.split.value()
         self.accept()

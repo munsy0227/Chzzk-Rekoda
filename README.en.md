@@ -166,7 +166,14 @@ On Windows, run `chzzk_gui.bat`; on macOS/Linux, run `./chzzk_gui`. Qt is instal
 - Use the ribbon to search by channel name or ID, add/edit/unregister channels, and change every recording setting. Hover over a setting or use F1/the help button for explanations.
 - CHZZK profile images appear as channel icons when available. Failed image lookups fall back to the first character of the name.
 - A **frame from the selected channel's current recording file updates every 5 seconds**. No audio is played. Insufficient data or unreadable frames show a message and retry. Disabling the preview does not stop recording.
-- Stop and window close wait for the existing recorder to finish its files. A process lock prevents duplicate CLI/GUI recording within the project. Conflicting settings edits ask you to reload instead of overwriting another editor's changes.
+- Closing the window keeps recording in the system tray by default. Use its icon to restore the window or **quit safely**. Disable this behavior in app settings; without a tray, closing quits safely. Duplicate CLI/GUI recording and conflicting settings writes are prevented.
 - Saved recording options apply to new recording tasks. Restart the recorder to apply DNS and file logging changes.
 
 A desktop display environment and FFmpeg are required. Browser login opens a new browser and imports cookies automatically. Real browser login and Windows/macOS GUI behavior still require platform-specific verification.
+
+- The original broadcast title appears between channel name and status. Right-click a channel for settings, removal, storage folder and automatic recording activation.
+- Split intervals and quality can inherit global defaults or be set per channel. Turning splitting off for one channel saves it in one file.
+- Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
+- H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
+- Each saved video or segment gets a UTF-8 `.txt` sidecar containing its original broadcast title. Long filenames still use shortening and hashes; TXT preserves the full original title.
+- The GUI prefers `font/NotoSansKR-VariableFont_wght.ttf`, then searches the Noto CJK distribution under `font` for `NotoSansKR-VF.ttf` or `NotoSansCJKkr-VF.ttf`. The current distribution's license is in `font/02_NotoSansCJK-TTF-VF/LICENSE`. CLI main-menu options 10/11 and channel-menu option 5 expose the new recording settings.
