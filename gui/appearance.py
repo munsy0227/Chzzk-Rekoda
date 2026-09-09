@@ -7,11 +7,8 @@ from gui.services import BASE_DIR
 
 
 def apply_application_font(app):
-    directory = BASE_DIR / "font"
-    candidates = [directory / "NotoSansKR-VariableFont_wght.ttf"]
-    # Also accept the user's extracted Noto CJK variable-font distribution.
-    for filename in ("NotoSansKR-VF.ttf", "NotoSansCJKkr-VF.ttf"):
-        candidates.extend(sorted(directory.rglob(filename)))
+    directory = BASE_DIR / "font" / "02_NotoSansCJK-TTF-VF"
+    candidates = [directory / "Variable" / "TTF" / "Subset" / "NotoSansKR-VF.ttf"]
     for path in candidates:
         if not path.is_file():
             continue

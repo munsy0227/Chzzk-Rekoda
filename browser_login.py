@@ -2,6 +2,7 @@
 
 import contextlib
 import json
+import os
 import sys
 import threading
 import time
@@ -14,6 +15,19 @@ class LoginFailure(Exception):
     def __init__(self, reason):
         self.reason = reason
         super().__init__(reason)
+
+
+def failure_reason(error):
+    if isinstance(error, LoginFailure):
+        return error.reason
+    if isinstance(error, (KeyboardInterrupt, EOFError)):
+        return "login_cancelled"
+    return {
+        "NoSuchDriverException": "login_driver_missing",
+        "SessionNotCreatedException": "login_browser_failed",
+        "NoSuchWindowException": "login_window_closed",
+        "InvalidSessionIdException": "login_window_closed",
+    }.get(type(error).__name__, "login_failed")
 
 
 def naver_cookies(cookies):
@@ -102,7 +116,7 @@ def main():
 
     def commands():
         # Explicit cancellation or parent pipe closure cancels only our browser.
-        sys.stdin.buffer.readline(4096)
+        os.read(sys.stdin.fileno(), 4096)
         cancel.set()
 
     threading.Thread(target=commands, daemon=True).start()
@@ -128,16 +142,7 @@ def main():
         return 0
     except Exception as error:  # noqa: BLE001 -- protocol boundary hides sensitive driver diagnostics
         # Driver errors can contain sensitive URLs; never forward their text.
-        reason = (
-            error.reason
-            if isinstance(error, LoginFailure)
-            else {
-                "NoSuchDriverException": "login_driver_missing",
-                "SessionNotCreatedException": "login_browser_failed",
-                "NoSuchWindowException": "login_window_closed",
-                "InvalidSessionIdException": "login_window_closed",
-            }.get(type(error).__name__, "login_failed")
-        )
+        reason = failure_reason(error)
         print(json.dumps({"error": reason}), flush=True)
         return 1
 

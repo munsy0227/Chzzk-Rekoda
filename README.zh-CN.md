@@ -31,7 +31,7 @@
 1. 进入解压后的文件夹。
 2. 找到 `install.bat` 文件并双击运行。
 3. 黑色窗口会打开，并自动安装所需文件。可能需要一些时间，请等待。
-4. 安装完成后，会自动显示设置界面。
+4. 安装最后选择 **GUI / CLI**。GUI 完成安装后打开应用，CLI 启动终端设置菜单。
 
 ---
 
@@ -94,8 +94,8 @@
 
 5. 如果显示的频道名称、ID 和保存路径正确，请输入 `Y`。
 
-> **提示：** 要录制需要成人认证或会员认证的直播，请在设置菜单的 **5. NAVER Cookie 设置** 中选择通过新的 Chrome、Microsoft Edge 或 Firefox 窗口直接登录 NAVER 并导入 Cookie（NID_AUT、NID_SES），或手动输入 Cookie 值。首次使用浏览器登录方式时，准备兼容的驱动程序可能需要网络连接。
-> 保存扩展名可在 **2. Recording Settings** 中从 `ts`、`mkv`、`webm` 中选择，同一菜单还可以设置是否每隔几小时或几分钟分割录制文件。AV1 编码可在 **4. AV1 Settings** 中启用。遇到 DNS 问题时，可在 **6. DNS-over-HTTPS Settings** 中设置并启用 DoH 地址。语言可在 **8. Language Settings** 中从韩语、英语、简体中文、繁体中文、日语中选择。
+> **提示：** 要录制需要成人认证或会员认证的直播，请在设置菜单的 **4. NAVER 登录** 中选择通过新的 Chrome、Microsoft Edge 或 Firefox 窗口直接登录 NAVER 并导入 Cookie（NID_AUT、NID_SES），或手动输入 Cookie 值。首次使用浏览器登录方式时，准备兼容的驱动程序可能需要网络连接。
+> **2. 录制与画质**设置格式、分割、分辨率与 FPS；**3. 编码**选择 H.264/HEVC/AV1；**5. 网络**设置 DoH；**6. 语言与日志**设置语言与文件日志。频道独立设置位于 **1. 频道管理 → 4. 频道分割与画质**。`0` 表示返回或退出。
 
 ---
 
@@ -161,19 +161,21 @@ GUI 与现有 CLI 共用 `config.json`。
 uv run --extra gui chzzk_gui.py
 ```
 
-Windows 运行 `chzzk_gui.bat`，macOS/Linux 运行 `./chzzk_gui`。仅选择 GUI 时安装 Qt，现有 `settings` 和 `chzzk_record` CLI 仍可使用。
+Windows 双击 **`chzzk_gui.vbs`** 即可无 CMD 窗口启动，`chzzk_gui.bat` 也调用此启动器。macOS/Linux 使用 `./chzzk_gui`。仅选择 GUI 时安装 Qt。
+
+首次启动 GUI 会显示语言、频道搜索和保存文件夹向导，点击完成才保存设置，也可以稍后添加频道。从 **帮助 → 初始设置** 可重新打开。
 
 - 通过功能区按频道名称或 ID 搜索、添加、编辑、取消注册，并调整全部录制设置。悬停设置或使用 F1/帮助按钮查看说明。
 - 频道图标优先使用 CHZZK 头像，查询失败时显示名称首字。
 - **每 5 秒更新所选频道当前录制文件中的一帧画面**，不播放声音。数据不足或无法读取时显示提示并重试。关闭预览不会停止录制。
-- 默认关闭窗口后继续在系统托盘录制，可通过图标恢复窗口或**安全退出**。应用设置中可关闭此行为；无托盘时关闭窗口会安全退出。防止 CLI/GUI 重复录制及设置覆盖冲突。
+- 默认关闭窗口后继续在系统托盘录制，可通过图标恢复窗口或**退出**。应用设置中可关闭此行为；无托盘时关闭窗口会退出。防止 CLI/GUI 重复录制及设置覆盖冲突。
 - 保存的录制选项应用于新的录制任务。DNS 和文件日志更改需停止并重新启动录制器。
 
-GUI 需要桌面显示环境和 FFmpeg。浏览器登录会打开新浏览器并自动导入 Cookie。实际浏览器登录与 Windows/macOS GUI 行为仍需在相应平台验证。
+GUI 需要桌面环境和 FFmpeg。**打开登录窗口**直接启动 CLI 的浏览器登录流程。在浏览器登录后，在独立 CLI 窗口按 Enter，将 Cookie 传回 GUI，再点击 **保存设置** 应用。GUI 本身不显示 CMD 窗口，仅登录时打开独立 CLI 窗口。
 
 - 频道名称和状态之间显示原始直播标题。右键频道可设置、取消注册、打开保存文件夹或启停自动录制。
 - 分割间隔和画质可使用全局默认值或按频道设置。关闭某频道的分割后，该频道保存为单个文件。
 - 直接接收实际提供的 `144p`、`360p`、`480p`、`720p60`、`1080p60`。其他分辨率需要编码，仅改变 FPS 时使用相同分辨率的流。转换使用所选编码，未选时使用 H.264（WebM 为 VP9）。不提供的画质从最接近的更高画质或最佳画质转换。
 - H.264 支持 libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox，与 HEVC、AV1 只能启用一个。硬件失败时尝试 libx264。H.264+WebM 保存为 MKV。
-- 每个已保存视频或分段旁提供包含原始标题的 UTF-8 `.txt` 文件。长文件名仍缩短并添加哈希，TXT 保留完整原文。
-- GUI 优先使用 `font/NotoSansKR-VariableFont_wght.ttf`，若不存在则在 `font` 下的 Noto CJK 字体包中查找 `NotoSansKR-VF.ttf` 或 `NotoSansCJKkr-VF.ttf`。当前字体包的许可见 `font/02_NotoSansCJK-TTF-VF/LICENSE`。CLI 主菜单10/11和频道菜单5也可修改新录制设置。
+- 仅当文件名过长而缩短并添加哈希时，在视频或各分段旁生成保留原始标题的 UTF-8 `.txt`。短标题不生成 TXT。
+- GUI 使用 `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf`，仅保留所需的韩文字体和发行包的 `LICENSE`。

@@ -23,6 +23,7 @@ from PySide6.QtGui import QImageReader, QPixmap
 from PySide6.QtNetwork import QNetworkAccessManager, QNetworkReply, QNetworkRequest
 
 from channel_service import channel_image_url
+from process_utils import console_python
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -188,7 +189,7 @@ class Recorder(QObject):
         self.stopping = False
         self.changed.emit("starting")
         self.process.start(
-            sys.executable,
+            console_python(),
             [
                 "-u",
                 str(BASE_DIR / "chzzk_record.py"),

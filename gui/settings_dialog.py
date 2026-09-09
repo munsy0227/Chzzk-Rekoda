@@ -1,5 +1,4 @@
 import json
-import sys
 from copy import deepcopy
 from urllib.parse import urlparse
 
@@ -39,6 +38,7 @@ from gui.common import FocusHelp, show_error
 from gui.recording_controls import QualityEditor, SplitEditor
 from gui.services import BASE_DIR
 from i18n import SUPPORTED_LANGUAGES, translate
+from process_utils import console_python
 from recording_options import H264_ENCODERS
 
 CATEGORIES = ("basic", "quality", "h264", "hevc", "av1", "auth", "network", "app")
@@ -452,8 +452,14 @@ class SettingsDialog(QDialog):
         self.login_button.setText(self.t("login_cancel"))
         self.save_button.setEnabled(False)
         process.start(
-            sys.executable,
-            ["-u", str(BASE_DIR / "browser_login.py"), self.browser.currentData()],
+            console_python(),
+            [
+                "-u",
+                str(BASE_DIR / "console_login.py"),
+                self.browser.currentData(),
+                "--language",
+                self.language,
+            ],
         )
 
     def read_login(self):
@@ -486,6 +492,7 @@ class SettingsDialog(QDialog):
                 "login_window_closed",
                 "login_timeout",
                 "login_cancelled",
+                "login_terminal_missing",
             }
             if data.get("error") in allowed:
                 reason = data["error"]

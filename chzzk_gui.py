@@ -18,6 +18,7 @@ def main():
     )
     args = parser.parse_args()
     try:
+        from PySide6.QtCore import QTimer
         from PySide6.QtWidgets import QApplication
 
         from gui.appearance import application_icon, apply_application_font
@@ -37,6 +38,8 @@ def main():
         show_error(None, translate(DEFAULT_LANGUAGE, "gui.error"), error)
         return 1
     window.show()
+    if not window.config["gui_settings"]["onboarding_completed"]:
+        QTimer.singleShot(0, window.setup)
     return app.exec()
 
 

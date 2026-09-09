@@ -33,6 +33,7 @@ from PySide6.QtWidgets import (
     QToolButton,
     QVBoxLayout,
     QWidget,
+    QWizard,
 )
 
 from channel_service import (
@@ -394,6 +395,11 @@ class MainWindow(QMainWindow):
                                 self.toggle_logs,
                                 QStyle.StandardPixmap.SP_FileDialogDetailedView,
                             ),
+                            (
+                                "setup",
+                                self.setup,
+                                QStyle.StandardPixmap.SP_DialogApplyButton,
+                            ),
                         ],
                     ),
                 ],
@@ -676,6 +682,18 @@ class MainWindow(QMainWindow):
         if accepted:
             self.statusBar().showMessage(self.t("saved"), 7000)
 
+    def setup(self):
+        from gui.setup_wizard import SetupWizard
+
+        try:
+            config = self.store.load()
+        except (ConfigError, OSError) as error:
+            show_error(self, self.t("error"), error)
+            return
+        wizard = SetupWizard(config, self.store, self.jobs, self.images, self)
+        wizard.exec()
+        self.reload_channels()
+
     def save_channels(self, candidate):
         try:
             self.store.save(candidate)
@@ -834,7 +852,7 @@ class MainWindow(QMainWindow):
 
     def quit_application(self):
         dialog = QApplication.activeModalWidget()
-        if isinstance(dialog, (SettingsDialog, ChannelDialog)):
+        if isinstance(dialog, (SettingsDialog, ChannelDialog, QWizard)):
             dialog.reject()
             if dialog.isVisible():
                 if getattr(dialog, "closing", False):

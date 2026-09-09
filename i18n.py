@@ -1785,6 +1785,44 @@ _GUI_TEXT.update({
     "cli_quality_inherit": ("채널 화질: 1=전체 설정 사용, 2=별도 설정: ", "Channel quality: 1=global, 2=custom settings: ", "频道画质：1=全局，2=独立设置：", "頻道畫質：1=全域，2=獨立設定：", "チャンネル画質: 1=全体設定、2=個別設定: "),
 })
 
+_GUI_TEXT.update({
+    "stop": ("녹화 중지", "Stop recording", "停止录制", "停止錄製", "録画を停止"),
+    "quit": ("종료", "Quit", "退出", "結束", "終了"),
+    "back": ("뒤로", "Back", "返回", "返回", "戻る"),
+    "next": ("다음", "Next", "下一步", "下一步", "次へ"),
+    "finish": ("완료", "Finish", "完成", "完成", "完了"),
+    "setup": ("처음 설정", "Getting started", "初始设置", "初始設定", "初期設定"),
+    "setup_language": ("사용할 언어를 선택하세요", "Choose your language", "选择使用语言", "選擇使用語言", "言語を選択してください"),
+    "setup_language_help": ("언어와 녹화할 채널을 순서대로 설정합니다. 나중에 설정에서 변경할 수 있습니다.", "Set your language and recording channels. You can change them later in Settings.", "依次设置语言和录制频道，以后可在设置中修改。", "依序設定語言及錄製頻道，之後可在設定中變更。", "言語と録画するチャンネルを順に設定します。後から設定で変更できます。"),
+    "setup_channels": ("녹화할 채널을 추가하세요", "Add recording channels", "添加录制频道", "新增錄製頻道", "録画するチャンネルを追加"),
+    "setup_channels_help": ("채널 이름이나 ID로 검색하고 저장 폴더를 확인하세요. 완료 전까지 변경 사항은 저장되지 않습니다.", "Search by name or ID and check the storage folder. Changes are saved only when you finish.", "按名称或 ID 搜索并确认保存文件夹。完成前不会保存更改。", "以名稱或 ID 搜尋並確認儲存資料夾。完成前不會儲存變更。", "名前や ID で検索し、保存先を確認してください。完了するまで変更は保存されません。"),
+    "setup_ready": ("설정이 준비되었습니다", "Ready to finish", "设置已就绪", "設定已就緒", "設定の準備ができました"),
+    "setup_ready_help": ("완료를 누르면 설정을 저장하고 메인 화면으로 이동합니다.", "Finish to save your settings and open the main window.", "点击完成以保存设置并打开主窗口。", "按下完成以儲存設定並開啟主視窗。", "完了を押すと設定を保存し、メイン画面に移動します。"),
+    "setup_folder": ("새 채널의 기본 저장 위치", "Default location for new channels", "新频道的默认保存位置", "新頻道的預設儲存位置", "新規チャンネルの既定の保存先"),
+    "setup_folder_help": ("새 채널은 이 위치 아래 채널별 폴더에 저장합니다. 이미 등록한 채널의 폴더는 바뀌지 않습니다.", "New channels use individual folders below this location. Existing channel folders stay unchanged.", "新频道使用此位置下各自的文件夹，已有频道的文件夹不变。", "新頻道使用此位置下各自的資料夾，既有頻道的資料夾不變。", "新しいチャンネルはこの場所の下に個別のフォルダーを作ります。既存の保存先は変更しません。"),
+    "setup_skip": ("채널은 나중에 추가할게요", "I'll add channels later", "稍后添加频道", "稍後新增頻道", "チャンネルは後で追加する"),
+    "setup_summary": ("언어: {language}\n등록 채널: {count}개\n\n메인 화면에서 ‘자동 녹화 시작’을 누르면 방송을 확인하고 녹화를 시작합니다. 이 마법사는 도움말 → 처음 설정에서 다시 열 수 있습니다.", "Language: {language}\nChannels: {count}\n\nSelect Start recording in the main window to begin watching for broadcasts. Reopen this wizard from Help → Getting started.", "语言：{language}\n频道：{count}\n\n在主窗口点击开始录制以监测直播。可从帮助 → 初始设置重新打开向导。", "語言：{language}\n頻道：{count}\n\n在主視窗按開始錄製以監測直播。可從說明 → 初始設定重新開啟精靈。", "言語: {language}\nチャンネル数: {count}\n\nメイン画面で自動録画を開始すると配信の確認を始めます。ヘルプ → 初期設定から再度開けます。"),
+    "login": ("로그인 창 열기", "Open login window", "打开登录窗口", "開啟登入視窗", "ログイン画面を開く"),
+    "login_wait": ("열린 CLI 창의 안내에 따라 브라우저에서 로그인한 뒤 Enter를 누르세요. 완료되면 쿠키를 이 화면으로 가져옵니다.", "Follow the separate CLI window: log in using the browser, then press Enter. The cookies will return to this screen.", "按独立 CLI 窗口的提示在浏览器登录，再按 Enter。Cookie 将返回此界面。", "依獨立 CLI 視窗的指示在瀏覽器登入，再按 Enter。Cookie 將返回此畫面。", "別の CLI 画面の案内に従ってブラウザーでログインし、Enter を押してください。Cookie がこの画面に戻ります。"),
+    "login_terminal_missing": ("로그인할 터미널을 찾지 못했습니다. 터미널에서 settings.py의 네이버 로그인 메뉴를 사용하세요.", "No terminal is available. Use NAVER login in settings.py from a terminal.", "找不到终端，请在终端中使用 settings.py 的 NAVER 登录菜单。", "找不到終端機，請在終端機中使用 settings.py 的 NAVER 登入選單。", "ターミナルが見つかりません。ターミナルから settings.py の NAVER ログインを使用してください。"),
+    "tray_help": ("창을 닫아도 녹화를 계속합니다. 트레이 아이콘에서 창을 다시 열거나 종료할 수 있습니다. 종료할 때는 녹화 파일 정리를 기다립니다.", "Keep recording when the window closes. Reopen or quit from the tray; quitting waits for recording files to finish.", "关闭窗口后继续录制，可从托盘重新打开或退出。退出时会等待录制文件完成。", "關閉視窗後繼續錄製，可從系統匣重新開啟或結束。結束時會等待錄製檔案完成。", "画面を閉じても録画を続けます。トレイから再表示や終了ができます。終了時は録画ファイルの処理を待ちます。"),
+    "quick_help": ("처음 설정 → 채널 추가 → 자동 녹화 시작 순서로 사용하세요. 채널 우클릭으로 설정·삭제·폴더·활성화를 조정합니다. 백그라운드에서는 트레이 메뉴의 종료를 사용하세요. 설정에 포인터를 두거나 F1을 누르면 설명을 볼 수 있습니다.", "Use Getting started, add channels, then start recording. Right-click channels for settings, removal, folders and activation. Quit from the tray when in background. Hover or press F1 for help.", "完成初始设置、添加频道后开始录制。右键频道可设置、移除、打开文件夹或启停。后台运行时从托盘退出。悬停或按 F1 查看帮助。", "完成初始設定、新增頻道後開始錄製。右鍵頻道可設定、移除、開啟資料夾或啟停。背景執行時從系統匣結束。停留游標或按 F1 查看說明。", "初期設定、チャンネル追加、自動録画開始の順に使用します。右クリックで設定・削除・フォルダー・有効化を操作できます。バックグラウンドではトレイから終了します。ホバーまたは F1 で説明を表示します。"),
+    "install_mode": ("사용할 화면을 선택하세요.\n1. GUI — 창과 버튼으로 사용\n2. CLI — 터미널 메뉴로 사용", "Choose your interface.\n1. GUI — windows and buttons\n2. CLI — terminal menus", "选择操作界面。\n1. GUI — 窗口和按钮\n2. CLI — 终端菜单", "選擇操作介面。\n1. GUI — 視窗和按鈕\n2. CLI — 終端機選單", "使用する画面を選んでください。\n1. GUI — ウィンドウとボタン\n2. CLI — ターミナルのメニュー"),
+    "install_mode_prompt": ("번호 [기본값: 1]: ", "Number [default: 1]: ", "编号 [默认：1]：", "編號 [預設：1]：", "番号 [既定: 1]: "),
+    "install_gui_ready": ("설치가 완료되었습니다. GUI를 엽니다. 처음 실행하면 설정 마법사가 표시됩니다.", "Installation complete. Opening the GUI; the setup wizard appears on first launch.", "安装完成。正在打开 GUI，首次启动将显示设置向导。", "安裝完成。正在開啟 GUI，首次啟動會顯示設定精靈。", "インストールが完了しました。GUI を開きます。初回は設定ウィザードが表示されます。"),
+    "install_failed": ("설치를 완료하지 못했습니다: {error}", "Installation could not finish: {error}", "无法完成安装：{error}", "無法完成安裝：{error}", "インストールを完了できませんでした: {error}"),
+    "cli_main_menu": ("1. 채널 관리\n2. 녹화 · 화질\n3. 인코딩\n4. 네이버 로그인\n5. 네트워크\n6. 언어 · 로그\n0. 종료", "1. Channels\n2. Recording and quality\n3. Encoding\n4. NAVER login\n5. Network\n6. Language and logs\n0. Exit", "1. 频道管理\n2. 录制与画质\n3. 编码\n4. NAVER 登录\n5. 网络\n6. 语言与日志\n0. 退出", "1. 頻道管理\n2. 錄製與畫質\n3. 編碼\n4. NAVER 登入\n5. 網路\n6. 語言與記錄\n0. 結束", "1. チャンネル管理\n2. 録画・画質\n3. エンコード\n4. NAVER ログイン\n5. ネットワーク\n6. 言語・ログ\n0. 終了"),
+    "cli_channel_menu": ("1. 채널 추가\n2. 채널 삭제\n3. 녹화 사용 여부\n4. 채널별 분할 · 화질\n0. 뒤로", "1. Add channel\n2. Remove channel\n3. Enable recording\n4. Channel split and quality\n0. Back", "1. 添加频道\n2. 删除频道\n3. 启用录制\n4. 频道分割与画质\n0. 返回", "1. 新增頻道\n2. 刪除頻道\n3. 啟用錄製\n4. 頻道分割與畫質\n0. 返回", "1. チャンネル追加\n2. チャンネル削除\n3. 録画の有効化\n4. チャンネル別の分割・画質\n0. 戻る"),
+    "cli_recording_menu": ("1. 다운로드 스레드\n2. 방송 확인 간격\n3. 파일 형식\n4. 기본 분할 간격\n5. 기본 화질 · FPS\n0. 뒤로", "1. Download threads\n2. Broadcast check interval\n3. File format\n4. Default split interval\n5. Default quality and FPS\n0. Back", "1. 下载线程\n2. 直播检查间隔\n3. 文件格式\n4. 默认分割间隔\n5. 默认画质与 FPS\n0. 返回", "1. 下載執行緒\n2. 直播檢查間隔\n3. 檔案格式\n4. 預設分割間隔\n5. 預設畫質與 FPS\n0. 返回", "1. ダウンロードスレッド\n2. 配信確認間隔\n3. ファイル形式\n4. 既定の分割間隔\n5. 既定の画質・FPS\n0. 戻る"),
+    "cli_encoding_menu": ("1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 뒤로", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. Back", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 戻る"),
+    "cli_auth_menu": ("1. 브라우저로 로그인\n2. 쿠키 직접 입력\n3. 쿠키 삭제\n0. 뒤로", "1. Browser login\n2. Enter cookies\n3. Delete cookies\n0. Back", "1. 浏览器登录\n2. 输入 Cookie\n3. 删除 Cookie\n0. 返回", "1. 瀏覽器登入\n2. 輸入 Cookie\n3. 刪除 Cookie\n0. 返回", "1. ブラウザーでログイン\n2. Cookie を入力\n3. Cookie を削除\n0. 戻る"),
+    "cli_browser_menu": ("1. Chrome\n2. Microsoft Edge\n3. Firefox\n0. 뒤로", "1. Chrome\n2. Microsoft Edge\n3. Firefox\n0. Back", "1. Chrome\n2. Microsoft Edge\n3. Firefox\n0. 返回", "1. Chrome\n2. Microsoft Edge\n3. Firefox\n0. 返回", "1. Chrome\n2. Microsoft Edge\n3. Firefox\n0. 戻る"),
+    "cli_network_menu": ("1. DNS-over-HTTPS 사용 여부\n2. DoH 주소 변경\n3. 기본 주소 복원\n0. 뒤로", "1. Toggle DNS-over-HTTPS\n2. Change DoH URL\n3. Restore default URL\n0. Back", "1. 启用 DNS-over-HTTPS\n2. 修改 DoH 地址\n3. 恢复默认地址\n0. 返回", "1. 啟用 DNS-over-HTTPS\n2. 變更 DoH 位址\n3. 還原預設位址\n0. 返回", "1. DNS-over-HTTPS の有効化\n2. DoH URL の変更\n3. 既定の URL に戻す\n0. 戻る"),
+    "cli_app_menu": ("1. 언어 변경\n2. 파일 로그 사용 여부\n0. 뒤로", "1. Change language\n2. Toggle file logging\n0. Back", "1. 修改语言\n2. 文件日志开关\n0. 返回", "1. 變更語言\n2. 檔案記錄開關\n0. 返回", "1. 言語変更\n2. ファイルログの有効化\n0. 戻る"),
+    "cli_add_menu": ("1. 이름으로 검색\n2. 채널 ID 입력\n0. 뒤로", "1. Search by name\n2. Enter channel ID\n0. Back", "1. 按名称搜索\n2. 输入频道 ID\n0. 返回", "1. 以名稱搜尋\n2. 輸入頻道 ID\n0. 返回", "1. 名前で検索\n2. チャンネル ID を入力\n0. 戻る"),
+    "login_timeout": ("로그인 대기 시간이 지났습니다. 로그인 창을 다시 열어 진행하세요.", "The login wait timed out. Open the login window again to continue.", "登录等待已超时，请重新打开登录窗口。", "登入等待已逾時，請重新開啟登入視窗。", "ログインの待機時間を超えました。ログイン画面を開き直してください。"),
+})
+
 for _key, _texts in _GUI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["gui." + _key] = _text

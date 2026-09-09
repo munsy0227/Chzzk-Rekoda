@@ -1,22 +1,15 @@
-import json
-import os
 import sys
-import tempfile
-import time
 from pathlib import Path
-
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
+from config_store import ConfigStore
 from i18n import language_display_name, language_options, normalize_language
-
 
 CONFIG_FILE_PATH = BASE_DIR / "config.json"
 DEFAULT_PROMPT_LANGUAGE = "ko"
-CONFIG_REPLACE_ATTEMPTS = 5
-CONFIG_REPLACE_RETRY_SECONDS = 0.2
 
 
 MESSAGES = {
@@ -60,57 +53,14 @@ def message(locale, key, **kwargs):
 
 
 def read_config():
-    if not CONFIG_FILE_PATH.exists():
-        return {}
-    try:
-        with CONFIG_FILE_PATH.open("r", encoding="utf-8") as file:
-            config = json.load(file)
-    except (json.JSONDecodeError, OSError):
-        return {}
-    return config if isinstance(config, dict) else {}
+    return ConfigStore(CONFIG_FILE_PATH).load()
 
 
 def save_config(config):
-    fd = None
-    temp_path = None
-    try:
-        fd, temp_path = tempfile.mkstemp(
-            prefix="config.",
-            suffix=".tmp",
-            dir=BASE_DIR,
-            text=True,
-        )
-        with os.fdopen(fd, "w", encoding="utf-8") as file:
-            fd = None
-            json.dump(config, file, indent=2, ensure_ascii=False)
-            file.write("\n")
-        for attempt in range(CONFIG_REPLACE_ATTEMPTS):
-            try:
-                os.replace(temp_path, CONFIG_FILE_PATH)
-                temp_path = None
-                break
-            except PermissionError:
-                if attempt == CONFIG_REPLACE_ATTEMPTS - 1:
-                    with CONFIG_FILE_PATH.open("w", encoding="utf-8") as file:
-                        json.dump(config, file, indent=2, ensure_ascii=False)
-                        file.write("\n")
-                        file.flush()
-                        os.fsync(file.fileno())
-                    break
-                time.sleep(CONFIG_REPLACE_RETRY_SECONDS)
-        if os.name != "nt":
-            try:
-                os.chmod(CONFIG_FILE_PATH, 0o600)
-            except OSError:
-                pass
-    finally:
-        if fd is not None:
-            os.close(fd)
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
+    store = ConfigStore(CONFIG_FILE_PATH)
+    current = store.load()
+    current["language"] = config["language"]
+    store.save(current)
 
 
 def select_language(raw_value):

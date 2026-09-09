@@ -20,6 +20,7 @@ import aiohttp
 import orjson
 
 from config_store import normalize_h264_settings
+from process_utils import hidden_process_kwargs
 from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
 from recording_options import (
     H264_ENCODERS, add_video_filters, effective_split,
@@ -635,7 +636,7 @@ async def drain_task(task: asyncio.Task, timeout: float = 5.0) -> None:
 
 def isolated_subprocess_kwargs() -> Dict[str, Any]:
     if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
     return {"start_new_session": True}
 
 
@@ -1653,6 +1654,7 @@ def probe_av1_encoder(
             text=True,
             timeout=15,
             check=False,
+            **hidden_process_kwargs(),
         )
         message = (result.stderr or result.stdout or "").strip()
         probe_result = (result.returncode == 0, message)
@@ -1889,6 +1891,7 @@ def probe_hevc_encoder(
             text=True,
             timeout=15,
             check=False,
+            **hidden_process_kwargs(),
         )
         message = (result.stderr or result.stdout or "").strip()
         probe_result = (result.returncode == 0, message)
@@ -2257,6 +2260,8 @@ async def record_stream(
                         )
                         reserved_output_path = temp_output_path
 
+                    output_name = segment_output_template or temp_output_path.name
+                    title_was_shortened = not output_name.startswith(base_output_name)
                     active_attempt = RecordingProcessSandbox(channel_name, channel_id)
                     streamlink_retry_delay: Optional[int] = None
                     attempt_started_at = time.monotonic()
@@ -2766,7 +2771,8 @@ async def record_stream(
 
                             for segment_path in saved_segments:
                                 try:
-                                    await asyncio.to_thread(save_original_title, segment_path, original_live_title)
+                                    if title_was_shortened:
+                                        await asyncio.to_thread(save_original_title, segment_path, original_live_title)
                                 except (OSError, UnicodeError) as error:
                                     logger.warning(tr("gui.title_save_failed", error=error))
                                 logger.info(
@@ -2798,7 +2804,7 @@ async def record_stream(
                                 final_output_path = destination_path
                                 logger.info(tr("record.saved", path=final_output_path))
                             retained_path = final_output_path if final_output_path.exists() else temp_output_path
-                            if retained_path.exists() and retained_path.stat().st_size:
+                            if title_was_shortened and retained_path.exists() and retained_path.stat().st_size:
                                 try:
                                     await asyncio.to_thread(save_original_title, retained_path, original_live_title)
                                 except (OSError, UnicodeError) as error:

@@ -2,6 +2,8 @@
 
 import subprocess
 
+from process_utils import hidden_process_kwargs
+
 PROBE_CACHE = {}
 
 
@@ -62,6 +64,7 @@ def probe_h264_encoder(ffmpeg_path, settings):
             capture_output=True,
             timeout=15,
             check=False,
+            **hidden_process_kwargs(),
         )
         works = result.returncode == 0
     except (OSError, subprocess.SubprocessError):

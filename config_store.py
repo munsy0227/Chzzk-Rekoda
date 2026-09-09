@@ -87,7 +87,7 @@ default_config = {
     "recording_split_minutes": DEFAULT_RECORDING_SPLIT_MINUTES,
     "quality_settings": deepcopy(QUALITY_DEFAULTS),
     "h264_settings": deepcopy(H264_DEFAULTS),
-    "gui_settings": {"close_to_tray": True},
+    "gui_settings": {"close_to_tray": True, "onboarding_completed": False},
     "hevc_settings": {
         "enable": False,
         "encoder": "libx265",
@@ -538,6 +538,9 @@ def normalize_config(config, notify=None):
         "close_to_tray": bool(gui.get("close_to_tray", True))
         if isinstance(gui, dict)
         else True,
+        "onboarding_completed": bool(gui.get("onboarding_completed", False))
+        if isinstance(gui, dict)
+        else False,
     }
 
     cookies = config.get("cookies", {})
@@ -560,10 +563,11 @@ def load_config(path=None, notify=None):
         try:
             with open(config_file_path, "r", encoding="utf-8") as f:
                 raw_config = json.load(f)
-                config = normalize_config(raw_config, notify)
-                if config != raw_config:
-                    save_config(config, config_file_path, notify)
-                return config
+            # Windows cannot replace a file while this reader still owns it.
+            config = normalize_config(raw_config, notify)
+            if config != raw_config:
+                save_config(config, config_file_path, notify)
+            return config
         except (json.JSONDecodeError, UnicodeError) as e:
             try:
                 backup_path = backup_corrupt_config(config_file_path)

@@ -13,7 +13,4 @@ fi
 echo "Select language"
 uv run python scripts/select_language.py
 
-echo "Starting configuration"
-./settings
-echo "Configuration completed!"
-echo "If you want to reconfigure, please run the \"settings\" script directly"
+uv run python scripts/finish_install.py

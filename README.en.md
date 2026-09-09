@@ -31,7 +31,7 @@ When the language selection screen appears during installation, choose the langu
 1. Open the extracted folder.
 2. Find `install.bat` and double-click it.
 3. A black window will open and automatically install the required files. This can take some time, so please wait.
-4. When installation is complete, the settings screen opens automatically.
+4. Choose **GUI / CLI** at the end of installation. GUI finishes installation and opens the app; CLI starts the terminal settings menu.
 
 ---
 
@@ -94,8 +94,8 @@ If the settings screen closed after installation, run `settings.bat` on Windows 
 
 5. If the displayed channel name, ID, and save path are correct, enter `Y`.
 
-> **Tip:** To record broadcasts that require adult or membership verification, open **5. NAVER Cookie Settings** and either sign in to NAVER directly in a new Chrome, Microsoft Edge, or Firefox window to import the cookies (NID_AUT, NID_SES), or enter the values manually. The browser login method may require an internet connection to prepare a compatible driver on first use.
-> The save extension can be selected from `ts`, `mkv`, or `webm` in **2. Recording Settings**, and the same menu lets you set whether recording files are split every few hours or minutes. AV1 encoding can be enabled in **4. AV1 Settings**. If you have DNS problems, set and enable a DoH URL in **6. DNS-over-HTTPS Settings**. The language can be changed in **8. Language Settings** among Korean, English, Simplified Chinese, Traditional Chinese, and Japanese.
+> **Tip:** To record broadcasts that require adult or membership verification, open **4. NAVER login** and either sign in to NAVER directly in a new Chrome, Microsoft Edge, or Firefox window to import the cookies (NID_AUT, NID_SES), or enter the values manually. The browser login method may require an internet connection to prepare a compatible driver on first use.
+> Use **2. Recording and quality** for format, splitting, resolution and FPS; **3. Encoding** for H.264/HEVC/AV1; **5. Network** for DoH; and **6. Language and logs** for language and file logging. Per-channel overrides are under **1. Channels → 4. Channel split and quality**. `0` goes back or exits.
 
 ---
 
@@ -161,19 +161,21 @@ The GUI shares the existing CLI's `config.json`.
 uv run --extra gui chzzk_gui.py
 ```
 
-On Windows, run `chzzk_gui.bat`; on macOS/Linux, run `./chzzk_gui`. Qt is installed only for the optional GUI. The `settings` and `chzzk_record` CLIs remain available.
+On Windows, double-click **`chzzk_gui.vbs`** to launch without a CMD window. `chzzk_gui.bat` also calls this launcher. On macOS/Linux, use `./chzzk_gui`. Qt is installed only when choosing GUI.
+
+The first GUI launch shows a wizard for language, channel search and storage folders. Finish saves your settings; you may add channels later. Reopen it from **Help → Getting started**.
 
 - Use the ribbon to search by channel name or ID, add/edit/unregister channels, and change every recording setting. Hover over a setting or use F1/the help button for explanations.
 - CHZZK profile images appear as channel icons when available. Failed image lookups fall back to the first character of the name.
 - A **frame from the selected channel's current recording file updates every 5 seconds**. No audio is played. Insufficient data or unreadable frames show a message and retry. Disabling the preview does not stop recording.
-- Closing the window keeps recording in the system tray by default. Use its icon to restore the window or **quit safely**. Disable this behavior in app settings; without a tray, closing quits safely. Duplicate CLI/GUI recording and conflicting settings writes are prevented.
+- Closing the window keeps recording in the system tray by default. Use its icon to restore the window or **quit**. Disable this behavior in app settings; without a tray, closing quits. Duplicate CLI/GUI recording and conflicting settings writes are prevented.
 - Saved recording options apply to new recording tasks. Restart the recorder to apply DNS and file logging changes.
 
-A desktop display environment and FFmpeg are required. Browser login opens a new browser and imports cookies automatically. Real browser login and Windows/macOS GUI behavior still require platform-specific verification.
+The GUI requires a desktop environment and FFmpeg. **Open login window** starts the CLI browser-login procedure directly. Log in using the browser, then press Enter in the separate CLI window to return cookies to the GUI. Use **Save settings** to apply them. The GUI has no CMD window; a separate console opens only for login.
 
 - The original broadcast title appears between channel name and status. Right-click a channel for settings, removal, storage folder and automatic recording activation.
 - Split intervals and quality can inherit global defaults or be set per channel. Turning splitting off for one channel saves it in one file.
 - Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
 - H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
-- Each saved video or segment gets a UTF-8 `.txt` sidecar containing its original broadcast title. Long filenames still use shortening and hashes; TXT preserves the full original title.
-- The GUI prefers `font/NotoSansKR-VariableFont_wght.ttf`, then searches the Noto CJK distribution under `font` for `NotoSansKR-VF.ttf` or `NotoSansCJKkr-VF.ttf`. The current distribution's license is in `font/02_NotoSansCJK-TTF-VF/LICENSE`. CLI main-menu options 10/11 and channel-menu option 5 expose the new recording settings.
+- A UTF-8 `.txt` sidecar preserves the original title only when a long filename is shortened and hashed. This applies to individual videos and split segments. Short titles do not produce TXT files.
+- The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf`. Only the required Korean font and the distribution’s `LICENSE` are retained.
