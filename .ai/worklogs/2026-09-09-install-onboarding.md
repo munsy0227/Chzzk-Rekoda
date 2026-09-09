@@ -42,3 +42,9 @@
 - 사용자 요청에 따라 `gui` 브랜치의 관련 코드, 5개 언어 README, `.ai` 문서 및 합성 마법사 화면만 커밋한다. 개인 녹화 폴더와 무시된 검증 산출물은 제외한다.
 - 커밋 전 현재 브랜치/변경 목록과 `git diff --check`를 다시 확인했다. 구현 검증 후 코드가 바뀌지 않아 동일한 기능 검증을 반복하지 않는다.
 - author와 committer는 이전 GUI 커밋의 관례에 맞춰 `Codex <codex@openai.com>`을 사용한다. 푸시 후 `git ls-remote`로 원격 브랜치와 로컬 HEAD 일치를 확인한다.
+
+## 게시 확인
+
+- 구현 커밋 `3a18744b48e9dac203eedb7ed0285fdfb5d6c373` (`feat: streamline GUI onboarding and CLI login setup`)에 관련 파일 30개를 포함했다. author/committer가 모두 `Codex <codex@openai.com>`인지 확인했다.
+- `git push origin gui`가 성공했고, 이어 `git ls-remote --exit-code origin refs/heads/gui`에서 같은 전체 커밋 ID를 확인했다. 강제 푸시나 PR 생성은 하지 않았다.
+- 푸시 직후 추적 파일 변경은 없고 미추적 개인 녹화 폴더만 남았다. 이 게시 확인 기록은 별도 문서 커밋으로 이어서 반영한다. 실제 Windows/macOS 및 NAVER 계정 로그인에 대한 앞의 미검증 범위는 그대로다.
