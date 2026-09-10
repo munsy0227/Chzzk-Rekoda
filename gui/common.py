@@ -1,8 +1,12 @@
-from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
+from html import escape
+
+from PySide6.QtCore import QEvent, QObject, QPoint, QSize, Qt, QTimer
 from PySide6.QtWidgets import (
     QApplication,
+    QLabel,
     QMessageBox,
     QProxyStyle,
+    QSizePolicy,
     QStyle,
     QToolTip,
 )
@@ -16,6 +20,42 @@ class HelpStyle(QProxyStyle):
         if hint == QStyle.StyleHint.SH_ToolTip_WakeUpDelay:
             return 700
         return super().styleHint(hint, option, widget, returnData)
+
+    def pixelMetric(self, metric, option=None, widget=None):
+        if metric == QStyle.PixelMetric.PM_ToolBarExtensionExtent:
+            return 32
+        return super().pixelMetric(metric, option, widget)
+
+
+class ElidedLabel(QLabel):
+    """Keep a long preview title on one line, with the full text in help."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._full_text = ""
+        self.setTextFormat(Qt.TextFormat.PlainText)
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+
+    def setText(self, text):
+        self._full_text = text
+        self.setToolTip("<qt>" + escape(text).replace("\n", "<br>") + "</qt>")
+        self.refresh_text()
+
+    def refresh_text(self):
+        super().setText(
+            self.fontMetrics().elidedText(
+                self._full_text.replace("\n", " "),
+                Qt.TextElideMode.ElideRight,
+                self.contentsRect().width(),
+            )
+        )
+
+    def sizeHint(self):
+        return QSize(0, self.fontMetrics().height())
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.refresh_text()
 
 
 class FocusHelp(QObject):

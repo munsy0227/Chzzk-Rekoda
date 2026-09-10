@@ -11,7 +11,6 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -30,6 +29,7 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTabWidget,
+    QToolBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -43,9 +43,11 @@ from channel_service import (
 )
 from config_store import ConfigError, ConfigStore
 from gui.appearance import application_icon, apply_application_font
-from gui.common import show_error
+from gui.common import ElidedLabel, FocusHelp, show_error
+from gui.icons import command_icon
 from gui.services import BASE_DIR, Images, Jobs, Preview, Recorder, ffmpeg_executable
 from gui.settings_dialog import ChannelDialog, SettingsDialog
+from gui.theme import stylesheet
 from i18n import translate
 
 
@@ -224,25 +226,35 @@ class MainWindow(QMainWindow):
         preview_enabled = (
             self.preview_check.isChecked() if hasattr(self, "preview_check") else True
         )
+        logs_visible = not self.logs.isHidden() if hasattr(self, "logs") else True
         old = self.takeCentralWidget()
         if old:
             old.deleteLater()
         self.setWindowTitle(self.t("title"))
         root = QWidget()
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(16, 12, 16, 12)
+        outer.setContentsMargins(12, 8, 12, 10)
+        outer.setSpacing(8)
         header = QHBoxLayout()
+        header.setSpacing(8)
+        logo = QLabel()
+        logo.setPixmap(
+            application_icon().pixmap(QSize(28, 28), self.devicePixelRatioF())
+        )
+        header.addWidget(logo)
         title = QLabel(self.t("title"))
         title.setObjectName("brand")
         header.addWidget(title)
         header.addStretch()
         self.state_label = QLabel(self.t(self.engine_state))
+        self.state_label.setObjectName("engineState")
         header.addWidget(self.state_label)
         outer.addLayout(header)
         ribbon = QTabWidget()
         ribbon.setObjectName("ribbon")
-        ribbon.setMaximumHeight(152)
-        self.start_buttons, self.stop_buttons = [], []
+        ribbon.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.start_actions, self.stop_actions = [], []
+        self.ribbon_help = FocusHelp(root)
         groups = [
             (
                 "home",
@@ -414,40 +426,53 @@ class MainWindow(QMainWindow):
         for name, sections in groups:
             page = QWidget()
             row = QHBoxLayout(page)
-            row.setContentsMargins(4, 4, 4, 4)
+            row.setContentsMargins(6, 4, 6, 4)
+            toolbar = QToolBar(self.t(name), page)
+            toolbar.setObjectName("ribbonCommands")
+            toolbar.setAccessibleName(self.t(name))
+            toolbar.setMovable(False)
+            toolbar.setFloatable(False)
+            toolbar.setIconSize(QSize(18, 18))
+            toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
             for section, commands in sections:
-                group = QGroupBox(self.t(section))
-                group_row = QHBoxLayout(group)
-                group_row.setContentsMargins(8, 8, 8, 4)
+                if toolbar.actions():
+                    toolbar.addSeparator()
                 for key, callback, icon in commands:
-                    button = QToolButton()
-                    button.setText(self.t(key))
-                    button.setIcon(self.style().standardIcon(icon))
-                    button.setIconSize(QSize(24, 24))
-                    button.setToolButtonStyle(
-                        Qt.ToolButtonStyle.ToolButtonTextUnderIcon
+                    action = toolbar.addAction(
+                        self.style().standardIcon(icon), self.t(key)
                     )
-                    button.setToolTip(
+                    action.setData(key)
+                    action.setToolTip(
                         self.t("quit_app_help")
                         if key == "quit_app"
                         else self.t("quick_help")
                         if key in ("start", "stop")
                         else self.t(key)
                     )
-                    button.clicked.connect(callback)
-                    group_row.addWidget(button)
+                    action.triggered.connect(callback)
+                    button = toolbar.widgetForAction(action)
+                    button.setAccessibleName(self.t(key))
+                    button.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+                    button.installEventFilter(self.ribbon_help)
                     if key == "start":
-                        self.start_buttons.append(button)
+                        button.setObjectName("primary")
+                        self.start_actions.append(action)
                     if key == "stop":
-                        self.stop_buttons.append(button)
-                row.addWidget(group)
-            row.addStretch()
+                        self.stop_actions.append(action)
+            more = toolbar.findChild(QToolButton, "qt_toolbar_ext_button")
+            if more is not None:
+                more.setAccessibleName(self.t("more_actions"))
+                more.setToolTip(self.t("more_actions"))
+                more.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+            row.addWidget(toolbar)
             ribbon.addTab(page, self.t(name))
         outer.addWidget(ribbon)
         self.empty = QLabel(self.t("empty"))
         self.empty.setWordWrap(True)
         outer.addWidget(self.empty)
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(8)
+        splitter.setChildrenCollapsible(False)
         self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
             [
@@ -455,7 +480,14 @@ class MainWindow(QMainWindow):
                 for k in ("channels", "broadcast_title", "status", "duration", "size")
             ]
         )
-        self.table.setIconSize(QSize(44, 44))
+        self.table.setIconSize(QSize(36, 36))
+        self.table.setAlternatingRowColors(True)
+        self.table.setWordWrap(False)
+        self.table.setTextElideMode(Qt.TextElideMode.ElideRight)
+        self.table.horizontalHeader().setDefaultAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.table.horizontalHeader().setMinimumSectionSize(64)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -478,37 +510,45 @@ class MainWindow(QMainWindow):
         self.table.customContextMenuRequested.connect(self.channel_menu)
         splitter.addWidget(self.table)
         preview_panel = QWidget()
+        preview_panel.setObjectName("previewPanel")
         right = QVBoxLayout(preview_panel)
-        right.setContentsMargins(16, 4, 0, 4)
+        right.setContentsMargins(12, 10, 12, 10)
+        right.setSpacing(8)
+        preview_header = QHBoxLayout()
         label = QLabel(self.t("preview"))
         label.setObjectName("sectionTitle")
-        right.addWidget(label)
+        preview_header.addWidget(label)
+        preview_header.addStretch()
+        self.preview_check = QCheckBox(self.t("preview_enabled"))
+        self.preview_check.setChecked(preview_enabled)
+        self.preview_check.setToolTip(self.t("preview_hint"))
+        self.preview_check.toggled.connect(self.select_channel)
+        preview_header.addWidget(self.preview_check)
+        right.addLayout(preview_header)
         self.video = QLabel(self.t("preview_select"))
         self.video.setObjectName("video")
         self.video.setTextFormat(Qt.TextFormat.PlainText)
         self.video.setWordWrap(True)
-        self.video.setMinimumSize(280, 185)
+        self.video.setMinimumSize(240, 135)
         self.video.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
         right.addWidget(self.video, 1)
-        self.preview_title = QLabel()
-        self.preview_title.setTextFormat(Qt.TextFormat.PlainText)
-        self.preview_title.setWordWrap(True)
-        right.addWidget(self.preview_title)
+        caption = QHBoxLayout()
+        caption.setSpacing(8)
+        self.preview_title = ElidedLabel()
+        self.preview_title.setObjectName("previewTitle")
+        caption.addWidget(self.preview_title, 1)
+        self.preview_time = QLabel()
+        self.preview_time.setObjectName("subtle")
+        self.preview_time.hide()
+        caption.addWidget(self.preview_time)
+        right.addLayout(caption)
         self.preview_note = QLabel(self.t("preview_hint"))
         self.preview_note.setWordWrap(True)
         self.preview_note.setObjectName("subtle")
         right.addWidget(self.preview_note)
-        self.preview_time = QLabel()
-        self.preview_time.setObjectName("subtle")
-        right.addWidget(self.preview_time)
-        self.preview_check = QCheckBox(self.t("preview_enabled"))
-        self.preview_check.setChecked(preview_enabled)
-        self.preview_check.setToolTip(self.t("preview_hint"))
-        self.preview_check.toggled.connect(self.select_channel)
-        right.addWidget(self.preview_check)
         splitter.addWidget(preview_panel)
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
@@ -521,9 +561,14 @@ class MainWindow(QMainWindow):
         self.error_label.hide()
         outer.addWidget(self.error_label)
         log_actions = QHBoxLayout()
-        log_toggle = QPushButton(self.t("logs"))
-        log_toggle.clicked.connect(self.toggle_logs)
-        log_actions.addWidget(log_toggle)
+        self.log_toggle = QToolButton()
+        self.log_toggle.setText(self.t("logs"))
+        self.log_toggle.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self.log_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if logs_visible else Qt.ArrowType.RightArrow
+        )
+        self.log_toggle.clicked.connect(self.toggle_logs)
+        log_actions.addWidget(self.log_toggle)
         log_actions.addStretch()
         copy = QPushButton(self.t("copy"))
         copy.clicked.connect(
@@ -537,8 +582,9 @@ class MainWindow(QMainWindow):
         self.logs = QPlainTextEdit()
         self.logs.setReadOnly(True)
         self.logs.setMaximumBlockCount(1000)
-        self.logs.setMaximumHeight(165)
+        self.logs.setMaximumHeight(140)
         self.logs.setPlainText(previous_logs)
+        self.logs.setVisible(logs_visible)
         outer.addWidget(self.logs)
         self.setCentralWidget(root)
         self.populate()
@@ -548,37 +594,17 @@ class MainWindow(QMainWindow):
 
     def apply_style(self):
         dark = QApplication.palette().window().color().lightness() < 128
-        surface, field, text, border, accent, muted = (
-            ("#252b30", "#20252a", "#e6ecea", "#414a4e", "#91c6b2", "#bac6c1")
-            if dark
-            else ("#f4f7f6", "#ffffff", "#263b33", "#dce4e0", "#28715b", "#60756b")
-        )
-        self.setStyleSheet(f"""
-            QMainWindow, QDialog {{ background: {surface}; color: {text}; }}
-            QLabel {{ color: {text}; }}
-            QLabel#brand {{ font-size: 14pt; font-weight: 600; padding: 4px; }}
-            QLabel#sectionTitle {{ font-size: 12pt; font-weight: 600; }}
-            QLabel#subtle {{ color: {muted}; }}
-            QGroupBox {{ border: 0; border-right: 1px solid {border}; margin-top: 15px; }}
-            QGroupBox::title {{ subcontrol-origin: margin; color: {muted}; }}
-            QTabWidget::pane {{ border: 1px solid {border}; background: {field}; border-radius: 7px; }}
-            QTabBar::tab {{ padding: 8px 17px; background: transparent; border: 0; }}
-            QTabBar::tab:selected {{ color: {accent}; border-bottom: 2px solid {accent}; }}
-            QToolButton {{ padding: 6px 9px; border: 0; border-radius: 5px; }}
-            QToolButton:hover {{ background: {border}; }}
-            QPushButton {{ padding: 7px 12px; border: 1px solid {border}; border-radius: 5px; }}
-            QPushButton#primary {{ background: {accent}; color: {field}; }}
-            QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{ padding: 6px; min-height: 22px; background: {field}; color: {text}; border: 1px solid {border}; border-radius: 5px; }}
-            QScrollArea {{ border: 0; background: {field}; }}
-            QWidget#settingsPage {{ background: {field}; }}
-            QListWidget::item {{ padding: 10px 6px; }}
-            QTableWidget, QListWidget, QPlainTextEdit {{ background: {field}; border: 1px solid {border}; border-radius: 7px; }}
-            QHeaderView::section {{ padding: 9px; border: 0; background: {surface}; }}
-            QTableWidget::item {{ padding: 6px; }}
-            QTableWidget::item:selected, QListWidget::item:selected {{ background: {accent}; color: {field}; }}
-            QLabel#video {{ background: #18211e; color: #dce8e2; border-radius: 9px; padding: 8px; }}
-            QLabel#error {{ color: {"#ffb4a9" if dark else "#a72d23"}; }}
-        """)
+        self.setStyleSheet(stylesheet(dark))
+        for toolbar in self.findChildren(QToolBar, "ribbonCommands"):
+            for action in toolbar.actions():
+                if action.isSeparator():
+                    continue
+                color = (
+                    ("#102e25" if dark else "#ffffff")
+                    if action.data() == "start"
+                    else ("#d7e7e0" if dark else "#425c52")
+                )
+                action.setIcon(command_icon(action.data(), color))
 
     def current_channel(self):
         row = self.table.currentRow()
@@ -595,7 +621,7 @@ class MainWindow(QMainWindow):
         for channel in self.config["channels"]:
             row = self.table.rowCount()
             self.table.insertRow(row)
-            self.table.setRowHeight(row, 64)
+            self.table.setRowHeight(row, 52)
             name = QTableWidgetItem(fallback_icon(channel["name"]), channel["name"])
             name.setData(Qt.ItemDataRole.UserRole, channel["id"])
             name.setToolTip(channel["id"] + "\n" + self.t("icons_hint"))
@@ -899,13 +925,17 @@ class MainWindow(QMainWindow):
     def engine_changed(self, state):
         self.engine_state = state
         self.state_label.setText(self.t(state))
+        self.state_label.setProperty("state", state)
+        self.state_label.style().unpolish(self.state_label)
+        self.state_label.style().polish(self.state_label)
+        self.state_label.updateGeometry()
         self.tray.setToolTip(self.t("title") + " · " + self.t(state))
         self.tray_start.setEnabled(state == "idle")
         self.tray_stop.setEnabled(state in ("starting", "running"))
-        for button in self.start_buttons:
-            button.setEnabled(state == "idle")
-        for button in self.stop_buttons:
-            button.setEnabled(state in ("starting", "running"))
+        for action in self.start_actions:
+            action.setEnabled(state == "idle")
+        for action in self.stop_actions:
+            action.setEnabled(state in ("starting", "running"))
         if state == "idle":
             self.snapshots.clear()
         self.update_rows()
@@ -941,6 +971,7 @@ class MainWindow(QMainWindow):
                 else self.t("off")
             )
             self.preview_time.clear()
+            self.preview_time.hide()
 
     def show_frame(self, pixmap):
         self.last_frame = pixmap
@@ -948,6 +979,7 @@ class MainWindow(QMainWindow):
         self.preview_time.setText(
             self.t("preview_updated", time=datetime.now().strftime("%H:%M:%S"))
         )
+        self.preview_time.show()
 
     def scale_frame(self):
         if not self.last_frame.isNull():
@@ -967,6 +999,7 @@ class MainWindow(QMainWindow):
                 self.t("preview_failed" if reason == "failed" else "preview_wait")
             )
             self.preview_time.clear()
+            self.preview_time.hide()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -994,7 +1027,11 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, self.t("help"), self.t("quick_help"))
 
     def toggle_logs(self):
-        self.logs.setVisible(not self.logs.isVisible())
+        visible = self.logs.isHidden()
+        self.logs.setVisible(visible)
+        self.log_toggle.setArrowType(
+            Qt.ArrowType.DownArrow if visible else Qt.ArrowType.RightArrow
+        )
 
     def recorder_finished(self):
         if self.closing:

@@ -1840,6 +1840,10 @@ _GUI_TEXT.update({
     "stopped_before_input": ("{channel_name}: 영상 데이터 수신 전에 녹화가 중지되어 FFmpeg 입력이 비어 있습니다.", "{channel_name}: recording stopped before video data arrived, leaving FFmpeg input empty.", "{channel_name}：收到视频数据前录制已停止，FFmpeg 输入为空。", "{channel_name}：收到影片資料前錄製已停止，FFmpeg 輸入為空。", "{channel_name}: 映像データを受信する前に録画が停止したため、FFmpeg の入力は空です。"),
 })
 
+_GUI_TEXT.update({
+    "more_actions": ("명령 더보기", "More actions", "更多操作", "更多操作", "その他の操作"),
+})
+
 for _key, _texts in _GUI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["gui." + _key] = _text
