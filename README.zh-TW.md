@@ -181,3 +181,4 @@ GUI 需要桌面環境和 FFmpeg。**開啟登入視窗**直接啟動 CLI 的瀏
 - GUI 使用 `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`，依語言選擇 KR/JP/SC/TC 字型。Windows 使用 DirectWrite 與各顯示器的 DPI，字型目錄附帶 `LICENSE`。
 - **錄製設定 → 完全結束程式**會等待錄製檔案處理完成後結束程式及系統匣。分割錄製容量為目前錄製產生的所有分段檔案實際大小總和。
 - GUI 錄製停止時，記錄會區分停止命令、程式結束和通訊連線錯誤等原因。啟用檔案記錄後，也可在設定檔旁的 `log.log` 中查看。
+- 視窗、工作列和系統匣使用相同的程式圖示。Windows 執行 `chzzk_gui.vbs` 後，會在安裝資料夾中產生附圖示的 **`Chzzk Rekoda.lnk`** 捷徑。Linux 啟動 GUI 時，會在使用者應用程式選單中註冊圖示和啟動項目。

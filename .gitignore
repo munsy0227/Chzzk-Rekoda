@@ -214,6 +214,7 @@ config.json.lock
 
 # Original font download; only the runtime TTC under font/ is distributed.
 /02_NotoSansCJK-TTF-VF/
+/Chzzk Rekoda.lnk
 
 #temp
 .ts

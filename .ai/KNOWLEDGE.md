@@ -34,6 +34,8 @@
 - `chzzk_record.py:load_config_async()`는 설정 읽기 실패 시 마지막 유효 설정을 유지한다. 설정 저장 도중 활성 녹화가 취소되지 않도록 이 동작을 보존한다.
 - `chzzk_record.py:main()`은 종료 시 녹화 정리와 마지막 로그 표시를 처리한다. GUI의 중지/종료도 이 정리 경로를 거쳐야 한다.
 - 사용자에게 보이는 문구는 `i18n.py`의 5개 언어를 함께 관리한다. `pyproject.toml`은 Python 3.12 이상이며 PySide6는 `gui` 선택 의존성이다. `uv.lock`은 Qt 6.11.2를 포함한다.
+- 저장 폴더 열기의 번역 키는 `gui.folder`다. 리본과 채널 우클릭 메뉴에서 같은 키를 사용하며, 존재하지 않는 `gui.open_folder`를 사용하면 키 원문이 화면에 표시된다.
+- 앱 아이콘은 사용자 제공 이미지를 변환한 `assets/chzzk-rekoda.png`(512px)와 `.ico`(16~256px 10개 크기)를 공용으로 사용한다. `gui/appearance.py:application_icon()`은 창/트레이/앱 아이콘을 반환한다. `gui/desktop.py`는 Windows AppUserModelID를 UI 생성 전에 지정하고, Linux는 XDG 사용자 아이콘 테마와 앱 목록의 `.desktop`을 등록한다. `chzzk_gui.vbs`는 설치 폴더에 ICO를 지정한 `Chzzk Rekoda.lnk`를 생성/갱신한다. 바로가기에는 로컬 경로가 들어가므로 Git에서 제외한다. 세부 검증은 [앱 아이콘 적용 기록](worklogs/2026-09-10-app-icon.md)을 참고한다.
 
 ## 현재 논의와 관련 기록
 

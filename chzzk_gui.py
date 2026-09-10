@@ -23,10 +23,12 @@ def main():
 
         from gui.appearance import application_icon, qt_application_args
         from gui.common import HelpStyle, show_error
+        from gui.desktop import configure_platform_identity, register_linux_desktop
         from gui.window import MainWindow
     except ImportError:
         print(translate(DEFAULT_LANGUAGE, "gui.missing_qt"), file=sys.stderr)
         return 1
+    configure_platform_identity()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -35,6 +37,7 @@ def main():
     app.setDesktopFileName("Chzzk-Rekoda")
     app.setStyle(HelpStyle())
     app.setWindowIcon(application_icon())
+    register_linux_desktop()
     try:
         window = MainWindow(args.config)
     except (ConfigError, OSError) as error:
