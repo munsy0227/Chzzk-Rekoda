@@ -161,7 +161,7 @@ GUI は既存の CLI と同じ `config.json` を使用します。
 uv run --extra gui chzzk_gui.py
 ```
 
-Windows は **`chzzk_gui.vbs` をダブルクリック**すると CMD 画面なしで起動します。`chzzk_gui.bat` もこのランチャーを呼び出します。macOS/Linux は `./chzzk_gui` を使用してください。Qt は GUI 選択時だけインストールします。
+Windows は **`chzzk_gui.vbs` をダブルクリック**すると CMD 画面なしで起動します。`chzzk_gui.bat` もこのランチャーを呼び出します。Linux はインストール先の **`Chzzk-Rekoda.desktop` をダブルクリック**し、ファイルマネージャーから求められた場合は実行を許可してください。macOS/Linux の `./chzzk_gui` も利用できます。Qt は GUI 選択時だけインストールします。
 
 GUI 初回起動時に、言語・チャンネル検索・保存先を設定するウィザードが表示されます。完了時に保存し、チャンネルは後から追加できます。**ヘルプ → 初期設定**から再度開けます。
 
@@ -178,4 +178,6 @@ GUI にはデスクトップ環境と FFmpeg が必要です。**ログイン画
 - 提供される `144p`、`360p`、`480p`、`720p60`、`1080p60` を直接取得します。別の解像度はエンコードし、FPS のみ変更する場合は同じ解像度の映像を使います。選択したコーデック、未選択なら H.264（WebM は VP9）で変換します。提供されない画質は近い上位画質または最高画質から変換します。
 - H.264 は libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox に対応し、HEVC・AV1 と1つだけ選択できます。ハードウェア失敗時は libx264 を試します。H.264+WebM は MKV に保存します。
 - 長いファイル名を短縮しハッシュを付けた場合だけ、動画や各分割ファイルの隣に元のタイトルを UTF-8 `.txt` で保存します。短いタイトルでは TXT を作成しません。
-- GUI は `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf` を使用します。必要な韓国語フォントと配布版の `LICENSE` のみを保持します。
+- GUI は `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc` を使用し、言語に応じて KR/JP/SC/TC を選びます。Windows は DirectWrite とモニター別 DPI を使用します。配布フォルダーに `LICENSE` を同梱します。
+- **録画設定 → アプリを完全に終了**は録画ファイルの処理を待ってトレイも終了します。分割録画の容量は現在の録画で作成した全分割ファイルの実サイズの合計です。
+- GUI の録画が停止すると、停止コマンド、アプリ終了、通信接続のエラーなどの理由をログに区別して表示します。ファイルログが有効なら、設定ファイルの隣の `log.log` でも確認できます。

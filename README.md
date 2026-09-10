@@ -161,7 +161,7 @@ A. [이곳(Issues)](https://github.com/munsy0227/Chzzk-Rekoda/issues)에 들어�
 uv run --extra gui chzzk_gui.py
 ```
 
-Windows에서는 **`chzzk_gui.vbs`를 더블 클릭**하면 CMD 창 없이 실행됩니다. `chzzk_gui.bat`도 이 실행기를 호출합니다. macOS/Linux에서는 `./chzzk_gui`를 사용하세요. Qt는 GUI를 선택할 때만 설치됩니다.
+Windows에서는 **`chzzk_gui.vbs`를 더블 클릭**하면 CMD 창 없이 실행됩니다. `chzzk_gui.bat`도 이 실행기를 호출합니다. Linux는 설치 후 폴더의 **`Chzzk-Rekoda.desktop`을 더블 클릭**하세요. 파일 관리자가 실행 허용을 요구하면 허용해 주세요. macOS/Linux의 `./chzzk_gui` 실행도 지원합니다. Qt는 GUI를 선택할 때만 설치됩니다.
 
 첫 GUI 실행에는 언어 선택 → 채널 검색·저장 폴더 확인 → 완료 순서의 마법사가 표시됩니다. 완료할 때 설정을 저장하며, 채널은 나중에 추가할 수도 있습니다. **도움말 → 처음 설정**에서 다시 열 수 있습니다.
 
@@ -178,4 +178,6 @@ GUI는 데스크톱 환경과 FFmpeg가 필요합니다. **로그인 창 열기*
 - `144p`, `360p`, `480p`, `720p60`, `1080p60`은 실제 제공되는 스트림을 직접 받습니다. 다른 해상도는 인코딩하며, FPS만 다르면 같은 해상도의 스트림을 받아 프레임을 변환합니다. 변환에는 선택한 코덱을 사용하고 미선택 시 H.264(WebM은 VP9)를 사용합니다. 제공되지 않는 화질은 가까운 상위 화질 또는 최고 화질을 받아 변환합니다.
 - H.264는 libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox를 지원하며 HEVC·AV1과 하나만 선택합니다. 하드웨어 실패 시 libx264를 시도합니다. H.264+WebM은 MKV로 저장합니다.
 - 파일명이 길어 제목이 축약·해시 처리된 경우에만 영상 또는 각 분할 파일 옆에 원본 제목을 UTF-8 `.txt`로 제공합니다. 짧은 제목에는 TXT를 만들지 않습니다.
-- GUI는 `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf`를 사용합니다. 같은 배포 폴더의 `LICENSE`와 필요한 한국어 폰트만 보관합니다.
+- GUI는 `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`를 사용하며 언어별 KR/JP/SC/TC 글꼴을 선택합니다. Windows는 DirectWrite와 모니터별 DPI를 사용합니다. 배포 폴더에 `LICENSE`를 함께 제공합니다.
+- **녹화 설정 → 프로그램 완전 종료**는 녹화 파일 정리를 기다린 뒤 트레이까지 종료합니다. 분할 녹화의 용량은 현재 작업에서 만든 모든 분할 파일의 실제 크기를 합산한 값입니다.
+- GUI 녹화가 중지되면 로그에 중지 명령·프로그램 종료·통신 연결 끊김 등의 원인을 구분해 표시합니다. 파일 로그가 켜져 있으면 설정 파일 옆 `log.log`에서도 확인할 수 있습니다.

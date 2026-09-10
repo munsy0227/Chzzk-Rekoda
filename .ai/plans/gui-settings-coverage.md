@@ -1,6 +1,6 @@
 # GUI 설정 대응표
 
-확인: 2026-09-09. 기존 `settings.py`에서 `config_store.py`로 옮긴 `default_config`, `normalize_config()`, `ENCODER_PRESETS` 및 CLI 메뉴를 기준으로 한다.
+확인: 2026-09-10. 기존 `settings.py`에서 `config_store.py`로 옮긴 `default_config`, `normalize_config()`, `ENCODER_PRESETS` 및 CLI 메뉴를 기준으로 한다.
 사용자 요청: 리본 UI의 느낌을 유지하면서 기존 설정을 모두 제공한다.
 확정 작업 범위: 최초 시안 완성 이후 사용자가 실제 Qt 구현과 채널 아이콘/녹화 미리보기를 요청했다. 현재는 전체 설정을 실제 파일에 연결했으며 [구현 기록](../worklogs/2026-09-08-qt-gui-implementation.md)에 검증 범위를 구분해 기록한다.
 
@@ -15,6 +15,8 @@
 | 화질 | `quality_settings`, `channels[].quality_settings` | best/144p/360p/480p/720p60/1080p60/custom, 가로/세로 짝수, FPS 0 또는 1~120, 채널별 상속 |
 | H.264 | `h264_settings.enable/encoder/bitrate/max_bitrate/preset` | 인코더 6종, HEVC/AV1과 상호 배타, WebM 지정 시 MKV |
 | 백그라운드 | `gui_settings.close_to_tray` | 닫기 시 트레이 유지, 없으면 종료; '녹화 중지'/'종료' 모두 기존 파일 정리 대기 |
+| 앱 종료 | 설정 리본의 프로그램 완전 종료 | 녹화 및 로그인 자식 정리 후 트레이까지 종료 |
+| 녹화 용량 | 현재 작업의 `total_bytes`/`total_size` | 분할 녹화는 현재 작업에서 생성한 모든 분할 파일의 실제 크기 합산 |
 | 기본 녹화 | `timeout` | 1~3600초, 기본 60초 |
 | 기본 녹화 | `stream_segment_threads` | 1~16, 기본 2 |
 | HEVC | `enable/encoder/bitrate/max_bitrate/preset` | 인코더 6개, 인코더별 프리셋, H.264/AV1 활성화와 상호 배타 |
@@ -26,6 +28,7 @@
 ## 설치 및 CLI 대응
 
 - 설치 마지막에 GUI/CLI를 선택한다. GUI 선택은 Qt 설치 후 첫 실행 마법사, CLI 선택은 기존 설정 메뉴로 연결한다. Windows GUI 진입점은 콘솔을 숨기는 `chzzk_gui.vbs`이며 `.bat`도 같은 진입점으로 연결한다.
+- Linux는 설치 폴더의 `Chzzk-Rekoda.desktop`을 클릭해 실행한다. TTC의 CJK family를 언어별로 선택하며 Windows는 DirectWrite와 모니터별 DPI를 지정한다. 검증 범위는 [플랫폼 개선 기록](../worklogs/2026-09-10-gui-platform-fixes.md)을 참고한다.
 - CLI 최상위 메뉴는 1 채널, 2 녹화·화질, 3 인코딩, 4 NAVER 로그인, 5 네트워크, 6 언어·로그다. 0번은 모든 하위 메뉴에서 뒤로, 최상위에서는 종료다.
 - 인코딩 메뉴는 H.264/HEVC/AV1에 같은 입력 순서와 검증을 적용한다. 채널 메뉴 4번에서 채널별 분할·화질을 설정한다.
 - 제목 TXT는 파일명 길이 제한으로 제목이 축약된 녹화에만 생성한다. 사용법과 검증 범위는 [설치·마법사 기록](../worklogs/2026-09-09-install-onboarding.md)을 참고한다.

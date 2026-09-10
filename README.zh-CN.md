@@ -161,7 +161,7 @@ GUI 与现有 CLI 共用 `config.json`。
 uv run --extra gui chzzk_gui.py
 ```
 
-Windows 双击 **`chzzk_gui.vbs`** 即可无 CMD 窗口启动，`chzzk_gui.bat` 也调用此启动器。macOS/Linux 使用 `./chzzk_gui`。仅选择 GUI 时安装 Qt。
+Windows 双击 **`chzzk_gui.vbs`** 即可无 CMD 窗口启动，`chzzk_gui.bat` 也调用此启动器。Linux 安装后双击文件夹中的 **`Chzzk-Rekoda.desktop`**，如文件管理器询问，请允许执行。macOS/Linux 仍可使用 `./chzzk_gui`。仅选择 GUI 时安装 Qt。
 
 首次启动 GUI 会显示语言、频道搜索和保存文件夹向导，点击完成才保存设置，也可以稍后添加频道。从 **帮助 → 初始设置** 可重新打开。
 
@@ -178,4 +178,6 @@ GUI 需要桌面环境和 FFmpeg。**打开登录窗口**直接启动 CLI 的浏
 - 直接接收实际提供的 `144p`、`360p`、`480p`、`720p60`、`1080p60`。其他分辨率需要编码，仅改变 FPS 时使用相同分辨率的流。转换使用所选编码，未选时使用 H.264（WebM 为 VP9）。不提供的画质从最接近的更高画质或最佳画质转换。
 - H.264 支持 libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox，与 HEVC、AV1 只能启用一个。硬件失败时尝试 libx264。H.264+WebM 保存为 MKV。
 - 仅当文件名过长而缩短并添加哈希时，在视频或各分段旁生成保留原始标题的 UTF-8 `.txt`。短标题不生成 TXT。
-- GUI 使用 `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf`，仅保留所需的韩文字体和发行包的 `LICENSE`。
+- GUI 使用 `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`，按语言选择 KR/JP/SC/TC 字体。Windows 使用 DirectWrite 和各显示器的 DPI，字体目录附带 `LICENSE`。
+- **录制设置 → 完全退出程序**会等待录制文件处理完成后退出程序及托盘。分割录制容量为当前录制生成的所有分段文件实际大小之和。
+- GUI 录制停止时，日志会区分停止命令、程序退出和通信连接故障等原因。启用文件日志后，也可在配置文件旁的 `log.log` 中查看。

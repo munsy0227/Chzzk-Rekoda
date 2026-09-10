@@ -161,7 +161,7 @@ The GUI shares the existing CLI's `config.json`.
 uv run --extra gui chzzk_gui.py
 ```
 
-On Windows, double-click **`chzzk_gui.vbs`** to launch without a CMD window. `chzzk_gui.bat` also calls this launcher. On macOS/Linux, use `./chzzk_gui`. Qt is installed only when choosing GUI.
+On Windows, double-click **`chzzk_gui.vbs`** to launch without a CMD window. `chzzk_gui.bat` also calls this launcher. On Linux, double-click **`Chzzk-Rekoda.desktop`** in the installed folder and allow execution if your file manager asks. `./chzzk_gui` remains available on macOS/Linux. Qt is installed only when choosing GUI.
 
 The first GUI launch shows a wizard for language, channel search and storage folders. Finish saves your settings; you may add channels later. Reopen it from **Help → Getting started**.
 
@@ -178,4 +178,6 @@ The GUI requires a desktop environment and FFmpeg. **Open login window** starts 
 - Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
 - H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
 - A UTF-8 `.txt` sidecar preserves the original title only when a long filename is shortened and hashed. This applies to individual videos and split segments. Short titles do not produce TXT files.
-- The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/TTF/Subset/NotoSansKR-VF.ttf`. Only the required Korean font and the distribution’s `LICENSE` are retained.
+- The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`, selecting KR/JP/SC/TC families by language. Windows uses DirectWrite and per-monitor DPI. The distribution includes its `LICENSE`.
+- **Recording settings → Quit application** finishes recording files and exits the tray as well. Split recording size is the sum of the actual sizes of all segments in the current recording attempt.
+- When GUI recording stops, the log distinguishes a stop command, application exit and communication failures. With file logging enabled, these details also appear in `log.log` next to the configuration file.
