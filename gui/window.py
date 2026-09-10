@@ -805,7 +805,7 @@ class MainWindow(QMainWindow):
             return
         menu = QMenu(self)
         menu.addAction(self.t("edit"), self.edit_channel)
-        menu.addAction(self.t("open_folder"), self.open_folder)
+        menu.addAction(self.t("folder"), self.open_folder)
         active = menu.addAction(self.t("active"))
         active.setCheckable(True)
         active.setChecked(channel["active"] == "on")
