@@ -18,19 +18,22 @@ def main():
     )
     args = parser.parse_args()
     try:
-        from PySide6.QtCore import QTimer
+        from PySide6.QtCore import Qt, QTimer
         from PySide6.QtWidgets import QApplication
 
-        from gui.appearance import application_icon, apply_application_font
+        from gui.appearance import application_icon, qt_application_args
         from gui.common import HelpStyle, show_error
         from gui.window import MainWindow
     except ImportError:
         print(translate(DEFAULT_LANGUAGE, "gui.missing_qt"), file=sys.stderr)
         return 1
-    app = QApplication(sys.argv[:1])
+    QApplication.setHighDpiScaleFactorRoundingPolicy(
+        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+    )
+    app = QApplication(qt_application_args())
     app.setApplicationName("CHZZK Rekoda")
+    app.setDesktopFileName("Chzzk-Rekoda")
     app.setStyle(HelpStyle())
-    apply_application_font(app)
     app.setWindowIcon(application_icon())
     try:
         window = MainWindow(args.config)

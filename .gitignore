@@ -212,6 +212,9 @@ config.json.lock
 .recorder.lock
 /.gui-validation/
 
+# Original font download; only the runtime TTC under font/ is distributed.
+/02_NotoSansCJK-TTF-VF/
+
 #temp
 .ts
 .mp4

@@ -20,7 +20,7 @@ import aiohttp
 import orjson
 
 from config_store import normalize_h264_settings
-from process_utils import hidden_process_kwargs
+from process_utils import console_python, hidden_process_kwargs, terminal_display_mode
 from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
 from recording_options import (
     H264_ENCODERS, add_video_filters, effective_split,
@@ -69,7 +69,7 @@ STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 MAX_UI_LOG_MESSAGES = 1000
 UI_LOG_HISTORY_SIZE = 15
-UI_REFRESH_INTERVAL_SECONDS = 0.2
+UI_REFRESH_INTERVAL_SECONDS = 1.0
 
 # Global console instance for Rich
 console = Console()
@@ -642,6 +642,7 @@ def isolated_subprocess_kwargs() -> Dict[str, Any]:
 
 def streamlink_subprocess_env() -> Dict[str, str]:
     env = os.environ.copy()
+    env.pop("PYTHONUNBUFFERED", None)
     dns_settings = get_dns_settings_sync()
     if not dns_settings["enable"]:
         return env
@@ -725,6 +726,7 @@ class RecordingProcessSandbox:
     ) -> asyncio.subprocess.Process:
         self.stream_process = await create_isolated_subprocess_exec(
             *command,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=streamlink_subprocess_env(),
@@ -771,13 +773,15 @@ class RecordingProcessSandbox:
 
 async def pipe_stream_to_stdin(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, channel_name: str
-) -> None:
+) -> int:
+    transferred = 0
     try:
         while True:
             chunk = await reader.read(256 * 1024)
             if not chunk:
                 break
             writer.write(chunk)
+            transferred += len(chunk)
             await writer.drain()
     except (BrokenPipeError, ConnectionResetError):
         logger.debug(tr("record.pipe_closed", channel_name=channel_name))
@@ -788,6 +792,7 @@ async def pipe_stream_to_stdin(
             writer.close()
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
+    return transferred
 
 
 async def read_log_stream(
@@ -1124,10 +1129,11 @@ def save_original_title(media_path: Path, title: str) -> None:
 async def discover_stream_qualities(stream_url, cookies, ffmpeg_path):
     """Read Streamlink's actual quality names without exposing stream URLs."""
     process = await create_isolated_subprocess_exec(
-        sys.executable, "-m", "streamlink", "--json", stream_url,
+        console_python(), "-m", "streamlink", "--json", stream_url,
         "--plugin-dirs", str(PLUGIN_DIR_PATH),
         "--ffmpeg-ffmpeg", str(ffmpeg_path),
         *streamlink_http_header_args(cookies),
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
         env=streamlink_subprocess_env(),
     )
@@ -1352,6 +1358,24 @@ def format_size(size_bytes: float) -> str:
     return f"{size_bytes:.2f} {size_names[i]}"
 
 
+def recording_output_size(progress: Dict[str, Any]) -> int:
+    """FFmpeg's segment muxer reports total_size=N/A; measure its files."""
+    template = progress.get("segment_template")
+    if template:
+        paths = segment_output_files(Path(progress["output_dir"]), template)
+    elif progress.get("output_path"):
+        paths = [Path(progress["output_path"])]
+    else:
+        return 0
+    total = 0
+    for path in paths:
+        try:
+            total += path.stat().st_size
+        except FileNotFoundError:
+            continue  # Finalization may rename a file between list and stat.
+    return total
+
+
 time_pattern = re.compile(r"(\d+):(\d+):(\d+)\.(\d+)")
 
 
@@ -1405,10 +1429,19 @@ async def read_stream(
                 total_size_str = summary.get("total_size", "0")
                 out_time_str = summary.get("out_time", "0")
 
+                async with channel_progress_lock:
+                    current_progress = dict(channel_progress.get(channel_id, {}))
                 try:
-                    total_size = int(total_size_str)
+                    if current_progress.get("segment_template"):
+                        raise ValueError("segment muxer size is not cumulative")
+                    total_size = max(0, int(total_size_str))
                 except ValueError:
-                    total_size = 0
+                    try:
+                        total_size = await asyncio.to_thread(
+                            recording_output_size, current_progress
+                        )
+                    except OSError:
+                        total_size = prev_total_size or 0
 
                 total_size_formatted = format_size(total_size)
 
@@ -1426,7 +1459,7 @@ async def read_stream(
                 # Calculate download speed
                 current_time = time.monotonic()
                 if prev_total_size is not None and prev_time is not None:
-                    bytes_diff = total_size - prev_total_size
+                    bytes_diff = max(0, total_size - prev_total_size)
                     time_diff = current_time - prev_time
                     if time_diff > 0:
                         instant_speed = bytes_diff / time_diff  # Bytes per second
@@ -1450,6 +1483,7 @@ async def read_stream(
                                 "bitrate": bitrate_formatted,
                                 "download_speed": download_speed_formatted,
                                 "total_size": total_size_formatted,
+                                "total_bytes": total_size,
                                 "out_time": out_time_str,
                             }
                         )
@@ -2268,7 +2302,7 @@ async def record_stream(
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
-                            sys.executable, "-m", "streamlink",
+                            console_python(), "-m", "streamlink",
                             "--stdout",
                             stream_url,
                             plan["stream"],
@@ -2724,9 +2758,21 @@ async def record_stream(
                             tr("record.stream_process_exited", channel_name=channel_name, returncode=stream_returncode)
                         )
                         if ffmpeg_returncode not in (0, None):
-                            logger.warning(
-                                tr("record.ffmpeg_failed", channel_name=channel_name)
+                            stopped_before_input = (
+                                completed_by in {"cancelled", "shutdown"}
+                                and pipe_task.done()
+                                and not pipe_task.cancelled()
+                                and pipe_task.exception() is None
+                                and pipe_task.result() == 0
                             )
+                            if stopped_before_input:
+                                logger.info(
+                                    tr("gui.stopped_before_input", channel_name=channel_name)
+                                )
+                            else:
+                                logger.warning(
+                                    tr("record.ffmpeg_failed", channel_name=channel_name)
+                                )
                         if (
                             stream_returncode not in (0, None)
                             and completed_by not in {"cancelled", "ffmpeg", "shutdown"}
@@ -3040,7 +3086,11 @@ async def display_progress(stop_event: asyncio.Event):
 
     log_messages = collections.deque(maxlen=UI_LOG_HISTORY_SIZE)
 
-    with Live(layout, console=console, refresh_per_second=5, screen=False):
+    last_snapshot = None
+    with Live(
+        layout, console=console, screen=True, auto_refresh=False,
+        vertical_overflow="crop",
+    ) as live:
         while not stop_event.is_set() or not log_queue.empty():
             # Update display for channel progress
             channel_panels = []
@@ -3054,8 +3104,9 @@ async def display_progress(stop_event: asyncio.Event):
             ]
 
             async with channel_progress_lock:
-                if channel_progress:
-                    for progress_data in channel_progress.values():
+                progress_snapshot = [dict(value) for value in channel_progress.values()]
+                if progress_snapshot:
+                    for progress_data in progress_snapshot:
                         # Create a table for each channel
                         table = Table(show_header=True, header_style="bold magenta")
                         table.add_column(column_labels[0], style="cyan", no_wrap=True)
@@ -3112,8 +3163,15 @@ async def display_progress(stop_event: asyncio.Event):
             layout["upper"].update(
                 Panel(log_text, title=translate(language, "record.logs_title"))
             )
-
-            await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
+            snapshot = (progress_snapshot, tuple(log_messages), language, console.size)
+            if snapshot != last_snapshot:
+                live.refresh()
+                last_snapshot = snapshot
+            if not stop_event.is_set():
+                await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
+    # Alternate-screen output disappears on exit; retain the final diagnostics.
+    for message in log_messages:
+        console.print(Text(message))
 
 
 async def main(gui_events: bool = False) -> int:
@@ -3165,11 +3223,10 @@ async def main(gui_events: bool = False) -> int:
 
 def run():
     import argparse
-    import json
 
     from process_lock import FileLock
 
-    global CONFIG_FILE_PATH, LOG_FILE_PATH
+    global CONFIG_FILE_PATH, LOG_FILE_PATH, console
     parser = argparse.ArgumentParser()
     parser.add_argument("--gui-events", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, default=CONFIG_FILE_PATH)
@@ -3186,12 +3243,16 @@ def run():
     except OSError:
         message = tr("gui.recorder_busy")
         if args.gui_events:
-            print(json.dumps({"version": 1, "event": "error", "message": message}), flush=True)
+            from recorder_bridge import write_event
+
+            write_event({"version": 1, "event": "error", "message": message})
         else:
             print(message, file=sys.stderr)
         return 1
     try:
-        return asyncio.run(main(args.gui_events))
+        with terminal_display_mode() as vt_enabled:
+            console = Console(legacy_windows=False if vt_enabled else None)
+            return asyncio.run(main(args.gui_events))
     finally:
         lock.__exit__(None, None, None)
 

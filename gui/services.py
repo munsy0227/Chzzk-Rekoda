@@ -168,7 +168,9 @@ class Recorder(QObject):
         self.process.setWorkingDirectory(str(BASE_DIR))
         env = QProcessEnvironment.systemEnvironment()
         env.insert("PYTHONUTF8", "1")
-        env.insert("PYTHONUNBUFFERED", "1")
+        # -u affects the JSON recorder only. Do not force raw stdout on its
+        # Streamlink children; use the same binary buffering as the CLI.
+        env.remove("PYTHONUNBUFFERED")
         self.process.setProcessEnvironment(env)
         self.process.readyReadStandardOutput.connect(self.read)
         self.process.readyReadStandardError.connect(self.read_errors)
@@ -177,6 +179,7 @@ class Recorder(QObject):
         self.process.errorOccurred.connect(self.failed)
         self.buffer = bytearray()
         self.stopping = False
+        self.stop_reason = "user"
 
     @property
     def running(self):
@@ -187,6 +190,7 @@ class Recorder(QObject):
             return
         self.buffer.clear()
         self.stopping = False
+        self.stop_reason = "user"
         self.changed.emit("starting")
         self.process.start(
             console_python(),
@@ -200,28 +204,34 @@ class Recorder(QObject):
         )
 
     def stop(self):
+        self.request_stop("user")
+
+    def request_stop(self, reason):
         if self.running and not self.stopping:
             self.stopping = True
+            self.stop_reason = reason
             if self.process.state() == QProcess.ProcessState.Running:
-                self.process.write(b'{"command":"stop"}\n')
+                self.send_stop()
             self.changed.emit("stopping")
+
+    def send_stop(self):
+        command = {"command": "stop", "reason": self.stop_reason}
+        self.process.write((json.dumps(command) + "\n").encode("ascii"))
 
     def started(self):
         if self.stopping:
-            self.process.write(b'{"command":"stop"}\n')
+            self.send_stop()
         else:
             self.changed.emit("running")
 
     def read(self):
         self.buffer.extend(bytes(self.process.readAllStandardOutput()))
-        if len(self.buffer) > 2 * 1024 * 1024:
-            self.buffer.clear()
-            self.stop()
-            self.error.emit("protocol_error")
-            return
         while b"\n" in self.buffer:
             raw, _, remainder = self.buffer.partition(b"\n")
             self.buffer = bytearray(remainder)
+            if len(raw) > 2 * 1024 * 1024:
+                self.protocol_failed()
+                return
             try:
                 event = json.loads(raw)
                 if not isinstance(event, dict) or event.get("version") != 1:
@@ -235,6 +245,13 @@ class Recorder(QObject):
                     self.error.emit(str(event.get("message", ""))[:4000])
             except (ValueError, UnicodeError):
                 self.error.emit("protocol_error")
+        if len(self.buffer) > 2 * 1024 * 1024:
+            self.protocol_failed()
+
+    def protocol_failed(self):
+        self.buffer.clear()
+        self.request_stop("protocol_error")
+        self.error.emit("protocol_error")
 
     def read_errors(self):
         text = bytes(self.process.readAllStandardError()).decode("utf-8", "replace")

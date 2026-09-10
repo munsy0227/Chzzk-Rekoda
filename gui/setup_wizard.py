@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from channel_service import safe_channel_folder_name
 from config_store import ConfigError
+from gui.appearance import apply_application_font
 from gui.common import show_error
 from gui.services import BASE_DIR
 from gui.settings_dialog import ChannelDialog
@@ -106,6 +108,7 @@ class SetupWizard(QWizard):
     def change_language(self):
         self.language = self.language_combo.currentData()
         self.draft["language"] = self.language
+        apply_application_font(QApplication.instance(), self.language)
         self.retranslate()
 
     def retranslate(self):

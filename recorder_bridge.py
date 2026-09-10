@@ -6,6 +6,13 @@ import queue
 import sys
 import threading
 
+from process_utils import read_pipe, write_pipe
+
+
+def write_event(event):
+    data = (json.dumps(event, ensure_ascii=True) + "\n").encode("ascii")
+    write_pipe(sys.stdout.fileno(), data)
+
 
 def preview_segment(recorder, directory, template):
     """The new segment can still be empty while FFmpeg buffers its first data."""
@@ -29,25 +36,66 @@ class JsonBridge:
         self.writer.start()
         self.reader.start()
 
-    def stop(self):
+    def stop(self, reason, error=None):
+        # Schedule logging on the event loop too: its UI queue is not thread safe.
+        detail = ""
+        if error is not None:
+            detail = (
+                f" ({type(error).__name__}, errno={error.errno}, "
+                f"winerror={getattr(error, 'winerror', None)})"
+            )
         try:
-            self.loop.call_soon_threadsafe(self.recorder.handle_shutdown)
+            self.loop.call_soon_threadsafe(self._stop, reason, detail)
         except RuntimeError:
             pass
 
+    def _stop(self, reason, detail):
+        recorder = self.recorder
+        if recorder.shutdown_event.is_set():
+            return
+        recorder.logger.info(
+            recorder.tr(
+                "gui.recorder_stop_reason",
+                reason=recorder.tr("gui." + reason),
+                code=reason,
+                detail=detail,
+            )
+        )
+        recorder.handle_shutdown()
+
     def _read(self):
-        while True:
-            line = sys.stdin.buffer.readline(4097)
-            if not line or len(line) > 4096:
-                self.stop()
-                return
-            try:
-                command = json.loads(line)
-                if isinstance(command, dict) and command.get("command") == "stop":
-                    self.stop()
+        pending = bytearray()
+        try:
+            while True:
+                chunk = read_pipe(sys.stdin.fileno(), 4096)
+                if not chunk:
+                    self.stop("control_closed")
                     return
-            except (ValueError, UnicodeError):
-                continue
+                pending.extend(chunk)
+                while b"\n" in pending:
+                    line, _, pending = pending.partition(b"\n")
+                    if len(line) > 4096:
+                        self.stop("control_invalid")
+                        return
+                    try:
+                        command = json.loads(line)
+                    except (ValueError, UnicodeError):
+                        continue
+                    if isinstance(command, dict) and command.get("command") == "stop":
+                        reasons = {
+                            "user": "control_user_stop",
+                            "application_exit": "control_app_exit",
+                            "protocol_error": "control_protocol_error",
+                        }
+                        self.stop(
+                            reasons.get(str(command.get("reason")), "control_user_stop")
+                        )
+                        return
+                if len(pending) > 4096:
+                    self.stop("control_invalid")
+                    return
+        except OSError as error:
+            self.stop("control_read_failed", error)
 
     def _write(self):
         try:
@@ -56,12 +104,11 @@ class JsonBridge:
                 try:
                     if event is None:
                         return
-                    sys.stdout.write(json.dumps(event, ensure_ascii=True) + "\n")
-                    sys.stdout.flush()
+                    write_event(event)
                 finally:
                     self.messages.task_done()
-        except (BrokenPipeError, OSError):
-            self.stop()
+        except OSError as error:
+            self.stop("events_write_failed", error)
 
     def emit(self, event, **data):
         # Pipe pressure must never block the media-copy coroutine.
@@ -116,6 +163,7 @@ class JsonBridge:
                         "state": state,
                         "out_time": current.get("out_time", ""),
                         "total_size": current.get("total_size", ""),
+                        "total_bytes": current.get("total_bytes", 0),
                         "download_speed": current.get("download_speed", ""),
                         "bitrate": current.get("bitrate", ""),
                         "title": current.get("title", ""),

@@ -1823,6 +1823,23 @@ _GUI_TEXT.update({
     "login_timeout": ("로그인 대기 시간이 지났습니다. 로그인 창을 다시 열어 진행하세요.", "The login wait timed out. Open the login window again to continue.", "登录等待已超时，请重新打开登录窗口。", "登入等待已逾時，請重新開啟登入視窗。", "ログインの待機時間を超えました。ログイン画面を開き直してください。"),
 })
 
+_GUI_TEXT.update({
+    "quit_app": ("프로그램 완전 종료", "Quit application", "完全退出程序", "完全結束程式", "アプリを完全に終了"),
+    "quit_app_help": ("진행 중인 녹화를 마무리한 뒤 프로그램과 트레이 아이콘을 모두 종료합니다.", "Finish active recordings, then close the application and its tray icon.", "完成当前录制后关闭程序和托盘图标。", "完成目前錄製後關閉程式及系統匣圖示。", "録画ファイルの処理を終えてから、アプリとトレイアイコンを終了します。"),
+})
+
+_GUI_TEXT.update({
+    "recorder_stop_reason": ("녹화기 종료 원인: {reason} [{code}]{detail}", "Recorder shutdown reason: {reason} [{code}]{detail}", "录制器停止原因：{reason} [{code}]{detail}", "錄製器停止原因：{reason} [{code}]{detail}", "録画プロセスの終了理由: {reason} [{code}]{detail}"),
+    "control_user_stop": ("GUI에서 녹화 중지를 요청했습니다.", "The GUI requested recording to stop.", "GUI 请求停止录制。", "GUI 要求停止錄製。", "GUI から録画停止が要求されました。"),
+    "control_app_exit": ("GUI에서 프로그램 종료를 요청했습니다.", "The GUI requested application exit.", "GUI 请求退出程序。", "GUI 要求結束程式。", "GUI からアプリの終了が要求されました。"),
+    "control_protocol_error": ("GUI가 잘못된 상태 응답을 감지해 중지를 요청했습니다.", "The GUI requested a stop after receiving an invalid status response.", "GUI 检测到无效状态响应并请求停止。", "GUI 偵測到無效狀態回應並要求停止。", "GUI が不正な状態応答を検出し、停止を要求しました。"),
+    "control_closed": ("GUI 제어 연결이 닫혔습니다.", "The GUI control connection closed.", "GUI 控制连接已关闭。", "GUI 控制連線已關閉。", "GUI の制御接続が閉じられました。"),
+    "control_invalid": ("GUI 제어 명령의 길이가 허용 범위를 초과했습니다.", "A GUI control command exceeded the size limit.", "GUI 控制命令超出长度限制。", "GUI 控制命令超出長度限制。", "GUI の制御コマンドが長さの上限を超えました。"),
+    "control_read_failed": ("GUI 제어 연결을 읽는 중 오류가 발생했습니다.", "Reading the GUI control connection failed.", "读取 GUI 控制连接时发生错误。", "讀取 GUI 控制連線時發生錯誤。", "GUI の制御接続の読み取りに失敗しました。"),
+    "events_write_failed": ("GUI에 녹화 상태를 보내는 중 오류가 발생했습니다.", "Sending recording status to the GUI failed.", "向 GUI 发送录制状态时发生错误。", "向 GUI 傳送錄製狀態時發生錯誤。", "GUI への録画状態の送信に失敗しました。"),
+    "stopped_before_input": ("{channel_name}: 영상 데이터 수신 전에 녹화가 중지되어 FFmpeg 입력이 비어 있습니다.", "{channel_name}: recording stopped before video data arrived, leaving FFmpeg input empty.", "{channel_name}：收到视频数据前录制已停止，FFmpeg 输入为空。", "{channel_name}：收到影片資料前錄製已停止，FFmpeg 輸入為空。", "{channel_name}: 映像データを受信する前に録画が停止したため、FFmpeg の入力は空です。"),
+})
+
 for _key, _texts in _GUI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["gui." + _key] = _text

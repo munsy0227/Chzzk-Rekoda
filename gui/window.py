@@ -42,7 +42,7 @@ from channel_service import (
     search_chzzk_channels,
 )
 from config_store import ConfigError, ConfigStore
-from gui.appearance import application_icon
+from gui.appearance import application_icon, apply_application_font
 from gui.common import show_error
 from gui.services import BASE_DIR, Images, Jobs, Preview, Recorder, ffmpeg_executable
 from gui.settings_dialog import ChannelDialog, SettingsDialog
@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
         return translate(self.language, "gui." + key, **kwargs)
 
     def build_ui(self):
+        apply_application_font(QApplication.instance(), self.language)
         previous_logs = self.logs.toPlainText() if hasattr(self, "logs") else ""
         preview_enabled = (
             self.preview_check.isChecked() if hasattr(self, "preview_check") else True
@@ -375,6 +376,11 @@ class MainWindow(QMainWindow):
                                 self.hide_to_tray,
                                 QStyle.StandardPixmap.SP_TitleBarMinButton,
                             ),
+                            (
+                                "quit_app",
+                                self.quit_application,
+                                QStyle.StandardPixmap.SP_DialogCloseButton,
+                            ),
                         ],
                     ),
                 ],
@@ -422,7 +428,9 @@ class MainWindow(QMainWindow):
                         Qt.ToolButtonStyle.ToolButtonTextUnderIcon
                     )
                     button.setToolTip(
-                        self.t("quick_help")
+                        self.t("quit_app_help")
+                        if key == "quit_app"
+                        else self.t("quick_help")
                         if key in ("start", "stop")
                         else self.t(key)
                     )
@@ -547,10 +555,9 @@ class MainWindow(QMainWindow):
         )
         self.setStyleSheet(f"""
             QMainWindow, QDialog {{ background: {surface}; color: {text}; }}
-            QWidget {{ font-size: 13px; }}
             QLabel {{ color: {text}; }}
-            QLabel#brand {{ font-size: 19px; font-weight: 600; padding: 4px; }}
-            QLabel#sectionTitle {{ font-size: 16px; font-weight: 600; }}
+            QLabel#brand {{ font-size: 14pt; font-weight: 600; padding: 4px; }}
+            QLabel#sectionTitle {{ font-size: 12pt; font-weight: 600; }}
             QLabel#subtle {{ color: {muted}; }}
             QGroupBox {{ border: 0; border-right: 1px solid {border}; margin-top: 15px; }}
             QGroupBox::title {{ subcontrol-origin: margin; color: {muted}; }}
@@ -693,6 +700,7 @@ class MainWindow(QMainWindow):
         wizard = SetupWizard(config, self.store, self.jobs, self.images, self)
         wizard.exec()
         self.reload_channels()
+        apply_application_font(QApplication.instance(), self.language)
 
     def save_channels(self, candidate):
         try:
@@ -1005,7 +1013,7 @@ class MainWindow(QMainWindow):
         self.preview.close()
         self.jobs.cancel_pending()
         if self.recorder.running:
-            self.recorder.stop()
+            self.recorder.request_stop("application_exit")
             event.ignore()
             return
         event.accept()
