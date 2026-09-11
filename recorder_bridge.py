@@ -129,14 +129,16 @@ class JsonBridge:
                 }
             channels = []
             config = await recorder.load_config_async()
+            shutting_down = recorder.shutdown_event.is_set()
             for channel in recorder.normalize_channels(config.get("channels", [])):
                 channel_id = channel["id"]
                 current = progress.get(channel_id, {})
-                state = "recording" if current else "waiting"
-                if channel.get("active") == "off":
+                if current:
+                    state = "stopping" if shutting_down else "recording"
+                elif channel.get("active") == "off":
                     state = "inactive"
-                if recorder.shutdown_event.is_set():
-                    state = "stopping"
+                else:
+                    state = "idle" if shutting_down else "waiting"
                 path = current.get("output_path", "")
                 template = current.get("segment_template")
                 segment_index = 1

@@ -1155,6 +1155,29 @@ async def discover_stream_qualities(stream_url, cookies, ffmpeg_path):
         await terminate_process(process, "quality lookup")
 
 
+async def prepare_recording_quality(stream_url, cookies, ffmpeg_path, settings):
+    """Resolve a quality plan, or stop and reap the lookup on shutdown."""
+    if shutdown_event.is_set():
+        return None
+    if settings["mode"] == "best" and not settings["fps"]:
+        return quality_plan(settings, [])
+
+    lookup = asyncio.create_task(
+        discover_stream_qualities(stream_url, cookies, ffmpeg_path)
+    )
+    stopped = asyncio.create_task(shutdown_event.wait())
+    try:
+        await asyncio.wait((lookup, stopped), return_when=asyncio.FIRST_COMPLETED)
+        if shutdown_event.is_set():
+            return None
+        return quality_plan(settings, await lookup)
+    finally:
+        for task in (lookup, stopped):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(lookup, stopped, return_exceptions=True)
+
+
 async def resolve_h264_settings(settings, ffmpeg_path, failures):
     settings = normalize_h264_settings(settings)
     if not settings["enable"]:
@@ -2167,16 +2190,41 @@ async def record_stream(
                         status, live_info = await get_live_info(
                             channel, headers, cookies, session
                         )
-                        if status == "OPEN":
+                        if shutdown_event.is_set():
                             break
+                        if status == "OPEN":
+                            try:
+                                plan = await prepare_recording_quality(
+                                    stream_url, cookies, ffmpeg_path, quality_settings
+                                )
+                            except (ValueError, OSError, TimeoutError):
+                                if shutdown_event.is_set():
+                                    break
+                                # The broadcast may have ended between the live
+                                # check and Streamlink's separate quality lookup.
+                                status, live_info = await get_live_info(
+                                    channel, headers, cookies, session
+                                )
+                                if shutdown_event.is_set():
+                                    break
+                                if status == "OPEN":
+                                    logger.warning(
+                                        "%s: %s", channel_name,
+                                        tr("gui.quality_unavailable"),
+                                    )
+                            else:
+                                if plan is None:
+                                    return
+                                break
                         if status == "CLOSE":
                             runtime_av1_failures.clear()
                             runtime_hevc_failures.clear()
                             runtime_h264_failures.clear()
 
-                        logger.info(
-                            tr("record.waiting_live", channel_name=channel_name)
-                        )
+                        if status != "OPEN":
+                            logger.info(
+                                tr("record.waiting_live", channel_name=channel_name)
+                            )
                         try:
                             await asyncio.wait_for(
                                 shutdown_event.wait(), timeout=timeout
@@ -2186,17 +2234,6 @@ async def record_stream(
 
                     if shutdown_event.is_set():
                         break
-
-                    available = []
-                    if quality_settings["mode"] != "best" or quality_settings["fps"]:
-                        try:
-                            available = await discover_stream_qualities(stream_url, cookies, ffmpeg_path)
-                        except (ValueError, OSError, TimeoutError):
-                            raise RuntimeError(tr("gui.quality_unavailable")) from None
-                    try:
-                        plan = quality_plan(quality_settings, available)
-                    except ValueError:
-                        raise RuntimeError(tr("gui.quality_unavailable")) from None
 
                     active_av1_settings = (
                         await resolve_av1_settings_for_recording(
