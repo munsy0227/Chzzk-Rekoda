@@ -21,7 +21,11 @@ def main():
         from PySide6.QtCore import Qt, QTimer
         from PySide6.QtWidgets import QApplication
 
-        from gui.appearance import application_icon, qt_application_args
+        from gui.appearance import (
+            application_icon,
+            apply_application_font,
+            qt_application_args,
+        )
         from gui.common import HelpStyle, show_error
         from gui.desktop import configure_platform_identity, register_linux_desktop
         from gui.window import MainWindow
@@ -36,6 +40,7 @@ def main():
     app.setApplicationName("CHZZK Rekoda")
     app.setDesktopFileName("Chzzk-Rekoda")
     app.setStyle(HelpStyle())
+    apply_application_font(app, DEFAULT_LANGUAGE)
     app.setWindowIcon(application_icon())
     register_linux_desktop()
     try:

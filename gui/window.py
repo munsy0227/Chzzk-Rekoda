@@ -1,6 +1,5 @@
 from copy import deepcopy
 from datetime import datetime
-from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QSize, Qt, QTimer, QUrl
@@ -43,7 +42,7 @@ from channel_service import (
 )
 from config_store import ConfigError, ConfigStore
 from gui.appearance import application_icon, apply_application_font
-from gui.common import ElidedLabel, FocusHelp, show_error
+from gui.common import ElidedLabel, FocusHelp, show_error, text_tooltip
 from gui.icons import command_icon
 from gui.services import BASE_DIR, Images, Jobs, Preview, Recorder, ffmpeg_executable
 from gui.settings_dialog import ChannelDialog, SettingsDialog
@@ -531,9 +530,8 @@ class MainWindow(QMainWindow):
         self.video.setWordWrap(True)
         self.video.setMinimumSize(240, 135)
         self.video.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.video.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self.video.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+        self.video.installEventFilter(self)
         right.addWidget(self.video, 1)
         caption = QHBoxLayout()
         caption.setSpacing(8)
@@ -648,9 +646,7 @@ class MainWindow(QMainWindow):
                 status = "waiting"
             title = state.get("title", "")
             self.table.item(row, 1).setText(title or "—")
-            self.table.item(row, 1).setToolTip(
-                "<qt>" + escape(title).replace("\n", "<br>") + "</qt>"
-            )
+            self.table.item(row, 1).setToolTip(text_tooltip(title))
             self.table.item(row, 2).setText(self.t(status))
             self.table.item(row, 3).setText(state.get("out_time", "") or "—")
             self.table.item(row, 4).setText(state.get("total_size", "") or "—")
@@ -1001,10 +997,13 @@ class MainWindow(QMainWindow):
             self.preview_time.clear()
             self.preview_time.hide()
 
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if hasattr(self, "video"):
+    def eventFilter(self, watched, event):
+        if (
+            watched is getattr(self, "video", None)
+            and event.type() == QEvent.Type.Resize
+        ):
             self.scale_frame()
+        return super().eventFilter(watched, event)
 
     def changeEvent(self, event):
         super().changeEvent(event)

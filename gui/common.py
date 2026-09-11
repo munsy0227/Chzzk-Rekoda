@@ -12,6 +12,13 @@ from PySide6.QtWidgets import (
 )
 
 
+def text_tooltip(text):
+    """Keep user text literal, and avoid an empty rich-text tooltip box."""
+    if not text or not text.strip():
+        return ""
+    return "<qt>" + escape(text).replace("\n", "<br>") + "</qt>"
+
+
 class HelpStyle(QProxyStyle):
     def __init__(self):
         super().__init__("Fusion")
@@ -38,8 +45,9 @@ class ElidedLabel(QLabel):
 
     def setText(self, text):
         self._full_text = text
-        self.setToolTip("<qt>" + escape(text).replace("\n", "<br>") + "</qt>")
+        self.setToolTip(text_tooltip(text))
         self.refresh_text()
+        self.updateGeometry()
 
     def refresh_text(self):
         super().setText(
@@ -51,7 +59,17 @@ class ElidedLabel(QLabel):
         )
 
     def sizeHint(self):
-        return QSize(0, self.fontMetrics().height())
+        hint = super().sizeHint()
+        return QSize(0, max(hint.height(), self.fontMetrics().height()))
+
+    def minimumSizeHint(self):
+        return self.sizeHint()
+
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self.refresh_text()
+            self.updateGeometry()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
