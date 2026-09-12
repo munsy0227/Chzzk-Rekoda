@@ -22,6 +22,8 @@
 它也是一個即使不熟悉電腦的人也能輕鬆使用的 **CHZZK 自動錄製程式**。  
 直播開始時會自動開始錄製，直播結束後會自動儲存。
 
+歡迎透過 [Pull Request](https://github.com/munsy0227/Chzzk-Rekoda/pulls) 參與各種貢獻，包括新增功能、修正錯誤、改善效能及完善文件。
+
 [[教學] 在 Android 手機上安裝程式](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
