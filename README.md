@@ -15,10 +15,6 @@
 
 # 치지직 레코다 (Chzzk-Rekoda)
 
-
-**현재 GUI 버전 제작 중에 있습니다. 안정적으로 작동이 됨을 확인하고 나면 main에 병합할 예정입니다.**
-
-
 **언어:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
 Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
