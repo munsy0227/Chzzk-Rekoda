@@ -1,3 +1,18 @@
+<table>
+  <tr>
+    <td width="58%" align="center">
+      <a href="assets/screenshots/gui-recording.jpg"><img src="assets/screenshots/gui-recording.jpg" alt="GUI · Ribbon controls and recording preview" width="100%"></a>
+      <br><strong>GUI · Ribbon controls and recording preview</strong>
+    </td>
+    <td width="42%" align="center">
+      <a href="assets/screenshots/cli-recording.jpg"><img src="assets/screenshots/cli-recording.jpg" alt="CLI · Recording progress in your terminal" width="100%"></a>
+      <br><strong>CLI · Recording progress in your terminal</strong>
+    </td>
+  </tr>
+</table>
+
+<p align="center"><sub>Click an image to view it at full size.</sub></p>
+
 # Chzzk-Rekoda
 
 **Languages:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
@@ -11,9 +26,80 @@ When a broadcast starts, it automatically begins recording, and when the broadca
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
 
+**[Start with GUI](#gui) · [Installation](#installation) · [Use the CLI](#cli) · [FAQ](#faq)**
+
 ---
 
-## 1. Installation (Download)
+<a id="gui"></a>
+
+## 1. Start with the GUI
+
+The GUI shares the existing CLI's `config.json`.
+
+1. Follow the [installation guide below](#installation), then select **1. GUI** when asked. The app opens after installation.
+2. The first GUI launch shows a wizard for language, channel search and storage folders. Finish saves your settings; you may add channels later. Reopen it from **Help → Getting started**.
+3. Select **Home → Start recording**. The app waits for enabled channels to go live and starts recording. Use **Add channel** to register more channels later.
+
+### Open the GUI next time
+
+| Platform | How to launch |
+| --- | --- |
+| Windows | Double-click `chzzk_gui.vbs` · No CMD window (`chzzk_gui.bat` uses the same launcher) |
+| Linux | Double-click `Chzzk-Rekoda.desktop` · Allow execution if prompted |
+| macOS | Run `./chzzk_gui` in a terminal inside the installation folder |
+
+You can also use `./chzzk_gui` on macOS/Linux. To add the GUI to an existing CLI installation or launch directly with uv, run the following command. Qt is only needed for the GUI.
+
+```bash
+uv run --extra gui chzzk_gui.py
+```
+
+### Find settings in the ribbon
+
+| Task | Menu |
+| --- | --- |
+| File format and split interval | **Recording settings → Basic recording** |
+| Resolution and FPS | **Recording settings → Quality** |
+| H.264 · HEVC · AV1 encoding | **Recording settings → H.264 / HEVC / AV1** |
+| Per-channel folder, splitting and quality | **Right-click a channel → Edit channel** |
+| Import login cookies | **Recording settings → NAVER login** |
+| Language, logs and background behavior | **Recording settings → App · background** |
+| Finish recording files and quit | **Recording settings → Quit application** |
+
+Select **Save settings** to apply your changes. Hover over an option or use its help button/F1 to see an explanation.
+
+### Broadcasts that require NAVER login
+
+The GUI requires a desktop environment and FFmpeg. **Open login window** starts the CLI browser-login procedure directly. Log in using the browser, then press Enter in the separate CLI window to return cookies to the GUI. Use **Save settings** to apply them. The GUI has no CMD window; a separate console opens only for login.
+
+<details>
+<summary>More about quality, codecs, previews and tray behavior</summary>
+
+- Use the ribbon to search by channel name or ID, add/edit/unregister channels, and change every recording setting. Hover over a setting or use F1/the help button for explanations.
+- CHZZK profile images appear as channel icons when available. Failed image lookups fall back to the first character of the name.
+- A **frame from the selected channel's current recording file updates every 5 seconds**. No audio is played. Insufficient data or unreadable frames show a message and retry. Disabling the preview does not stop recording.
+- Closing the window keeps recording in the system tray by default. Use its icon to restore the window or **quit**. Disable this behavior in app settings; without a tray, closing quits. Duplicate CLI/GUI recording and conflicting settings writes are prevented.
+- Saved recording options apply to new recording tasks. Restart the recorder to apply DNS and file logging changes.
+
+- The original broadcast title appears between channel name and status. Right-click a channel for settings, removal, storage folder and automatic recording activation.
+- Split intervals and quality can inherit global defaults or be set per channel. Turning splitting off for one channel saves it in one file.
+- Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
+- H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
+- A UTF-8 `.txt` sidecar preserves the original title only when a long filename is shortened and hashed. This applies to individual videos and split segments. Short titles do not produce TXT files.
+- The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`, selecting KR/JP/SC/TC families by language. Windows uses DirectWrite and per-monitor DPI. The distribution includes its `LICENSE`.
+- **Recording settings → Quit application** finishes recording files and exits the tray as well. Split recording size is the sum of the actual sizes of all segments in the current recording attempt.
+- When GUI recording stops, the log distinguishes a stop command, application exit and communication failures. With file logging enabled, these details also appear in `log.log` next to the configuration file.
+- The window, taskbar and tray share the application icon. On Windows, running `chzzk_gui.vbs` creates an icon-bearing **`Chzzk Rekoda.lnk`** shortcut in the installation folder. On Linux, launching the GUI registers its icon and launcher in the user's application menu.
+
+</details>
+
+---
+
+<a id="installation"></a>
+
+## 2. Installation
+
+**[Download the program (ZIP)](https://github.com/munsy0227/Chzzk-Rekoda/archive/refs/heads/main.zip)** · **[GitHub repository](https://github.com/munsy0227/Chzzk-Rekoda)**
 
 Read and follow the instructions for your operating system: Windows, Mac, or Linux.
 When the language selection screen appears during installation, choose the language you want first.
@@ -21,13 +107,15 @@ When the language selection screen appears during installation, choose the langu
 ### Windows Users
 
 **Step 1: Download the program**
-1. Click the green **[Code]** button near the top of this page.
-2. Click **[Download ZIP]** in the menu to download the compressed file.
+
+1. Use **Download the program (ZIP)** above, or click the green **[Code]** button in the GitHub repository.
+2. If you used the Code menu, select **[Download ZIP]**. Skip this step if you used the direct download link above.
 3. Extract the downloaded file. A location that is easy to find, such as the Desktop, is recommended.
 
 (If you can use Git, use Git.)
 
 **Step 2: Run the installer**
+
 1. Open the extracted folder.
 2. Find `install.bat` and double-click it.
 3. A black window will open and automatically install the required files. This can take some time, so please wait.
@@ -38,6 +126,7 @@ When the language selection screen appears during installation, choose the langu
 ### macOS / Linux Users
 
 **Step 1: Open a terminal**
+
 - **Mac:** Press `Command` + `Space`, search for "Terminal", and run it.
 - **Linux:** Run the terminal app you use.
 
@@ -69,9 +158,17 @@ Copy the following commands one line at a time into the terminal and press Enter
    ./install
    ```
 
+Choose **1. GUI** to continue to the first-run wizard, or **2. CLI** to open the terminal settings menu.
+
 ---
 
-## 2. Settings (Add Channels)
+<a id="cli"></a>
+
+## 3. Use the CLI
+
+If you prefer a terminal, select **2. CLI** during installation. Both interfaces share `config.json`, so you do not need to register your channels again.
+
+### Add channels and configure recording
 
 You must register the streamer you want to record before recording can work.  
 If the settings screen closed after installation, run `settings.bat` on Windows or `./settings` on Mac/Linux.
@@ -97,16 +194,16 @@ If the settings screen closed after installation, run `settings.bat` on Windows 
 > **Tip:** To record broadcasts that require adult or membership verification, open **4. NAVER login** and either sign in to NAVER directly in a new Chrome, Microsoft Edge, or Firefox window to import the cookies (NID_AUT, NID_SES), or enter the values manually. The browser login method may require an internet connection to prepare a compatible driver on first use.
 > Use **2. Recording and quality** for format, splitting, resolution and FPS; **3. Encoding** for H.264/HEVC/AV1; **5. Network** for DoH; and **6. Language and logs** for language and file logging. Per-channel overrides are under **1. Channels → 4. Channel split and quality**. `0` goes back or exits.
 
----
-
-## 3. Start Recording
+### Start recording
 
 Now you only need to leave the program running.
 
-### Windows
+#### Windows
+
 Double-click `chzzk_record.bat` in the folder.
 
-### Mac / Linux
+#### Mac / Linux
+
 Enter the following command in the terminal.
 ```bash
 ./chzzk_record
@@ -117,13 +214,15 @@ If a black window is open and text is appearing, it is working normally.
 
 ---
 
+<a id="faq"></a>
+
 ## FAQ
 
 **Q. Where are the recorded files?**
-A. If you did not set a separate save path, recordings are saved in the official channel-name folder inside the project.
+A. If you did not set a separate save path, recordings are saved in the official channel-name folder inside the project. In the GUI, select a channel and click **Open folder** to open its recording folder.
 
 **Q. How do I turn off the program?**
-A. Close the running black window (terminal), or click the window and press `Ctrl` + `C` on the keyboard.
+A. In the GUI, select **Recording settings → Quit application** to finish recording files and exit. Closing the window hides it in the tray by default. In the CLI, press `Ctrl` + `C` in the running terminal.
 
 **Q. An error occurs!**
 A. Go to [Issues](https://github.com/munsy0227/Chzzk-Rekoda/issues) and describe the problem so we can help.
@@ -152,33 +251,3 @@ Names including "CHZZK" and "NAVER", as well as related names, marks, emblems, a
 
 ### Copyright and Terms Compliance
 This project does not claim ownership of streaming video, audio, or other third-party content, nor does it grant any license for such content. Users are responsible for checking and complying with applicable copyright laws, platform policies such as the CHZZK Terms of Service, and local laws. Responsibility for storage, reproduction, distribution, transmission, or commercial use through this project belongs solely to the user.
-
-## Qt ribbon GUI
-
-The GUI shares the existing CLI's `config.json`.
-
-```bash
-uv run --extra gui chzzk_gui.py
-```
-
-On Windows, double-click **`chzzk_gui.vbs`** to launch without a CMD window. `chzzk_gui.bat` also calls this launcher. On Linux, double-click **`Chzzk-Rekoda.desktop`** in the installed folder and allow execution if your file manager asks. `./chzzk_gui` remains available on macOS/Linux. Qt is installed only when choosing GUI.
-
-The first GUI launch shows a wizard for language, channel search and storage folders. Finish saves your settings; you may add channels later. Reopen it from **Help → Getting started**.
-
-- Use the ribbon to search by channel name or ID, add/edit/unregister channels, and change every recording setting. Hover over a setting or use F1/the help button for explanations.
-- CHZZK profile images appear as channel icons when available. Failed image lookups fall back to the first character of the name.
-- A **frame from the selected channel's current recording file updates every 5 seconds**. No audio is played. Insufficient data or unreadable frames show a message and retry. Disabling the preview does not stop recording.
-- Closing the window keeps recording in the system tray by default. Use its icon to restore the window or **quit**. Disable this behavior in app settings; without a tray, closing quits. Duplicate CLI/GUI recording and conflicting settings writes are prevented.
-- Saved recording options apply to new recording tasks. Restart the recorder to apply DNS and file logging changes.
-
-The GUI requires a desktop environment and FFmpeg. **Open login window** starts the CLI browser-login procedure directly. Log in using the browser, then press Enter in the separate CLI window to return cookies to the GUI. Use **Save settings** to apply them. The GUI has no CMD window; a separate console opens only for login.
-
-- The original broadcast title appears between channel name and status. Right-click a channel for settings, removal, storage folder and automatic recording activation.
-- Split intervals and quality can inherit global defaults or be set per channel. Turning splitting off for one channel saves it in one file.
-- Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
-- H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
-- A UTF-8 `.txt` sidecar preserves the original title only when a long filename is shortened and hashed. This applies to individual videos and split segments. Short titles do not produce TXT files.
-- The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`, selecting KR/JP/SC/TC families by language. Windows uses DirectWrite and per-monitor DPI. The distribution includes its `LICENSE`.
-- **Recording settings → Quit application** finishes recording files and exits the tray as well. Split recording size is the sum of the actual sizes of all segments in the current recording attempt.
-- When GUI recording stops, the log distinguishes a stop command, application exit and communication failures. With file logging enabled, these details also appear in `log.log` next to the configuration file.
-- The window, taskbar and tray share the application icon. On Windows, running `chzzk_gui.vbs` creates an icon-bearing **`Chzzk Rekoda.lnk`** shortcut in the installation folder. On Linux, launching the GUI registers its icon and launcher in the user's application menu.
