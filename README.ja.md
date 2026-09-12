@@ -22,6 +22,8 @@ Streamlink と FFmpeg を使用して作られた、Windows、macOS、Linux 対�
 また、パソコンに詳しくない方でも簡単に使える **CHZZK 自動録画プログラム**です。  
 配信が始まると自動的に録画を開始し、配信が終了すると自動的に保存します。
 
+新機能の追加、バグ修正、パフォーマンスの改善、ドキュメントの充実など、さまざまな貢献のための [Pull Request](https://github.com/munsy0227/Chzzk-Rekoda/pulls) を歓迎します。
+
 [[チュートリアル] Android スマートフォンにプログラムをインストールする](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
