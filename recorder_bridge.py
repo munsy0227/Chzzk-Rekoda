@@ -1,0 +1,196 @@
+"""Versioned JSON pipe for the existing recorder; no Qt dependency."""
+
+import asyncio
+import json
+import queue
+import sys
+import threading
+
+from process_utils import read_pipe, write_pipe
+
+
+def write_event(event):
+    data = (json.dumps(event, ensure_ascii=True) + "\n").encode("ascii")
+    write_pipe(sys.stdout.fileno(), data)
+
+
+def preview_segment(recorder, directory, template):
+    """The new segment can still be empty while FFmpeg buffers its first data."""
+    pattern = recorder.segment_template_regex(template)
+    for path in reversed(recorder.segment_output_files(directory, template)):
+        try:
+            if path.stat().st_size >= 16384:
+                return str(path), int(pattern.match(path.name).group("index"))
+        except OSError:
+            continue
+    return "", 1
+
+
+class JsonBridge:
+    def __init__(self, recorder, loop):
+        self.recorder = recorder
+        self.loop = loop
+        self.messages = queue.Queue(maxsize=256)
+        self.writer = threading.Thread(target=self._write, daemon=True)
+        self.reader = threading.Thread(target=self._read, daemon=True)
+        self.writer.start()
+        self.reader.start()
+
+    def stop(self, reason, error=None):
+        # Schedule logging on the event loop too: its UI queue is not thread safe.
+        detail = ""
+        if error is not None:
+            detail = (
+                f" ({type(error).__name__}, errno={error.errno}, "
+                f"winerror={getattr(error, 'winerror', None)})"
+            )
+        try:
+            self.loop.call_soon_threadsafe(self._stop, reason, detail)
+        except RuntimeError:
+            pass
+
+    def _stop(self, reason, detail):
+        recorder = self.recorder
+        if recorder.shutdown_event.is_set():
+            return
+        recorder.logger.info(
+            recorder.tr(
+                "gui.recorder_stop_reason",
+                reason=recorder.tr("gui." + reason),
+                code=reason,
+                detail=detail,
+            )
+        )
+        recorder.handle_shutdown()
+
+    def _read(self):
+        pending = bytearray()
+        try:
+            while True:
+                chunk = read_pipe(sys.stdin.fileno(), 4096)
+                if not chunk:
+                    self.stop("control_closed")
+                    return
+                pending.extend(chunk)
+                while b"\n" in pending:
+                    line, _, pending = pending.partition(b"\n")
+                    if len(line) > 4096:
+                        self.stop("control_invalid")
+                        return
+                    try:
+                        command = json.loads(line)
+                    except (ValueError, UnicodeError):
+                        continue
+                    if isinstance(command, dict) and command.get("command") == "stop":
+                        reasons = {
+                            "user": "control_user_stop",
+                            "application_exit": "control_app_exit",
+                            "protocol_error": "control_protocol_error",
+                        }
+                        self.stop(
+                            reasons.get(str(command.get("reason")), "control_user_stop")
+                        )
+                        return
+                if len(pending) > 4096:
+                    self.stop("control_invalid")
+                    return
+        except OSError as error:
+            self.stop("control_read_failed", error)
+
+    def _write(self):
+        try:
+            while True:
+                event = self.messages.get()
+                try:
+                    if event is None:
+                        return
+                    write_event(event)
+                finally:
+                    self.messages.task_done()
+        except OSError as error:
+            self.stop("events_write_failed", error)
+
+    def emit(self, event, **data):
+        # Pipe pressure must never block the media-copy coroutine.
+        if self.messages.full():
+            try:
+                self.messages.get_nowait()
+                self.messages.task_done()
+            except queue.Empty:
+                pass
+        self.messages.put_nowait({"version": 1, "event": event, **data})
+
+    async def display(self, stopped):
+        recorder = self.recorder
+        while not stopped.is_set() or not recorder.log_queue.empty():
+            async with recorder.channel_progress_lock:
+                progress = {
+                    key: dict(value) for key, value in recorder.channel_progress.items()
+                }
+            channels = []
+            config = await recorder.load_config_async()
+            shutting_down = recorder.shutdown_event.is_set()
+            for channel in recorder.normalize_channels(config.get("channels", [])):
+                channel_id = channel["id"]
+                current = progress.get(channel_id, {})
+                if current:
+                    state = "stopping" if shutting_down else "recording"
+                elif channel.get("active") == "off":
+                    state = "inactive"
+                else:
+                    state = "idle" if shutting_down else "waiting"
+                path = current.get("output_path", "")
+                template = current.get("segment_template")
+                segment_index = 1
+                if template:
+                    try:
+                        path, segment_index = await asyncio.to_thread(
+                            preview_segment,
+                            recorder,
+                            recorder.Path(current["output_dir"]),
+                            template,
+                        )
+                    except OSError:
+                        path = ""
+                out_time = current.get("out_time", "0")
+                seconds = recorder.parse_time(out_time) if ":" in out_time else 0
+                if current.get("split_seconds"):
+                    interval = current["split_seconds"]
+                    seconds = min(
+                        interval, max(0, seconds - (segment_index - 1) * interval)
+                    )
+                channels.append(
+                    {
+                        "id": channel_id,
+                        "state": state,
+                        "out_time": current.get("out_time", ""),
+                        "total_size": current.get("total_size", ""),
+                        "total_bytes": current.get("total_bytes", 0),
+                        "download_speed": current.get("download_speed", ""),
+                        "bitrate": current.get("bitrate", ""),
+                        "title": current.get("title", ""),
+                        "output_path": path,
+                        # WebM clusters and the muxer's output buffer may lag
+                        # encoder progress; seek into data already on disk.
+                        "preview_seconds": max(0, seconds - 8),
+                    }
+                )
+            self.emit("status", channels=channels)
+            for _ in range(200):
+                try:
+                    message = recorder.log_queue.get_nowait()
+                    recorder.log_queue.task_done()
+                    self.emit("log", message=message[:4000])
+                except asyncio.QueueEmpty:
+                    break
+            if not stopped.is_set():
+                await asyncio.sleep(1)
+        self.emit("stopped")
+        if self.messages.full():
+            try:
+                self.messages.get_nowait()
+                self.messages.task_done()
+            except queue.Empty:
+                pass
+        self.messages.put_nowait(None)
+        await asyncio.to_thread(self.writer.join, 2)

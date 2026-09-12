@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+# File managers often omit ~/.local/bin from PATH. Reuse the installed GUI
+# interpreter first, then find uv without depending on an interactive shell.
+if [ -x .venv/bin/python ] && .venv/bin/python -c 'import PySide6' 2>/dev/null; then
+    exec .venv/bin/python chzzk_gui.py "$@"
+fi
+for rekoda_uv in "$(command -v uv || true)" "$HOME/.local/bin/uv" "$HOME/.cargo/bin/uv"; do
+    if [ -n "$rekoda_uv" ] && [ -x "$rekoda_uv" ]; then
+        exec "$rekoda_uv" run --extra gui chzzk_gui.py "$@"
+    fi
+done
+exec python3 chzzk_gui.py "$@"

@@ -19,6 +19,13 @@ import aiofiles
 import aiohttp
 import orjson
 
+from config_store import normalize_h264_settings
+from process_utils import console_python, hidden_process_kwargs, terminal_display_mode
+from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
+from recording_options import (
+    H264_ENCODERS, add_video_filters, effective_split,
+    normalize_channel_options, normalize_quality, quality_plan,
+)
 from dns_over_https import install_doh_dns
 from i18n import (
     DEFAULT_LANGUAGE,
@@ -26,11 +33,6 @@ from i18n import (
     normalize_language,
     translate,
 )
-
-if platform.system() != "Windows":
-    import uvloop
-
-    uvloop.install()
 
 # Import Rich library components
 from rich.console import Console, Group
@@ -67,7 +69,7 @@ STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 MAX_UI_LOG_MESSAGES = 1000
 UI_LOG_HISTORY_SIZE = 15
-UI_REFRESH_INTERVAL_SECONDS = 0.2
+UI_REFRESH_INTERVAL_SECONDS = 1.0
 
 # Global console instance for Rich
 console = Console()
@@ -236,7 +238,7 @@ def setup_logger() -> logging.Logger:
     return logger
 
 
-logger = setup_logger()
+logger = logging.getLogger("Recorder")
 
 
 def install_internal_dns_resolver() -> None:
@@ -252,9 +254,7 @@ def install_internal_dns_resolver() -> None:
         logger.warning(tr("record.doh_install_failed", error=e))
 
 
-install_internal_dns_resolver()
-
-print(tr("record.startup_banner"))
+# Runtime initialization belongs to main(), so imports have no file/UI effects.
 
 # Constants
 LIVE_DETAIL_API = (
@@ -379,6 +379,7 @@ RESERVED_BYTES = MAX_HASH_LENGTH + 1  # Hash length and one underscore
 
 # Global variables for graceful shutdown
 shutdown_event = asyncio.Event()
+H264_ENCODER_PROBE_LOCK = asyncio.Lock()
 
 
 def normalize_encoder_preset(encoder: str, value: Any) -> str:
@@ -603,7 +604,7 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
         used_identifiers.add(identifier)
 
         normalized.append(
-            {
+            normalize_channel_options({
                 **raw_channel,
                 "id": channel_id,
                 "name": sanitize_filename_component(
@@ -612,7 +613,7 @@ def normalize_channels(value: Any) -> List[Dict[str, Any]]:
                 "output_dir": str(raw_channel.get("output_dir") or "."),
                 "identifier": identifier,
                 "active": "off" if raw_channel.get("active") == "off" else "on",
-            }
+            })
         )
     return normalized
 
@@ -635,12 +636,13 @@ async def drain_task(task: asyncio.Task, timeout: float = 5.0) -> None:
 
 def isolated_subprocess_kwargs() -> Dict[str, Any]:
     if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW}
     return {"start_new_session": True}
 
 
 def streamlink_subprocess_env() -> Dict[str, str]:
     env = os.environ.copy()
+    env.pop("PYTHONUNBUFFERED", None)
     dns_settings = get_dns_settings_sync()
     if not dns_settings["enable"]:
         return env
@@ -724,6 +726,7 @@ class RecordingProcessSandbox:
     ) -> asyncio.subprocess.Process:
         self.stream_process = await create_isolated_subprocess_exec(
             *command,
+            stdin=asyncio.subprocess.DEVNULL,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=streamlink_subprocess_env(),
@@ -770,13 +773,15 @@ class RecordingProcessSandbox:
 
 async def pipe_stream_to_stdin(
     reader: asyncio.StreamReader, writer: asyncio.StreamWriter, channel_name: str
-) -> None:
+) -> int:
+    transferred = 0
     try:
         while True:
             chunk = await reader.read(256 * 1024)
             if not chunk:
                 break
             writer.write(chunk)
+            transferred += len(chunk)
             await writer.drain()
     except (BrokenPipeError, ConnectionResetError):
         logger.debug(tr("record.pipe_closed", channel_name=channel_name))
@@ -787,6 +792,7 @@ async def pipe_stream_to_stdin(
             writer.close()
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
+    return transferred
 
 
 async def read_log_stream(
@@ -903,6 +909,8 @@ async def load_settings() -> (
         Dict[str, Any],
         str,
         int,
+        Dict[str, Any],
+        Dict[str, Any],
     ]
 ):
     config = await load_config_async()
@@ -931,6 +939,10 @@ async def load_settings() -> (
         config.get("recording_split_minutes"),
         config.get("recording_split_hours"),
     )
+    h264_settings = normalize_h264_settings(config.get("h264_settings"))
+    if h264_settings["enable"]:
+        hevc_settings["enable"] = av1_settings["enable"] = False
+    quality_settings = normalize_quality(config.get("quality_settings"))
 
     return (
         timeout,
@@ -941,6 +953,8 @@ async def load_settings() -> (
         av1_settings,
         output_format,
         recording_split_minutes,
+        h264_settings,
+        quality_settings,
     )
 
 
@@ -1089,6 +1103,103 @@ def shorten_filename(filename: str) -> str:
         return shortened_filename
 
     return filename
+
+
+def save_original_title(media_path: Path, title: str) -> None:
+    """Sidecar for each retained media file, including incomplete recordings."""
+    name = media_path.name.removesuffix(".part")
+    stem = Path(name).stem
+    for index in range(1000):
+        suffix = "" if index == 0 else ("_title" if index == 1 else f"_title_{index}")
+        sidecar = media_path.with_name(shorten_filename(f"{stem}{suffix}.txt"))
+        try:
+            with sidecar.open("x", encoding="utf-8", newline="") as output:
+                output.write(title)
+            return
+        except FileExistsError:
+            # Preserve unrelated notes, including non-UTF-8 files. Shorten each
+            # collision candidate separately to stay within filesystem limits.
+            with contextlib.suppress(UnicodeError):
+                with sidecar.open(encoding="utf-8", newline="") as existing:
+                    if existing.read() == title:
+                        return
+    raise FileExistsError(stem)
+
+
+async def discover_stream_qualities(stream_url, cookies, ffmpeg_path):
+    """Read Streamlink's actual quality names without exposing stream URLs."""
+    process = await create_isolated_subprocess_exec(
+        console_python(), "-m", "streamlink", "--json", stream_url,
+        "--plugin-dirs", str(PLUGIN_DIR_PATH),
+        "--ffmpeg-ffmpeg", str(ffmpeg_path),
+        *streamlink_http_header_args(cookies),
+        stdin=asyncio.subprocess.DEVNULL,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        env=streamlink_subprocess_env(),
+    )
+    try:
+        async with asyncio.timeout(30):
+            data = bytearray()
+            while chunk := await process.stdout.read(65536):
+                data.extend(chunk)
+                if len(data) > 2 * 1024 * 1024:
+                    raise ValueError("quality_unavailable")
+            await process.wait()
+        if process.returncode:
+            raise ValueError("quality_unavailable")
+        payload = orjson.loads(data)
+        if not isinstance(payload, dict) or not isinstance(payload.get("streams"), dict):
+            raise ValueError("quality_unavailable")
+        return list(payload["streams"])
+    finally:
+        await terminate_process(process, "quality lookup")
+
+
+async def prepare_recording_quality(stream_url, cookies, ffmpeg_path, settings):
+    """Resolve a quality plan, or stop and reap the lookup on shutdown."""
+    if shutdown_event.is_set():
+        return None
+    if settings["mode"] == "best" and not settings["fps"]:
+        return quality_plan(settings, [])
+
+    lookup = asyncio.create_task(
+        discover_stream_qualities(stream_url, cookies, ffmpeg_path)
+    )
+    stopped = asyncio.create_task(shutdown_event.wait())
+    try:
+        await asyncio.wait((lookup, stopped), return_when=asyncio.FIRST_COMPLETED)
+        if shutdown_event.is_set():
+            return None
+        return quality_plan(settings, await lookup)
+    finally:
+        for task in (lookup, stopped):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(lookup, stopped, return_exceptions=True)
+
+
+async def resolve_h264_settings(settings, ffmpeg_path, failures):
+    settings = normalize_h264_settings(settings)
+    if not settings["enable"]:
+        return settings
+    async with H264_ENCODER_PROBE_LOCK:
+        for encoder in dict.fromkeys((settings["encoder"], "libx264")):
+            candidate = dict(settings, encoder=encoder)
+            if encoder != settings["encoder"]:
+                candidate["preset"] = "veryfast"
+            if encoder in failures:
+                continue
+            task = asyncio.create_task(asyncio.to_thread(probe_h264_encoder, ffmpeg_path, candidate))
+            try:
+                works = await asyncio.shield(task)
+            except asyncio.CancelledError:
+                await asyncio.shield(task)
+                raise
+            if works:
+                if encoder != settings["encoder"]:
+                    logger.warning(tr("gui.h264_fallback", encoder=settings["encoder"]))
+                return candidate
+    raise RuntimeError(tr("gui.h264_unavailable"))
 
 
 def unique_recording_paths(
@@ -1270,6 +1381,24 @@ def format_size(size_bytes: float) -> str:
     return f"{size_bytes:.2f} {size_names[i]}"
 
 
+def recording_output_size(progress: Dict[str, Any]) -> int:
+    """FFmpeg's segment muxer reports total_size=N/A; measure its files."""
+    template = progress.get("segment_template")
+    if template:
+        paths = segment_output_files(Path(progress["output_dir"]), template)
+    elif progress.get("output_path"):
+        paths = [Path(progress["output_path"])]
+    else:
+        return 0
+    total = 0
+    for path in paths:
+        try:
+            total += path.stat().st_size
+        except FileNotFoundError:
+            continue  # Finalization may rename a file between list and stat.
+    return total
+
+
 time_pattern = re.compile(r"(\d+):(\d+):(\d+)\.(\d+)")
 
 
@@ -1323,10 +1452,19 @@ async def read_stream(
                 total_size_str = summary.get("total_size", "0")
                 out_time_str = summary.get("out_time", "0")
 
+                async with channel_progress_lock:
+                    current_progress = dict(channel_progress.get(channel_id, {}))
                 try:
-                    total_size = int(total_size_str)
+                    if current_progress.get("segment_template"):
+                        raise ValueError("segment muxer size is not cumulative")
+                    total_size = max(0, int(total_size_str))
                 except ValueError:
-                    total_size = 0
+                    try:
+                        total_size = await asyncio.to_thread(
+                            recording_output_size, current_progress
+                        )
+                    except OSError:
+                        total_size = prev_total_size or 0
 
                 total_size_formatted = format_size(total_size)
 
@@ -1344,7 +1482,7 @@ async def read_stream(
                 # Calculate download speed
                 current_time = time.monotonic()
                 if prev_total_size is not None and prev_time is not None:
-                    bytes_diff = total_size - prev_total_size
+                    bytes_diff = max(0, total_size - prev_total_size)
                     time_diff = current_time - prev_time
                     if time_diff > 0:
                         instant_speed = bytes_diff / time_diff  # Bytes per second
@@ -1368,6 +1506,7 @@ async def read_stream(
                                 "bitrate": bitrate_formatted,
                                 "download_speed": download_speed_formatted,
                                 "total_size": total_size_formatted,
+                                "total_bytes": total_size,
                                 "out_time": out_time_str,
                             }
                         )
@@ -1501,10 +1640,10 @@ NON_ENCODER_FAILURE_MARKERS = (
 def runtime_encoder_failure_diagnostic(
     message: str, encoder: Optional[str]
 ) -> Optional[str]:
-    if encoder not in HARDWARE_HEVC_ENCODERS | HARDWARE_AV1_ENCODERS:
+    if encoder not in HARDWARE_HEVC_ENCODERS | HARDWARE_AV1_ENCODERS | (H264_ENCODERS - {"libx264"}):
         return None
 
-    backend_markers = ENCODER_BACKEND_MARKERS.get(encoder, (encoder,))
+    backend_markers = ENCODER_BACKEND_MARKERS.get(encoder, ENCODER_BACKEND_MARKERS.get(encoder.replace("h264_", "hevc_"), (encoder,)))
     for line in message.splitlines():
         lowered = line.lower()
         if any(marker in lowered for marker in NON_ENCODER_FAILURE_MARKERS):
@@ -1572,6 +1711,7 @@ def probe_av1_encoder(
             text=True,
             timeout=15,
             check=False,
+            **hidden_process_kwargs(),
         )
         message = (result.stderr or result.stdout or "").strip()
         probe_result = (result.returncode == 0, message)
@@ -1808,6 +1948,7 @@ def probe_hevc_encoder(
             text=True,
             timeout=15,
             check=False,
+            **hidden_process_kwargs(),
         )
         message = (result.stderr or result.stdout or "").strip()
         probe_result = (result.returncode == 0, message)
@@ -2000,11 +2141,18 @@ async def record_stream(
     av1_settings: Dict[str, Any],
     output_format: str,
     recording_split_minutes: int,
+    h264_settings: Optional[Dict[str, Any]] = None,
+    quality_settings: Optional[Dict[str, Any]] = None,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
-    recording_split_minutes = normalize_recording_split_minutes(recording_split_minutes)
+    recording_split_minutes = effective_split(channel, recording_split_minutes)
+    h264_settings = normalize_h264_settings(h264_settings)
+    quality_settings = normalize_quality(channel.get("quality_settings") or quality_settings)
+    if h264_settings["enable"]:
+        hevc_settings = dict(hevc_settings, enable=False)
+        av1_settings = dict(av1_settings, enable=False)
     split_seconds = recording_split_minutes * 60
     logger.info(tr("record.attempting_channel", channel_name=channel_name))
     if delay > 0:
@@ -2027,6 +2175,7 @@ async def record_stream(
     active_attempt: Optional[RecordingProcessSandbox] = None
     runtime_av1_failures: Dict[str, str] = {}
     runtime_hevc_failures: Dict[str, str] = {}
+    runtime_h264_failures: Dict[str, str] = {}
     consecutive_streamlink_failures = 0
 
     try:
@@ -2041,15 +2190,41 @@ async def record_stream(
                         status, live_info = await get_live_info(
                             channel, headers, cookies, session
                         )
-                        if status == "OPEN":
+                        if shutdown_event.is_set():
                             break
+                        if status == "OPEN":
+                            try:
+                                plan = await prepare_recording_quality(
+                                    stream_url, cookies, ffmpeg_path, quality_settings
+                                )
+                            except (ValueError, OSError, TimeoutError):
+                                if shutdown_event.is_set():
+                                    break
+                                # The broadcast may have ended between the live
+                                # check and Streamlink's separate quality lookup.
+                                status, live_info = await get_live_info(
+                                    channel, headers, cookies, session
+                                )
+                                if shutdown_event.is_set():
+                                    break
+                                if status == "OPEN":
+                                    logger.warning(
+                                        "%s: %s", channel_name,
+                                        tr("gui.quality_unavailable"),
+                                    )
+                            else:
+                                if plan is None:
+                                    return
+                                break
                         if status == "CLOSE":
                             runtime_av1_failures.clear()
                             runtime_hevc_failures.clear()
+                            runtime_h264_failures.clear()
 
-                        logger.info(
-                            tr("record.waiting_live", channel_name=channel_name)
-                        )
+                        if status != "OPEN":
+                            logger.info(
+                                tr("record.waiting_live", channel_name=channel_name)
+                            )
                         try:
                             await asyncio.wait_for(
                                 shutdown_event.wait(), timeout=timeout
@@ -2091,13 +2266,31 @@ async def record_stream(
                         if enable_hevc
                         else None
                     )
+                    active_h264_settings = dict(h264_settings)
+                    if plan["filters"] and not enable_av1 and not enable_hevc:
+                        active_h264_settings["enable"] = True
+                    # WebM requires VP9/AV1. Explicit H.264 selects MKV instead.
+                    if output_format == "webm" and not h264_settings["enable"]:
+                        active_h264_settings["enable"] = False
+                    active_h264_settings = await resolve_h264_settings(
+                        active_h264_settings, ffmpeg_path, runtime_h264_failures
+                    )
+                    enable_h264 = active_h264_settings["enable"] and not enable_av1 and not enable_hevc
+                    if enable_h264:
+                        encoder = active_h264_settings["encoder"]
+                    logger.info(tr("gui.quality_selected", channel_name=channel_name,
+                                   quality=plan["stream"], filters=", ".join(plan["filters"]) or tr("gui.quality_original")))
 
                     current_time = time.strftime("%Y-%m-%d %H:%M:%S")
+                    original_live_title = str(live_info.get("liveTitle") or "")
                     live_title = sanitize_filename_component(
-                        live_info.get("liveTitle", ""), fallback="untitled"
+                        original_live_title, fallback="untitled"
                     )
                     output_dir = resolve_output_dir(channel.get("output_dir", "."))
                     recording_format = output_format
+                    if enable_h264 and recording_format == "webm":
+                        recording_format = "mkv"
+                        logger.warning(tr("gui.h264_webm_fallback"))
                     if enable_av1 and recording_format == "ts":
                         logger.warning(
                             tr("record.av1_ts_fallback", channel_name=channel_name)
@@ -2138,16 +2331,18 @@ async def record_stream(
                         )
                         reserved_output_path = temp_output_path
 
+                    output_name = segment_output_template or temp_output_path.name
+                    title_was_shortened = not output_name.startswith(base_output_name)
                     active_attempt = RecordingProcessSandbox(channel_name, channel_id)
                     streamlink_retry_delay: Optional[int] = None
                     attempt_started_at = time.monotonic()
                     try:
                         # Start streamlink process
                         streamlink_cmd = [
-                            "streamlink",
+                            console_python(), "-m", "streamlink",
                             "--stdout",
                             stream_url,
-                            "best",
+                            plan["stream"],
                             "--hls-live-restart",
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
@@ -2186,7 +2381,7 @@ async def record_stream(
                             enable_hevc
                             and recording_format != "webm"
                             and encoder == "hevc_vaapi"
-                        ) or (enable_av1 and av1_encoder == "av1_vaapi"):
+                        ) or (enable_av1 and av1_encoder == "av1_vaapi") or (enable_h264 and encoder == "h264_vaapi"):
                             # Attempt to use the default render device
                             base_input_args = [
                                 str(ffmpeg_path),
@@ -2413,6 +2608,9 @@ async def record_stream(
 
                             encoding_args.extend(common_hevc_args)
 
+                        elif enable_h264:
+                            encoding_args = build_h264_encoding_args(active_h264_settings, recording_format)
+                            encoding_args.extend(metadata_args)
                         else:
                             encoding_args = ["-c", "copy", *metadata_args]
                             if recording_format == "ts":
@@ -2423,6 +2621,7 @@ async def record_stream(
                                     ]
                                 )
 
+                        encoding_args = add_video_filters(encoding_args, plan["filters"])
                         output_path = (
                             segment_output_path
                             if split_seconds > 0
@@ -2456,6 +2655,11 @@ async def record_stream(
                                 "total_size": "N/A",
                                 "out_time": "N/A",
                                 "recording_start_time": recording_start_time,
+                                "output_path": str(temp_output_path or ""),
+                                "output_dir": str(output_dir),
+                                "segment_template": segment_output_template,
+                                "split_seconds": split_seconds,
+                                "title": original_live_title,
                             }
 
                         pipe_task = active_attempt.create_task(
@@ -2463,7 +2667,7 @@ async def record_stream(
                                 stream_process.stdout, ffmpeg_process.stdin, channel_name
                             )
                         )
-                        stream_stderr_task = active_attempt.create_task(
+                        active_attempt.create_task(
                             read_log_stream(stream_process.stderr, "streamlink", channel_id)
                         )
                         ffmpeg_stderr_task = active_attempt.create_task(
@@ -2576,6 +2780,8 @@ async def record_stream(
                                 runtime_av1_failures[av1_encoder] = runtime_failure
                             elif runtime_failure and enable_hevc and encoder:
                                 runtime_hevc_failures[encoder] = runtime_failure
+                            elif runtime_failure and enable_h264 and encoder:
+                                runtime_h264_failures[encoder] = runtime_failure
 
                             retry_with_software = (
                                 runtime_failure is not None
@@ -2589,9 +2795,21 @@ async def record_stream(
                             tr("record.stream_process_exited", channel_name=channel_name, returncode=stream_returncode)
                         )
                         if ffmpeg_returncode not in (0, None):
-                            logger.warning(
-                                tr("record.ffmpeg_failed", channel_name=channel_name)
+                            stopped_before_input = (
+                                completed_by in {"cancelled", "shutdown"}
+                                and pipe_task.done()
+                                and not pipe_task.cancelled()
+                                and pipe_task.exception() is None
+                                and pipe_task.result() == 0
                             )
+                            if stopped_before_input:
+                                logger.info(
+                                    tr("gui.stopped_before_input", channel_name=channel_name)
+                                )
+                            else:
+                                logger.warning(
+                                    tr("record.ffmpeg_failed", channel_name=channel_name)
+                                )
                         if (
                             stream_returncode not in (0, None)
                             and completed_by not in {"cancelled", "ffmpeg", "shutdown"}
@@ -2635,6 +2853,11 @@ async def record_stream(
                                 )
 
                             for segment_path in saved_segments:
+                                try:
+                                    if title_was_shortened:
+                                        await asyncio.to_thread(save_original_title, segment_path, original_live_title)
+                                except (OSError, UnicodeError) as error:
+                                    logger.warning(tr("gui.title_save_failed", error=error))
                                 logger.info(
                                     tr("record.segment_saved", path=segment_path)
                                 )
@@ -2663,6 +2886,12 @@ async def record_stream(
                                 temp_output_path.replace(destination_path)
                                 final_output_path = destination_path
                                 logger.info(tr("record.saved", path=final_output_path))
+                            retained_path = final_output_path if final_output_path.exists() else temp_output_path
+                            if title_was_shortened and retained_path.exists() and retained_path.stat().st_size:
+                                try:
+                                    await asyncio.to_thread(save_original_title, retained_path, original_live_title)
+                                except (OSError, UnicodeError) as error:
+                                    logger.warning(tr("gui.title_save_failed", error=error))
 
                         # Remove progress data
                         async with channel_progress_lock:
@@ -2771,6 +3000,8 @@ async def manage_recording_tasks():
                     new_av1_settings,
                     new_output_format,
                     new_recording_split_minutes,
+                    new_h264_settings,
+                    new_quality_settings,
                 ) = await load_settings()
                 active_channels = 0
                 stopping_tasks: List[asyncio.Task] = []
@@ -2817,6 +3048,8 @@ async def manage_recording_tasks():
                                     new_av1_settings,
                                     new_output_format,
                                     new_recording_split_minutes,
+                                    new_h264_settings,
+                                    new_quality_settings,
                                 )
                             )
                             active_tasks[channel_id] = task
@@ -2890,7 +3123,11 @@ async def display_progress(stop_event: asyncio.Event):
 
     log_messages = collections.deque(maxlen=UI_LOG_HISTORY_SIZE)
 
-    with Live(layout, console=console, refresh_per_second=5, screen=False):
+    last_snapshot = None
+    with Live(
+        layout, console=console, screen=True, auto_refresh=False,
+        vertical_overflow="crop",
+    ) as live:
         while not stop_event.is_set() or not log_queue.empty():
             # Update display for channel progress
             channel_panels = []
@@ -2904,8 +3141,9 @@ async def display_progress(stop_event: asyncio.Event):
             ]
 
             async with channel_progress_lock:
-                if channel_progress:
-                    for progress_data in channel_progress.values():
+                progress_snapshot = [dict(value) for value in channel_progress.values()]
+                if progress_snapshot:
+                    for progress_data in progress_snapshot:
                         # Create a table for each channel
                         table = Table(show_header=True, header_style="bold magenta")
                         table.add_column(column_labels[0], style="cyan", no_wrap=True)
@@ -2962,11 +3200,22 @@ async def display_progress(stop_event: asyncio.Event):
             layout["upper"].update(
                 Panel(log_text, title=translate(language, "record.logs_title"))
             )
+            snapshot = (progress_snapshot, tuple(log_messages), language, console.size)
+            if snapshot != last_snapshot:
+                live.refresh()
+                last_snapshot = snapshot
+            if not stop_event.is_set():
+                await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
+    # Alternate-screen output disappears on exit; retain the final diagnostics.
+    for message in log_messages:
+        console.print(Text(message))
 
-            await asyncio.sleep(UI_REFRESH_INTERVAL_SECONDS)
 
-
-async def main() -> None:
+async def main(gui_events: bool = False) -> int:
+    setup_logger()
+    install_internal_dns_resolver()
+    if not gui_events:
+        print(tr("record.startup_banner"))
     # Register signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
     if platform.system() != "Windows":
@@ -2978,7 +3227,14 @@ async def main() -> None:
         pass
 
     display_stop_event = asyncio.Event()
-    display_task = asyncio.create_task(display_progress(display_stop_event))
+    if gui_events:
+        from recorder_bridge import JsonBridge
+
+        bridge = JsonBridge(sys.modules[__name__], loop)
+        display_task = asyncio.create_task(bridge.display(display_stop_event))
+    else:
+        display_task = asyncio.create_task(display_progress(display_stop_event))
+    exit_code = 0
 
     try:
         await manage_recording_tasks()
@@ -2991,6 +3247,7 @@ async def main() -> None:
         logger.info(tr("record.main_cancelled"))
         handle_shutdown()
     except Exception as e:
+        exit_code = 1
         logger.exception(tr("record.unhandled_error", error=e))
     finally:
         # Wait for display_progress to process remaining logs
@@ -2998,7 +3255,44 @@ async def main() -> None:
         logger.info(tr("record.shutdown_complete"))
         display_stop_event.set()
         await display_task
+    return exit_code
+
+
+def run():
+    import argparse
+
+    from process_lock import FileLock
+
+    global CONFIG_FILE_PATH, LOG_FILE_PATH, console
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--gui-events", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--config", type=Path, default=CONFIG_FILE_PATH)
+    args = parser.parse_args()
+    CONFIG_FILE_PATH = args.config.resolve()
+    LOG_FILE_PATH = CONFIG_FILE_PATH.parent / "log.log"
+    if platform.system() != "Windows":
+        import uvloop
+
+        uvloop.install()
+    lock = FileLock(BASE_DIR / ".recorder.lock")
+    try:
+        lock.__enter__()
+    except OSError:
+        message = tr("gui.recorder_busy")
+        if args.gui_events:
+            from recorder_bridge import write_event
+
+            write_event({"version": 1, "event": "error", "message": message})
+        else:
+            print(message, file=sys.stderr)
+        return 1
+    try:
+        with terminal_display_mode() as vt_enabled:
+            console = Console(legacy_windows=False if vt_enabled else None)
+            return asyncio.run(main(args.gui_events))
+    finally:
+        lock.__exit__(None, None, None)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    raise SystemExit(run())

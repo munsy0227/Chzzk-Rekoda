@@ -40,15 +40,9 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo Starting configuration
-call "%~dp0settings.bat"
+uv run python scripts\finish_install.py
 if errorlevel 1 (
-    echo Settings script failed.
     pause
     exit /b 1
 )
-
-echo Configuration completed!
-echo If you want to reconfigure, please run the "settings.bat" script directly
-pause
 exit /b 0

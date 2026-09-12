@@ -208,6 +208,13 @@ __marimo__/
 
 # Config File
 config.json
+config.json.lock
+.recorder.lock
+/.gui-validation/
+
+# Original font download; only the runtime TTC under font/ is distributed.
+/02_NotoSansCJK-TTF-VF/
+/Chzzk Rekoda.lnk
 
 #temp
 .ts
