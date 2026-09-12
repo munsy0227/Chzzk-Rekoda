@@ -22,6 +22,8 @@ Chzzk-Rekoda is an automatic CHZZK recording program for Windows, macOS, and Lin
 It is also a **CHZZK automatic recording program** designed to be easy to use even for people who are not familiar with computers.  
 When a broadcast starts, it automatically begins recording, and when the broadcast ends, it saves the recording by itself.
 
+We welcome [Pull Requests](https://github.com/munsy0227/Chzzk-Rekoda/pulls) for all kinds of contributions, including new features, bug fixes, performance improvements, and documentation updates.
+
 [[Tutorial] Install the program on an Android phone](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
