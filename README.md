@@ -24,6 +24,8 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 
 새로운 기능 추가, 버그 수정, 성능 개선, 문서 보완 등 다양한 기여를 위한 [Pull Request](https://github.com/munsy0227/Chzzk-Rekoda/pulls)를 환영합니다.
 
+Soop 같은 경우는 생각은 하고 있기는 한데 제가 잘 몰라서 도움을 주신다면 감사하겠습니다.
+
 [[튜토리얼] 안드로이드 휴대폰에 프로그램 설치하기](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
