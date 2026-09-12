@@ -26,6 +26,8 @@ Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지�
 또한 컴퓨터를 잘 모르는 분들도 쉽게 사용할 수 있는 **치지직 자동 녹화 프로그램**입니다.  
 방송이 켜지면 자동으로 녹화를 시작하고, 방송이 꺼지면 알아서 저장해줍니다.
 
+새로운 기능 추가, 버그 수정, 성능 개선, 문서 보완 등 다양한 기여를 위한 [Pull Request](https://github.com/munsy0227/Chzzk-Rekoda/pulls)를 환영합니다.
+
 [[튜토리얼] 안드로이드 휴대폰에 프로그램 설치하기](https://github.com/munsy0227/Chzzk-Rekoda/discussions/17)
 
 [[TUTORIAL] How to Install Chzzk-Rekoda in Android Systems](https://github.com/munsy0227/Chzzk-Rekoda/discussions/18)
