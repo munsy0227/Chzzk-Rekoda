@@ -36,6 +36,7 @@
 - `chzzk_record.py:load_config_async()`는 설정 읽기 실패 시 마지막 유효 설정을 유지한다. 설정 저장 도중 활성 녹화가 취소되지 않도록 이 동작을 보존한다.
 - `chzzk_record.py:main()`은 종료 시 녹화 정리와 마지막 로그 표시를 처리한다. GUI의 중지/종료도 이 정리 경로를 거쳐야 한다.
 - 사용자에게 보이는 문구는 `i18n.py`의 5개 언어를 함께 관리한다. `pyproject.toml`은 Python 3.12 이상이며 PySide6는 `gui` 선택 의존성이다. `uv.lock`은 Qt 6.11.2를 포함한다.
+- Streamlink/urllib3 의존성 조합은 함께 확인한다. Streamlink 8.6.0은 urllib3 2.8.0의 URL 정규화에서 `Urllib3UtilUrlPercentReOverride`에 `sub`가 없어 HTTP 요청이 실패한다. 호환 수정은 Streamlink 8.6.1에 포함됐으며, urllib3 2.8.0을 사용할 때는 사용자가 실제 녹화를 확인한 Streamlink 8.6.2 조합으로 잠금파일을 갱신한다. 버전 확인은 시스템 패키지 대신 녹화기에 사용하는 Python 환경에서 수행한다. PR #80 반영을 위해 준비한 변경과 적용 상태는 [의존성 호환 수정 및 검증](worklogs/2026-10-08-streamlink-urllib3-compatibility.md)을 참고한다.
 - 저장 폴더 열기의 번역 키는 `gui.folder`다. 리본과 채널 우클릭 메뉴에서 같은 키를 사용하며, 존재하지 않는 `gui.open_folder`를 사용하면 키 원문이 화면에 표시된다.
 - GUI 리본은 `QTabWidget` 안의 한 줄 `QToolBar`이며, 좁은 창에서 넘치는 `QAction`은 Qt 더보기 메뉴로 이동한다. 시작/중지 활성 상태는 버튼 위젯 대신 QAction에 적용해 더보기에서도 일치시킨다. `gui/theme.py`는 밝은/어두운 공용 스타일, `gui/icons.py`는 선형 명령 아이콘을 관리한다. `gui/common.py:ElidedLabel`은 미리보기 제목을 한 줄로 줄이고 전체 제목을 이스케이프한 툴팁으로 보존한다. 디자인/배율 검증은 [리본 디자인 정리](worklogs/2026-09-10-compact-gui-design.md)를 참고한다.
 - 빈 방송 제목/미리보기 제목에는 `text_tooltip()`이 빈 문자열을 반환한다. 내용 없는 `<qt></qt>`는 빈 툴팁 상자를 만들므로 사용하지 않는다. `ElidedLabel`은 글꼴·스타일 변경 시 글자를 다시 줄이고 실제 QLabel 높이를 최소 높이에 반영한다. 미리보기 영상은 이전 pixmap의 크기로 레이아웃을 밀지 않도록 size policy를 Ignored로 설정하고, 영상 위젯 자체의 Resize 이벤트에서 프레임을 다시 맞춘다.
