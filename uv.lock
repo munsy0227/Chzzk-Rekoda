@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -934,7 +934,7 @@ wheels = [
 
 [[package]]
 name = "streamlink"
-version = "8.6.0"
+version = "8.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -949,11 +949,11 @@ dependencies = [
     { name = "urllib3" },
     { name = "websocket-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/87/10/a2fbcddc6f79a06266d91bbca49f2a04d1752972c4be94c1ffc940f740af/streamlink-8.6.0.tar.gz", hash = "sha256:94da7d0176a5561e45518376e0b1907b595f79c7ee89f31bfdfb29dacaae8e80", size = 872224, upload-time = "2026-09-13T14:31:29.401Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/0d/d7875f76e1e87c9978bed557af5d5d43d4adbd495117d363f9dbfd09255c/streamlink-8.6.2.tar.gz", hash = "sha256:7f02e31e99e1a0e0022a48187b16461fba59bd5fad764ad4cab4ce654b05ee23", size = 878213, upload-time = "2026-10-07T19:50:45.76Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7c/60/264cf87a857b65a7855aeafc0bd570c7565671b74c2dc1dd2aabb2e45ac8/streamlink-8.6.0-py3-none-any.whl", hash = "sha256:944625bf4b52c689a6deccbd154a973591fa8ea3763be4a5c7f35dcbaa3c1ac4", size = 582644, upload-time = "2026-09-13T14:31:24.624Z" },
-    { url = "https://files.pythonhosted.org/packages/71/32/83568f9f5535aed158105d2e6b85af2a28613400186116dafc5c00d11d2b/streamlink-8.6.0-py3-none-win32.whl", hash = "sha256:79728d22c3e0e3122567614c09706d3665fc3e8ce45c89f88d04dd7343f4cc59", size = 582660, upload-time = "2026-09-13T14:31:26.36Z" },
-    { url = "https://files.pythonhosted.org/packages/f0/36/ffd47f1a0da7ac61e50a36e3a31e753eb3d7676b2a103990796fbae278e4/streamlink-8.6.0-py3-none-win_amd64.whl", hash = "sha256:5356eb06757c67ea0f277a89d7d87cc4821eb60e42a196b0136248f6198645c6", size = 582663, upload-time = "2026-09-13T14:31:27.859Z" },
+    { url = "https://files.pythonhosted.org/packages/40/3b/3befb07ec4dc3be5826b6f0b7e2745a2ccc44a7c2789d5a633cb1f318486/streamlink-8.6.2-py3-none-any.whl", hash = "sha256:c7280a8251b7dbfe884339bee5b35270a0e51fa5f023dc7b720120afec564b6a", size = 587267, upload-time = "2026-10-07T19:50:40.395Z" },
+    { url = "https://files.pythonhosted.org/packages/30/fc/650cf681166666eca05d7979fe1a993663d7cfae294126dd6697a2af4691/streamlink-8.6.2-py3-none-win32.whl", hash = "sha256:59e144e5a243f3c52aec232c962e4ce527cf9607f1dde0bddb5441a17a3e2eed", size = 587281, upload-time = "2026-10-07T19:50:42.404Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/a1/0eb7e4d3866b12b81510150a44a0ef6de0721808ab47bc986afabe6ab2ec/streamlink-8.6.2-py3-none-win_amd64.whl", hash = "sha256:7ca3641b5042eadcebedb7a6eaff14f5e82b2319a06db15dadeed19bd86111e3", size = 587285, upload-time = "2026-10-07T19:50:44.149Z" },
 ]
 
 [[package]]
@@ -998,11 +998,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.7.0"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/05/b17359e1cefb4f909b5e40b1b90a496d987258916dbbf88e842c729f510e/urllib3-2.8.0.tar.gz", hash = "sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63", size = 458972, upload-time = "2026-09-15T19:29:36.253Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
+    { url = "https://files.pythonhosted.org/packages/92/9d/c4e665119135114480843e7ab388fa94d8480650450e6f8e26b70d323a4c/urllib3-2.8.0-py3-none-any.whl", hash = "sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3", size = 135717, upload-time = "2026-09-15T19:29:34.577Z" },
 ]
 
 [package.optional-dependencies]
