@@ -127,3 +127,14 @@
 - 현재 검증한 main 기준으로 로컬 `dev`를 만들고 기존 dev 이력을 보존하는 일반 push를 준비했다. main의 로컬/원격 ref는 변경하지 않는다.
 - 게시 전 `.venv/bin/python -m unittest discover -s tests -q`를 외부 재현 입력 없이 실행했다. 합성 fMP4 생성 및 실제 FFmpeg 경로를 포함한 37개 검사 통과, 실패/건너뜀 0이다. Python 컴파일과 `git diff --check`도 통과했다.
 - 이번 기능·검증·5개 언어 사용법·`.ai` 문서 18개 파일만 커밋 대상으로 확인했다. 원격 게시 결과와 SHA 검증은 실제 push 후 이어 기록한다.
+
+## dev 게시 결과
+
+- Git CLI push는 HTTPS 인증 정보가 없어 실패했다. 동일한 실패를 반복하지 않고 사용자 승인 범위 안에서 연결된 GitHub 도구로 게시했다.
+- 로컬 구현 커밋 `4d8abae196db2b5c834d8309f8080ac91d03b298`은 `codex/issue82-local-before-publish` 로컬 브랜치에 보존했다. API의 커밋 메타데이터가 달라 원격 구현 커밋 SHA는 `868dc5864a772865de1b546b6b495799c64b5aba`다.
+- 양쪽의 전체 tree SHA는 `33267728be5e0dfd01fca61aac7f3ac4f6e12e92`로 정확히 같다. 18개 파일 내용과 부모 main 커밋을 검증한 후 원격 dev를 갱신했다.
+- `expected_sha=f9a2f528bb2b18776bec5a9e6bc5d36b9a761ff5`, `force=false`로 기존 dev 이력을 보존했다. `git ls-remote origin refs/heads/dev`는 원격 구현 SHA와 일치했다.
+- fetch 후 로컬 dev를 같은 내용의 API 커밋으로 맞추고 upstream을 `origin/dev`로 설정했다. 로컬 HEAD·origin/dev·원격 dev가 모두 `868dc5864a772865de1b546b6b495799c64b5aba`임을 확인했고 작업 트리는 깨끗했다.
+- 로컬/원격 main은 모두 `9fb880ebf3baef9a3dbcbe83b05c2db1a0b57e19`로 유지했다. PR·main 병합·이슈 댓글은 실행하지 않았다.
+- 게시 전 기본 경로의 37개 테스트, Python 컴파일, staged diff whitespace 검사가 통과했다. 기존 장시간/Windows/macOS 미검증 범위는 유지한다.
+- 이 게시 결과 기록은 dev의 별도 문서 커밋으로 보관한다. 문서 커밋 뒤 원격 SHA와 로컬 HEAD를 다시 확인한다.
