@@ -1,19 +1,17 @@
 import logging
+import base64
+import json
 import re
-import time
 from http.cookies import SimpleCookie
 from typing import Any, Dict, Tuple, Union, TypedDict, Optional, List
 from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
 
-from streamlink.exceptions import StreamError
-from streamlink.plugin import Plugin, pluginmatcher
+from streamlink.plugin import Plugin, pluginargument, pluginmatcher
 from streamlink.plugin.api import validate
-from streamlink.stream.hls import (
-    HLSStream,
-    HLSStreamReader,
-    HLSStreamWorker,
-    parse_m3u8,
+from streamlink.stream.hls import HLSStream
+from hls_continuity import (
+    ChzzkContinuityReader, ContinuitySource, Unavailable, parse_timestamp,
 )
 
 log = logging.getLogger(__name__)
@@ -47,167 +45,77 @@ def has_auth_cookies(session: Any) -> bool:
     )
 
 
-def stream_error_status_code(err: StreamError) -> Optional[int]:
-    response = getattr(err, "response", None)
-    if response is None:
-        response = getattr(getattr(err, "err", None), "response", None)
-    return getattr(response, "status_code", None)
-
-
-class ChzzkHLSStreamWorker(HLSStreamWorker):
-    """
-    Custom HLS Stream Worker for Chzzk.
-    """
-
-    stream: "ChzzkHLSStream"
-
-    def _fetch_playlist(self) -> Any:
-        last_error: Optional[StreamError] = None
-        for attempt in range(2):  # Retry once before failing
-            try:
-                return super()._fetch_playlist()
-            except StreamError as err:
-                last_error = err
-                status_code = stream_error_status_code(err)
-                if status_code is not None and status_code < 400:
-                    log.debug(f"Non-recoverable error occurred: {err}")
-                    raise
-                if attempt == 1:
-                    break
-                self.stream.refresh_playlist()
-                log.debug(f"Force-reloading the channel playlist on error: {err}")
-        raise last_error or StreamError("Failed to fetch playlist after retries")
-
-
-class ChzzkHLSStreamReader(HLSStreamReader):
-    """
-    Custom HLS Stream Reader for Chzzk.
-    """
-
-    __worker__ = ChzzkHLSStreamWorker
-
-
 class ChzzkHLSStream(HLSStream):
     """
     Custom HLS Stream for Chzzk with token refresh capability.
     """
 
     __shortname__ = "hls-chzzk"
-    __reader__ = ChzzkHLSStreamReader
+    __reader__ = ChzzkContinuityReader
 
-    _REFRESH_BEFORE = 3 * 60 * 60  # 3 hours
-
-    def __init__(self, session, url: str, channel_id: str, *args, **kwargs) -> None:
+    def __init__(self, session, url: str, channel_id: str, *args,
+                 live_id=0, source_paths=(), start_lookback=0, resume=None,
+                 time_machine_active=None,
+                 **kwargs) -> None:
         super().__init__(session, url, *args, **kwargs)
         self._url = url
         self._channel_id = channel_id
         self._api = ChzzkAPI(session)
-        self._expire = self._get_expire_time(url)
+        self.continuity = ContinuitySource(
+            self, self._source_snapshot, live_id, source_paths,
+            lookback=start_lookback, resume=resume,
+            time_machine_active=time_machine_active,
+        )
 
-    def refresh_playlist(self) -> None:
-        """
-        Refresh the stream URL to get a new token and handle domain change.
-        """
-        log.debug("Refreshing the stream URL to get a new token.")
+    def _source_snapshot(self):
         datatype, data = self._api.get_live_detail(self._channel_id)
         if datatype == "error":
-            raise StreamError(data)
-        if not data or len(data) < 2:
-            raise StreamError("Error occurred while refreshing the stream URL.")
-        media, status, *_ = data
-        if status != "OPEN" or media is None:
-            raise StreamError("Error occurred while refreshing the stream URL.")
-        current_quality = self._playlist_quality(self._url)
-        for media_info in media:
-            if (
-                len(media_info) >= 3
-                and media_info[1] == "HLS"
-                and media_info[0] == "HLS"
-            ):
-                media_path = media_info[2]
-                request_args = dict(self.args)
-                request_args.pop("url", None)
-                res = type(self)._fetch_playlist(
-                    self.session, media_path, **request_args
-                )
-                m3u8 = parse_m3u8(res, parser=type(self).__parser__)
-                playlists = [
-                    playlist for playlist in m3u8.playlists
-                    if playlist.stream_info
-                ]
-                if not playlists:
-                    continue
-
-                playlist = self._select_refreshed_playlist(
-                    playlists, current_quality
-                )
-                new_url = playlist.uri
-                self._url = new_url
-                self.args["url"] = new_url
-                log.debug("Refreshed the stream URL.")
-                self._expire = self._get_expire_time(self._url)
-                return
-        raise StreamError("No valid HLS stream found in the refreshed playlist.")
-
-    def _playlist_quality(self, url: str) -> Optional[str]:
-        for part in urlparse(url).path.split("/"):
-            if re.fullmatch(r"\d+p(?:\d+)?", part):
-                return part
-        return None
-
-    def _select_refreshed_playlist(
-        self, playlists: List[Any], quality: Optional[str]
-    ) -> Any:
-        if quality is not None:
-            for playlist in playlists:
-                if self._playlist_quality(playlist.uri) == quality:
-                    return playlist
-        return playlists[-1]
-
-    def _get_expire_time(self, url: str) -> Optional[int]:
-        """
-        Extract the expiration time from the URL's signed token.
-        """
-        parsed_url = urlparse(url)
-        qs = parse_qs(parsed_url.query)
-
-        for exp_value in qs.get("exp", []):
-            if exp_value.isdigit():
-                return int(exp_value)
-
-        for token_name in ("hdnts", "hdntl"):
-            for token in qs.get(token_name, []):
-                expire = self._get_token_expire_time(token)
-                if expire is not None:
-                    return expire
-
-        for path_part in parsed_url.path.split("/"):
-            token_name, separator, token = path_part.partition("=")
-            if separator and token_name in ("hdnts", "hdntl"):
-                expire = self._get_token_expire_time(token)
-                if expire is not None:
-                    return expire
-        return None
-
-    @staticmethod
-    def _get_token_expire_time(token: str) -> Optional[int]:
-        match = re.search(r"(?:^|~)exp=(\d+)(?:~|$)", token)
-        return int(match.group(1)) if match else None
-
-    def _should_refresh(self) -> bool:
-        """
-        Determine if the stream URL should be refreshed based on expiration time.
-        """
-        return (
-            self._expire is not None
-            and time.time() >= self._expire - self._REFRESH_BEFORE
-        )
+            raise Unavailable("API unavailable")
+        if not data or data[1] != "OPEN":
+            return None
+        media, _, live_id, _, _, _, _, membership = data[:8]
+        if not media:
+            raise Unavailable("Media unavailable or unauthorized")
+        if membership == "MEMBER_ONLY" and not has_auth_cookies(self.session):
+            raise Unavailable("Authentication required")
+        return live_id, source_paths(media), data[8]
 
     @property
     def url(self) -> str:
-        if self._should_refresh():
-            self.refresh_playlist()
+        # Discovery and token recovery are single-flight in ContinuitySource.
         return self._url
+
+
+def source_paths(media):
+    """Extract only manifests actually advertised to this API caller."""
+    paths = []
+    for item in media:
+        if item.get("mediaId") != "HLS" or item.get("protocol") != "HLS":
+            continue
+        paths.append((item["path"], False))
+        for track in item.get("encodingTrack", []):
+            p2p_path = track.get("p2pPath")
+            if not isinstance(p2p_path, str):
+                continue
+            for encoded in parse_qs(urlparse(p2p_path).query).get("cdn_url", []):
+                try:
+                    url = base64.b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
+                    parsed = urlparse(url)
+                    if parsed.scheme in ("http", "https") and parsed.netloc:
+                        paths.append((url, True))
+                except (ValueError, UnicodeError):
+                    continue
+    return list(dict.fromkeys(paths))
+
+
+def resume_option(value):
+    data = json.loads(value)
+    if (not isinstance(data, dict) or type(data.get("live_id")) is not int
+            or not isinstance(data.get("rendition"), str)
+            or not isinstance(data.get("from"), str)):
+        raise ValueError("Invalid resume position")
+    parse_timestamp(data["from"])
+    return data
 
 
 class LiveDetail(TypedDict):
@@ -237,6 +145,8 @@ class ChzzkAPI:
     ) -> Tuple[str, Union[Dict[str, Any], str]]:
         response = self.session.http.get(
             url,
+            timeout=(5, 5),
+            retries=0,
             acceptable_status=(200, 404),
             headers={"Referer": "https://chzzk.naver.com/"},
             schema=validate.Schema(
@@ -282,6 +192,7 @@ class ChzzkAPI:
                 "liveTitle": validate.any(str, None),
                 "liveCategory": validate.any(str, None),
                 "adult": bool,
+                validate.optional("timeMachineActive"): validate.any(bool, None),
                 validate.optional("membershipBenefitType"): validate.any(str, None),
                 "channel": validate.all(
                     {"channelName": str},
@@ -297,12 +208,8 @@ class ChzzkAPI:
                                     "mediaId": str,
                                     "protocol": str,
                                     "path": validate.url(),
+                                    validate.optional("encodingTrack"): [dict],
                                 },
-                                validate.union_get(
-                                    "mediaId",
-                                    "protocol",
-                                    "path",
-                                ),
                             ),
                         ],
                     },
@@ -318,6 +225,7 @@ class ChzzkAPI:
                 "liveTitle",
                 "adult",
                 "membershipBenefitType",
+                "timeMachineActive",
             ),
         )
 
@@ -329,6 +237,8 @@ class ChzzkAPI:
         r"(?P<channel_id>[A-Za-z0-9_-]{1,128})(?=$|[/?#])",
     ),
 )
+@pluginargument("start-lookback", type=int, choices=[0, 3600], default=0)
+@pluginargument("resume", type=resume_option, default=None)
 class Chzzk(Plugin):
     """
     Plugin for Chzzk live streams.
@@ -364,7 +274,7 @@ class Chzzk(Plugin):
             self.title,
             adult,
             membership_benefit_type,
-        ) = data
+        ) = data[:8]
         if status != self._STATUS_OPEN:
             log.error("The stream is unavailable")
             return None
@@ -392,15 +302,19 @@ class Chzzk(Plugin):
         streams = {}
         for media_info in media:
             if (
-                len(media_info) >= 3
-                and media_info[1] == "HLS"
-                and media_info[0] == "HLS"
+                media_info["protocol"] == "HLS"
+                and media_info["mediaId"] == "HLS"
             ):
-                media_path = media_info[2]
+                media_path = media_info["path"]
                 hls_streams = ChzzkHLSStream.parse_variant_playlist(
                     self.session,
                     media_path,
                     channel_id=channel_id,
+                    live_id=self.id,
+                    source_paths=source_paths(media),
+                    start_lookback=self.get_option("start-lookback"),
+                    resume=self.get_option("resume"),
+                    time_machine_active=data[8],
                 )
                 if hls_streams:
                     streams.update(hls_streams)

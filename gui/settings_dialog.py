@@ -164,6 +164,11 @@ class SettingsDialog(QDialog):
 
     def build_basic(self, form):
         self.field(
+            form, "record_previous_hour",
+            self.check(self.get("record_previous_hour")),
+            "previous_hour", "previous_hour_help",
+        )
+        self.field(
             form,
             "output_format",
             self.combo(
@@ -583,12 +588,32 @@ class ChannelDialog(QDialog):
         form.addRow(self.t("delay"), self.delay)
         self.split = SplitEditor(channel.get("recording_split_minutes"), language, self)
         form.addRow(self.t("split"), self.split)
+        self.previous_hour = QComboBox()
+        for value, key in ((None, "inherit"), (True, "previous_hour_on"), (False, "off")):
+            self.previous_hour.addItem(self.t(key), value)
+        self.previous_hour.setCurrentIndex(
+            max(0, self.previous_hour.findData(channel.get("record_previous_hour")))
+        )
+        self.previous_hour.setAccessibleName(self.t("previous_hour"))
+        self.previous_hour.setToolTip(self.t("previous_hour_help"))
+        hour_row = QHBoxLayout()
+        hour_row.addWidget(self.previous_hour, 1)
+        hour_help = QToolButton()
+        hour_help.setText("?")
+        hour_help.setAccessibleName(self.t("previous_hour") + " · " + self.t("help"))
+        hour_help.setToolTip(self.t("previous_hour_help"))
+        hour_help.clicked.connect(lambda: QMessageBox.information(
+            self, self.t("previous_hour"), self.t("previous_hour_help")
+        ))
+        hour_row.addWidget(hour_help)
+        form.addRow(self.t("previous_hour"), hour_row)
         self.quality = QualityEditor(
             channel.get("quality_settings"), language, self, allow_inherit=True
         )
         form.addRow(self.quality)
         form.addRow(self.active)
         self.help_filter = FocusHelp(self)
+        self.previous_hour.installEventFilter(self.help_filter)
         for widget in (self.name, self.path, self.delay, self.active):
             widget.setToolTip(self.t("channel_help"))
             widget.installEventFilter(self.help_filter)
@@ -630,4 +655,5 @@ class ChannelDialog(QDialog):
             show_error(self, self.t("error"), error)
             return
         self.channel["recording_split_minutes"] = self.split.value()
+        self.channel["record_previous_hour"] = self.previous_hour.currentData()
         self.accept()

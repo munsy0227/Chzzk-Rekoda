@@ -24,8 +24,10 @@ from process_utils import console_python, hidden_process_kwargs, terminal_displa
 from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
 from recording_options import (
     H264_ENCODERS, add_video_filters, effective_split,
+    effective_previous_hour,
     normalize_channel_options, normalize_quality, quality_plan,
 )
+from recording_continuity import EVENT_PREFIX, RecordingContinuity, parse_event
 from dns_over_https import install_doh_dns
 from i18n import (
     DEFAULT_LANGUAGE,
@@ -796,7 +798,8 @@ async def pipe_stream_to_stdin(
 
 
 async def read_log_stream(
-    stream: Optional[asyncio.StreamReader], process_name: str, channel_id: str
+    stream: Optional[asyncio.StreamReader], process_name: str, channel_id: str,
+    continuity: Optional[RecordingContinuity] = None, channel_name: str = "",
 ) -> None:
     if stream is None:
         return
@@ -810,6 +813,22 @@ async def read_log_stream(
             continue
 
         if process_name == "streamlink":
+            if line_str.startswith(EVENT_PREFIX):
+                event = parse_event(line_str)
+                if event is not None and continuity is not None:
+                    message = continuity.accept(event)
+                    if message:
+                        key, fields, warning = message
+                        fields = {k: v if v is not None else tr("common.unknown")
+                                  for k, v in fields.items()}
+                        log_message = logger.warning if warning else logger.info
+                        log_message(tr(key, channel_name=channel_name, **fields))
+                continue
+            line_str = re.sub(
+                r"https?://[^\s\"']+",
+                lambda match: "[URL " + (urlparse(match[0]).hostname or "") + "]",
+                line_str,
+            )
             logger.info(f"{process_name} stderr [{channel_id}]: {line_str}")
         else:
             logger.debug(f"{process_name} stderr [{channel_id}]: {line_str}")
@@ -899,6 +918,18 @@ async def load_config_async() -> Dict[str, Any]:
         return config_cache_value
 
 
+async def previous_hour_for_start(channel: Dict[str, Any], global_value: bool) -> bool:
+    # A channel task can wait through several broadcasts. Read this preference
+    # again at a new start, without restarting the recording already in progress.
+    config = await load_config_async()
+    current = next((item for item in config.get("channels", [])
+                    if isinstance(item, dict)
+                    and str(item.get("id")) == str(channel.get("id"))), None)
+    if current is None:
+        return effective_previous_hour(channel, global_value)
+    return effective_previous_hour(current, config.get("record_previous_hour"))
+
+
 async def load_settings() -> (
     Tuple[
         int,
@@ -911,6 +942,7 @@ async def load_settings() -> (
         int,
         Dict[str, Any],
         Dict[str, Any],
+        bool,
     ]
 ):
     config = await load_config_async()
@@ -955,6 +987,7 @@ async def load_settings() -> (
         recording_split_minutes,
         h264_settings,
         quality_settings,
+        config.get("record_previous_hour") is True,
     )
 
 
@@ -2143,11 +2176,13 @@ async def record_stream(
     recording_split_minutes: int,
     h264_settings: Optional[Dict[str, Any]] = None,
     quality_settings: Optional[Dict[str, Any]] = None,
+    record_previous_hour: bool = False,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
     recording_split_minutes = effective_split(channel, recording_split_minutes)
+    continuity = RecordingContinuity()
     h264_settings = normalize_h264_settings(h264_settings)
     quality_settings = normalize_quality(channel.get("quality_settings") or quality_settings)
     if h264_settings["enable"]:
@@ -2234,6 +2269,12 @@ async def record_stream(
 
                     if shutdown_event.is_set():
                         break
+
+                    continuity.begin(live_info.get("liveId"))
+                    if not continuity.initial_handled:
+                        record_previous_hour = await previous_hour_for_start(
+                            channel, record_previous_hour
+                        )
 
                     active_av1_settings = (
                         await resolve_av1_settings_for_recording(
@@ -2343,7 +2384,7 @@ async def record_stream(
                             "--stdout",
                             stream_url,
                             plan["stream"],
-                            "--hls-live-restart",
+                            *continuity.arguments(record_previous_hour),
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
                             "--stream-segment-timeout",
@@ -2355,7 +2396,7 @@ async def record_stream(
                             "--plugin-dirs",
                             str(PLUGIN_DIR_PATH),
                             "--stream-segment-threads",
-                            str(stream_segment_threads),
+                            str(min(10, stream_segment_threads)),
                             *streamlink_http_header_args(cookies),
                             "--ffmpeg-ffmpeg",
                             str(ffmpeg_path),
@@ -2667,8 +2708,9 @@ async def record_stream(
                                 stream_process.stdout, ffmpeg_process.stdin, channel_name
                             )
                         )
-                        active_attempt.create_task(
-                            read_log_stream(stream_process.stderr, "streamlink", channel_id)
+                        stream_stderr_task = active_attempt.create_task(
+                            read_log_stream(stream_process.stderr, "streamlink", channel_id,
+                                            continuity, channel_name)
                         )
                         ffmpeg_stderr_task = active_attempt.create_task(
                             read_stream(ffmpeg_process.stderr, channel_id, "stderr")
@@ -2739,6 +2781,8 @@ async def record_stream(
                             await terminate_process(ffmpeg_process, "ffmpeg")
                             await drain_task(ffmpeg_wait_task)
 
+                        await drain_task(pipe_task)
+                        await drain_task(stream_stderr_task)
                         await drain_task(ffmpeg_stderr_task)
                         ffmpeg_diagnostics = ""
                         if (
@@ -2900,6 +2944,7 @@ async def record_stream(
                         if stop_after_attempt:
                             break
                         if retry_with_software:
+                            continuity.resume = None
                             try:
                                 await asyncio.wait_for(
                                     shutdown_event.wait(), timeout=1
@@ -2919,6 +2964,8 @@ async def record_stream(
                                     if reserved_output_path.stat().st_size == 0:
                                         reserved_output_path.unlink()
 
+                    if continuity.boundary and not shutdown_event.is_set():
+                        continue
                     if streamlink_retry_delay is not None:
                         logger.info(
                             tr(
@@ -3002,6 +3049,7 @@ async def manage_recording_tasks():
                     new_recording_split_minutes,
                     new_h264_settings,
                     new_quality_settings,
+                    new_record_previous_hour,
                 ) = await load_settings()
                 active_channels = 0
                 stopping_tasks: List[asyncio.Task] = []
@@ -3050,6 +3098,7 @@ async def manage_recording_tasks():
                                     new_recording_split_minutes,
                                     new_h264_settings,
                                     new_quality_settings,
+                                    new_record_previous_hour,
                                 )
                             )
                             active_tasks[channel_id] = task

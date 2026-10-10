@@ -1812,7 +1812,7 @@ _GUI_TEXT.update({
     "install_gui_ready": ("설치가 완료되었습니다. GUI를 엽니다. 처음 실행하면 설정 마법사가 표시됩니다.", "Installation complete. Opening the GUI; the setup wizard appears on first launch.", "安装完成。正在打开 GUI，首次启动将显示设置向导。", "安裝完成。正在開啟 GUI，首次啟動會顯示設定精靈。", "インストールが完了しました。GUI を開きます。初回は設定ウィザードが表示されます。"),
     "install_failed": ("설치를 완료하지 못했습니다: {error}", "Installation could not finish: {error}", "无法完成安装：{error}", "無法完成安裝：{error}", "インストールを完了できませんでした: {error}"),
     "cli_main_menu": ("1. 채널 관리\n2. 녹화 · 화질\n3. 인코딩\n4. 네이버 로그인\n5. 네트워크\n6. 언어 · 로그\n0. 종료", "1. Channels\n2. Recording and quality\n3. Encoding\n4. NAVER login\n5. Network\n6. Language and logs\n0. Exit", "1. 频道管理\n2. 录制与画质\n3. 编码\n4. NAVER 登录\n5. 网络\n6. 语言与日志\n0. 退出", "1. 頻道管理\n2. 錄製與畫質\n3. 編碼\n4. NAVER 登入\n5. 網路\n6. 語言與記錄\n0. 結束", "1. チャンネル管理\n2. 録画・画質\n3. エンコード\n4. NAVER ログイン\n5. ネットワーク\n6. 言語・ログ\n0. 終了"),
-    "cli_channel_menu": ("1. 채널 추가\n2. 채널 삭제\n3. 녹화 사용 여부\n4. 채널별 분할 · 화질\n0. 뒤로", "1. Add channel\n2. Remove channel\n3. Enable recording\n4. Channel split and quality\n0. Back", "1. 添加频道\n2. 删除频道\n3. 启用录制\n4. 频道分割与画质\n0. 返回", "1. 新增頻道\n2. 刪除頻道\n3. 啟用錄製\n4. 頻道分割與畫質\n0. 返回", "1. チャンネル追加\n2. チャンネル削除\n3. 録画の有効化\n4. チャンネル別の分割・画質\n0. 戻る"),
+    "cli_channel_menu": ("1. 채널 추가\n2. 채널 삭제\n3. 녹화 사용 여부\n4. 채널별 분할 · 화질 · 최근 1시간\n0. 뒤로", "1. Add channel\n2. Remove channel\n3. Enable recording\n4. Channel split, quality and previous hour\n0. Back", "1. 添加频道\n2. 删除频道\n3. 启用录制\n4. 频道分割、画质与最近一小时\n0. 返回", "1. 新增頻道\n2. 刪除頻道\n3. 啟用錄製\n4. 頻道分割、畫質與最近一小時\n0. 返回", "1. チャンネル追加\n2. チャンネル削除\n3. 録画の有効化\n4. チャンネル別の分割・画質・直近1時間\n0. 戻る"),
     "cli_recording_menu": ("1. 다운로드 스레드\n2. 방송 확인 간격\n3. 파일 형식\n4. 기본 분할 간격\n5. 기본 화질 · FPS\n0. 뒤로", "1. Download threads\n2. Broadcast check interval\n3. File format\n4. Default split interval\n5. Default quality and FPS\n0. Back", "1. 下载线程\n2. 直播检查间隔\n3. 文件格式\n4. 默认分割间隔\n5. 默认画质与 FPS\n0. 返回", "1. 下載執行緒\n2. 直播檢查間隔\n3. 檔案格式\n4. 預設分割間隔\n5. 預設畫質與 FPS\n0. 返回", "1. ダウンロードスレッド\n2. 配信確認間隔\n3. ファイル形式\n4. 既定の分割間隔\n5. 既定の画質・FPS\n0. 戻る"),
     "cli_encoding_menu": ("1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 뒤로", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. Back", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 戻る"),
     "cli_auth_menu": ("1. 브라우저로 로그인\n2. 쿠키 직접 입력\n3. 쿠키 삭제\n0. 뒤로", "1. Browser login\n2. Enter cookies\n3. Delete cookies\n0. Back", "1. 浏览器登录\n2. 输入 Cookie\n3. 删除 Cookie\n0. 返回", "1. 瀏覽器登入\n2. 輸入 Cookie\n3. 刪除 Cookie\n0. 返回", "1. ブラウザーでログイン\n2. Cookie を入力\n3. Cookie を削除\n0. 戻る"),
@@ -1844,6 +1844,35 @@ _GUI_TEXT.update({
     "more_actions": ("명령 더보기", "More actions", "更多操作", "更多操作", "その他の操作"),
 })
 
+_GUI_TEXT.update({
+    "previous_hour": ("최근 1시간부터 녹화", "Record the previous hour", "从最近一小时开始录制", "從最近一小時開始錄製", "直近1時間から録画"),
+    "previous_hour_on": ("사용", "On", "使用", "使用", "使用する"),
+    "previous_hour_help": (
+        "다음 녹화 시작부터 적용합니다. 실제로 제공되는 과거 조각에서 최대 1시간 전부터 시작합니다. 제공 분량은 채널마다 다르며, 과거 조각을 사용할 수 없으면 현재 방송부터 시작합니다. 타임머신 버튼 표시 여부만으로 판단하지 않습니다. 기본값은 꺼짐이며 누락 복구는 이 설정과 관계없이 자동으로 시도합니다.",
+        "Applies to the next recording start. Starts up to one hour earlier using actually available past segments. Availability varies by channel; starts live if past segments are unavailable. The time-machine button alone does not determine availability. Off by default; missing-segment recovery is attempted automatically regardless of this setting.",
+        "下次开始录制时生效。从实际可用的历史片段开始，最多回溯一小时。各频道提供的时长不同；历史片段不可用时从当前直播开始。不仅依据时光机按钮判断。默认关闭；无论此设置如何，都会自动尝试恢复缺失片段。",
+        "下次開始錄製時生效。從實際可用的歷史片段開始，最多回溯一小時。各頻道提供的時長不同；歷史片段無法使用時從目前直播開始。不僅依據時光機按鈕判斷。預設關閉；無論此設定為何，都會自動嘗試復原缺失片段。",
+        "次の録画開始時に適用します。実際に利用できる過去の断片から最大1時間前まで遡ります。提供時間はチャンネルごとに異なり、過去の断片を利用できない場合は現在の配信から開始します。タイムマシンボタンの表示だけでは判断しません。既定はオフです。この設定にかかわらず欠落した断片の復旧を自動で試みます。",
+    ),
+    "cli_previous_hour_global": ("최근 1시간부터 녹화: 1=사용, 2=사용 안 함: ", "Record previous hour: 1=on, 2=off: ", "录制最近一小时：1=开启，2=关闭：", "錄製最近一小時：1=開啟，2=關閉：", "直近1時間から録画: 1=オン、2=オフ: "),
+    "cli_previous_hour_channel": ("채널 시작 위치: 1=전체 설정 따름, 2=최근 1시간, 3=현재 방송: ", "Channel start: 1=inherit, 2=previous hour, 3=live: ", "频道起点：1=继承，2=最近一小时，3=当前直播：", "頻道起點：1=繼承，2=最近一小時，3=目前直播：", "チャンネル開始位置: 1=全体設定、2=直近1時間、3=現在位置: "),
+})
 for _key, _texts in _GUI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["gui." + _key] = _text
+
+# The menu above is generated after the shared GUI text is installed.
+for _language, _label in zip(SUPPORTED_LANGUAGES, _GUI_TEXT["previous_hour"], strict=True):
+    TRANSLATIONS[_language]["gui.cli_recording_menu"] = TRANSLATIONS[_language]["gui.cli_recording_menu"].replace("\n0.", "\n6. " + _label + "\n0.")
+
+_CONTINUITY_TEXT = {
+    "history_start": ("{channel_name}: 제공된 과거 {seconds}초부터 녹화를 시작합니다.", "{channel_name}: starting with {seconds} seconds of available history.", "{channel_name}：从可用的过去 {seconds} 秒开始录制。", "{channel_name}：從可用的過去 {seconds} 秒開始錄製。", "{channel_name}: 利用可能な過去{seconds}秒から録画します。"),
+    "history_short": ("{channel_name}: 과거 1시간을 모두 사용할 수 없습니다. 제공된 {seconds}초부터 녹화하며, 과거 조각이 없으면 현재 방송부터 시작합니다.", "{channel_name}: a full previous hour is unavailable. Starting with {seconds} available seconds, or live if no past segments are accessible.", "{channel_name}：无法使用完整的过去一小时。从可用的 {seconds} 秒开始；没有历史片段时从当前直播开始。", "{channel_name}：無法使用完整的過去一小時。從可用的 {seconds} 秒開始；沒有歷史片段時從目前直播開始。", "{channel_name}: 過去1時間すべては利用できません。利用可能な{seconds}秒から開始し、過去のセグメントがなければ現在位置から開始します。"),
+    "recovery_started": ("{channel_name}: {at} 위치의 누락 조각을 복구하는 중입니다.", "{channel_name}: recovering missing media at {at}.", "{channel_name}：正在恢复 {at} 处缺失的片段。", "{channel_name}：正在復原 {at} 處缺失的片段。", "{channel_name}: {at}の欠落セグメントを復旧中です。"),
+    "recovery_completed": ("{channel_name}: 조각 복구 후 {at} 위치까지 이어서 녹화했습니다.", "{channel_name}: recovered media and continued through {at}.", "{channel_name}：片段已恢复，录制已继续至 {at}。", "{channel_name}：片段已復原，錄製已繼續至 {at}。", "{channel_name}: 復旧し、{at}まで録画を継続しました。"),
+    "continuity_gap": ("{channel_name}: 조각을 복구하지 못했습니다. 확인 가능한 공백 범위: {start} ~ {end}. 기존 데이터를 저장한 뒤 최신 방송부터 새 파일로 계속합니다.", "{channel_name}: media recovery failed. Known gap bounds: {start} to {end}. Saving existing data and continuing live in a new file.", "{channel_name}：片段恢复失败。可确认的空白边界：{start} 至 {end}。保存已有数据后，在新文件中从当前直播继续。", "{channel_name}：片段復原失敗。可確認的空白邊界：{start} 至 {end}。儲存已有資料後，在新檔案中從目前直播繼續。", "{channel_name}: 復旧に失敗しました。確認できる欠落の境界: {start} ～ {end}。既存データを保存し、新しいファイルで現在位置から継続します。"),
+    "continuity_boundary": ("{channel_name}: 기존 파일을 정리하고 새 파일로 녹화를 이어갑니다.", "{channel_name}: finalizing the current file and continuing in a new file.", "{channel_name}：正在完成当前文件，并在新文件中继续录制。", "{channel_name}：正在完成目前檔案，並在新檔案中繼續錄製。", "{channel_name}: 現在のファイルを確定し、新しいファイルで録画を継続します。"),
+}
+for _key, _texts in _CONTINUITY_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["record." + _key] = _text

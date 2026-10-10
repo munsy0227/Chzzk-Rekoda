@@ -1,6 +1,6 @@
 # 프로젝트 작업 지식
 
-최종 확인: 2026-09-12. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
+최종 확인: 2026-10-10. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
 
 ## 지침과 메모 위치
 
@@ -23,6 +23,7 @@
 - `gui/setup_wizard.py`는 첫 GUI 실행에 언어 → 채널 추가/저장 위치 → 완료를 안내한다. `gui_settings.onboarding_completed` 기본값은 false이며 완료할 때만 초안과 true를 함께 저장한다. 취소하면 기존 설정을 유지하고 다음 실행에 다시 안내한다. 채널 없이 진행하려면 나중에 추가를 명시적으로 선택한다. 도움말 → 처음 설정에서 다시 열 수 있다.
 - `recording_options.py`: 전역 및 채널 화질, 채널별 분할 상속/끄기, 실제 제공 스트림 선택 및 크기/FPS 변환 규칙. `encoding_h264.py`는 6종 H.264 인수와 실제 probe를 담당한다. H.264/HEVC/AV1은 하나만 활성화한다.
 - `channels[].recording_split_minutes`와 `channels[].quality_settings`는 없거나 null이면 전체 설정을 상속한다. 채널 분할 0은 전역 설정과 무관하게 분할을 끈다.
+- `record_previous_hour`는 전체 기본 false, 채널 null/누락은 상속, JSON true/false는 채널 선택 우선이다. CLI 녹화·화질 6번/채널 관리 4번과 GUI 기본 녹화/채널 편집에서 설정한다. `chzzk_record.py:previous_hour_for_start()`가 다음 방송 시작에 최신 설정을 다시 읽고 `recording_continuity.py:RecordingContinuity`가 방송별 한 번의 과거 시작과 파일 전환 resume 시각을 관리한다. 자동 재연결·파일 분할 때 과거 분량을 다시 시작하지 않는다.
 - `gui_settings.close_to_tray` 기본값은 true다. 트레이가 있을 때 창 닫기는 백그라운드 유지, 트레이 메뉴의 종료는 기존 녹화 정리를 기다린다. 트레이가 없으면 창 닫기로 종료한다. 사용자 명칭은 '녹화 중지', '종료'로 통일했으며 파일 정리 동작은 유지한다.
 - `gui/appearance.py`는 `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`에서 5개 CJK family를 등록하고 언어별 KR/JP/SC/TC 우선순위를 앱 전체 QSS에 지정한다. 기본 10pt/500, 제목 600이며 `VariableFontWeights`가 위젯별 가변 wght 축을 최종 굵기에 맞춘다. Linux에 같은 이름의 정적 Noto가 설치되어 있으면 TTC의 OS/2 vendor와 Qt family 목록으로 제공 폰트를 구분한다. 시스템 기본 폰트 변경과 창 스타일 적용 후에도 TTC를 사용하며, 등록 실패를 영구 캐시하지 않는다. TTC와 LICENSE만 배포하고 Windows DirectWrite/모니터별 DPI 및 hinting/antialias 설정을 유지한다. [폰트·툴팁·미리보기 레이아웃 검증](worklogs/2026-09-11-font-tooltip-preview.md)을 참고한다.
 - `chzzk_record.py:recording_output_size()`는 분할 녹화의 실제 파일 크기를 합산한다. FFmpeg segment muxer의 `total_size=N/A`를 0으로 취급하지 않으며 GUI/CLI의 용량·속도·비트레이트와 JSON `total_bytes`에 사용한다.
@@ -37,6 +38,8 @@
 - `chzzk_record.py:main()`은 종료 시 녹화 정리와 마지막 로그 표시를 처리한다. GUI의 중지/종료도 이 정리 경로를 거쳐야 한다.
 - 사용자에게 보이는 문구는 `i18n.py`의 5개 언어를 함께 관리한다. `pyproject.toml`은 Python 3.12 이상이며 PySide6는 `gui` 선택 의존성이다. `uv.lock`은 Qt 6.11.2를 포함한다.
 - Streamlink/urllib3 의존성 조합은 함께 확인한다. Streamlink 8.6.0은 urllib3 2.8.0의 URL 정규화에서 `Urllib3UtilUrlPercentReOverride`에 `sub`가 없어 HTTP 요청이 실패한다. 호환 수정은 Streamlink 8.6.1에 포함됐으며, urllib3 2.8.0을 사용할 때는 사용자가 실제 녹화를 확인한 Streamlink 8.6.2 조합으로 잠금파일을 갱신한다. 버전 확인은 시스템 패키지 대신 녹화기에 사용하는 Python 환경에서 수행한다. PR #80 반영을 위해 준비한 변경과 적용 상태는 [의존성 호환 수정 및 검증](worklogs/2026-10-08-streamlink-urllib3-compatibility.md)을 참고한다.
+- HLS 녹화의 파일 길이와 FFmpeg 반환 코드 0만으로 영상 조각의 연속성을 판단하지 않는다. 2026-10-10 이슈 #82 분석에서 fMP4 조각 하나를 제거하자 길이 16.707초와 반환 코드 0은 유지됐지만 1,000 → 750프레임과 PTS 4.183초 공백이 생겼다. 현재 `plugin/chzzk.py`는 `hls_continuity.py`의 Streamlink 8.6.2 전용 worker/writer/reader를 사용한다. 마지막 출력 위치 기준으로 누락을 복구하고 2초 CDN hedge, 30초 API 갱신, token 즉시 갱신, 90초 무진행 실패 및 init/discontinuity 파일 전환을 수행한다. JSON stderr 이벤트를 관리자에게 전달하며 출력 파이프·기존 FFmpeg 정리 후 새 파일로 이어간다. 강제 프로세스 종료 후 커서의 영구 복원은 구현하지 않았다. 실제 1,000프레임·음성 연속성 복구와 파일 전환 검증은 [분석·구현 기록](worklogs/2026-10-10-issue82-hls-analysis.md), 확정 범위는 [구현 계획](plans/issue82-hls-continuity.md)에 있다.
+- 타임머신 UI와 `timeMachineActive`는 CDN 과거 접근 가능성의 충분조건/필요조건이 아니다. 2026-10-10 공개 채널 비교에서 false인 두 채널도 API가 광고한 `encodingTrack.p2pPath`의 `cdn_url`에 각각 약 1시간/10분의 실제 디코딩 가능한 과거 조각을 제공했다. `source_paths()`는 이 HTTP 주소만 추출하고 P2P 프로그램이나 임의 호스트 교체를 사용하지 않는다. 실제 날짜 있는 목록과 조각/init 검증으로 접근을 판단하며 권한 검사, 서비스별 가변 보관 범위와 과거 부재 시 현재 위치 fallback을 유지한다. 모든 채널/날짜의 정책으로 일반화하지 않는다.
 - 저장 폴더 열기의 번역 키는 `gui.folder`다. 리본과 채널 우클릭 메뉴에서 같은 키를 사용하며, 존재하지 않는 `gui.open_folder`를 사용하면 키 원문이 화면에 표시된다.
 - GUI 리본은 `QTabWidget` 안의 한 줄 `QToolBar`이며, 좁은 창에서 넘치는 `QAction`은 Qt 더보기 메뉴로 이동한다. 시작/중지 활성 상태는 버튼 위젯 대신 QAction에 적용해 더보기에서도 일치시킨다. `gui/theme.py`는 밝은/어두운 공용 스타일, `gui/icons.py`는 선형 명령 아이콘을 관리한다. `gui/common.py:ElidedLabel`은 미리보기 제목을 한 줄로 줄이고 전체 제목을 이스케이프한 툴팁으로 보존한다. 디자인/배율 검증은 [리본 디자인 정리](worklogs/2026-09-10-compact-gui-design.md)를 참고한다.
 - 빈 방송 제목/미리보기 제목에는 `text_tooltip()`이 빈 문자열을 반환한다. 내용 없는 `<qt></qt>`는 빈 툴팁 상자를 만들므로 사용하지 않는다. `ElidedLabel`은 글꼴·스타일 변경 시 글자를 다시 줄이고 실제 QLabel 높이를 최소 높이에 반영한다. 미리보기 영상은 이전 pixmap의 크기로 레이아웃을 밀지 않도록 size policy를 Ignored로 설정하고, 영상 위젯 자체의 Resize 이벤트에서 프레임을 다시 맞춘다.
