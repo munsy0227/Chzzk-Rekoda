@@ -52,6 +52,18 @@ def parse_event(line):
     return event
 
 
+def format_log_time(value):
+    """Show segment positions in the same local timezone as the log prefix."""
+    if value is None:
+        return None
+    try:
+        return datetime.fromisoformat(value).astimezone().isoformat(
+            sep=" ", timespec="milliseconds"
+        )
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
 class RecordingContinuity:
     def __init__(self):
         self.live_id = None
@@ -95,10 +107,12 @@ class RecordingContinuity:
             return ("record.history_short" if short else "record.history_start",
                     {"seconds": round(event["available_seconds"])}, short)
         if kind in {"recovery_started", "recovery_completed"}:
-            return "record." + kind, {"at": event.get("at")}, False
+            return "record." + kind, {"at": format_log_time(event.get("at"))}, False
         if kind == "gap":
-            return "record.continuity_gap", {"start": event.get("from"),
-                                              "end": event.get("to")}, True
+            return "record.continuity_gap", {
+                "start": format_log_time(event.get("from")),
+                "end": format_log_time(event.get("to")),
+            }, True
         if kind == "boundary":
             return "record.continuity_boundary", {}, False
         return None

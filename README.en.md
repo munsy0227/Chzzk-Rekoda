@@ -94,6 +94,7 @@ The GUI requires a desktop environment and FFmpeg. **Open login window** starts 
 - The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`, selecting KR/JP/SC/TC families by language. Windows uses DirectWrite and per-monitor DPI. The distribution includes its `LICENSE`.
 - **Recording settings → Quit application** finishes recording files and exits the tray as well. Split recording size is the sum of the actual sizes of all segments in the current recording attempt.
 - When GUI recording stops, the log distinguishes a stop command, application exit and communication failures. With file logging enabled, these details also appear in `log.log` next to the configuration file.
+- Segment times in recovery and gap messages use the same system timezone as the log prefix. Korean Standard Time displays the `+09:00` offset.
 - The window, taskbar and tray share the application icon. On Windows, running `chzzk_gui.vbs` creates an icon-bearing **`Chzzk Rekoda.lnk`** shortcut in the installation folder. On Linux, launching the GUI registers its icon and launcher in the user's application menu.
 
 </details>
