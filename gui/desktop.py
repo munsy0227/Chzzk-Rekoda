@@ -1,4 +1,4 @@
-"""Native desktop identity and per-user Linux icon registration."""
+"""Native desktop identity, Linux input methods and icon registration."""
 
 import os
 import sys
@@ -7,6 +7,36 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_ID = "CHZZK.Rekoda.GUI"
+
+
+def configure_linux_input_method():
+    """Prefer KDE's native Wayland IME over a missing bundled fcitx plugin."""
+    if not sys.platform.startswith("linux"):
+        return False
+    desktops = os.environ.get("XDG_CURRENT_DESKTOP", "").upper().split(":")
+    if ("KDE" not in desktops
+            or os.environ.get("XDG_SESSION_TYPE") != "wayland"
+            or not os.environ.get("WAYLAND_DISPLAY")):
+        return False
+    platform = os.environ.get("QT_QPA_PLATFORM", "").split(";")[0].split(":")[0]
+    if platform and not platform.startswith("wayland"):
+        return False
+    modules = [
+        module.strip()
+        for module in os.environ.get("QT_IM_MODULES", "").split(";")
+        if module.strip()
+    ]
+    if not modules:
+        modules = [os.environ.get("QT_IM_MODULE", "").strip()]
+    if modules[0].lower() not in {"fcitx", "fcitx5"}:
+        return False
+    # Qt 6 checks QT_IM_MODULES before QT_IM_MODULE. The native protocol uses
+    # the IME launched by KDE's Virtual Keyboard setting, without loading a
+    # system Qt plugin into PySide6's separately bundled Qt libraries.
+    os.environ["QT_IM_MODULES"] = ";".join(
+        ["wayland", *(module for module in modules if module != "wayland")]
+    )
+    return True
 
 
 def configure_platform_identity():

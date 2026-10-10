@@ -74,6 +74,8 @@ Select **Save settings** to apply your changes. Hover over an option or use its 
 
 The GUI requires a desktop environment and FFmpeg. **Open login window** starts the CLI browser-login procedure directly. Log in using the browser, then press Enter in the separate CLI window to return cookies to the GUI. Use **Save settings** to apply them. The GUI has no CMD window; a separate console opens only for login.
 
+For Fcitx 5 on KDE Wayland, select **System Settings → Virtual Keyboard → Fcitx 5**. The GUI prefers KDE's Wayland input path even when `QT_IM_MODULE=fcitx` is set. Restart the GUI after changing this setting.
+
 <details>
 <summary>More about quality, codecs, previews and tray behavior</summary>
 

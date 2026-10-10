@@ -27,12 +27,17 @@ def main():
             qt_application_args,
         )
         from gui.common import HelpStyle, show_error
-        from gui.desktop import configure_platform_identity, register_linux_desktop
+        from gui.desktop import (
+            configure_linux_input_method,
+            configure_platform_identity,
+            register_linux_desktop,
+        )
         from gui.window import MainWindow
     except ImportError:
         print(translate(DEFAULT_LANGUAGE, "gui.missing_qt"), file=sys.stderr)
         return 1
     configure_platform_identity()
+    configure_linux_input_method()
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )

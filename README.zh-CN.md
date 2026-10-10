@@ -74,6 +74,8 @@ uv run --extra gui chzzk_gui.py
 
 GUI 需要桌面环境和 FFmpeg。**打开登录窗口**直接启动 CLI 的浏览器登录流程。在浏览器登录后，在独立 CLI 窗口按 Enter，将 Cookie 传回 GUI，再点击 **保存设置** 应用。GUI 本身不显示 CMD 窗口，仅登录时打开独立 CLI 窗口。
 
+在 KDE Wayland 上使用 Fcitx 5 时，请选择**系统设置 → 虚拟键盘 → Fcitx 5**。即使设置了 `QT_IM_MODULE=fcitx`，GUI 也会优先使用 KDE 的 Wayland 输入方式。更改后请重启 GUI。
+
 <details>
 <summary>展开查看画质、编码、预览和托盘等详细功能</summary>
 
