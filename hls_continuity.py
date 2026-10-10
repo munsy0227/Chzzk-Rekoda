@@ -1,11 +1,12 @@
 """Ordered CHZZK HLS delivery. Network failures must never become skipped media.
 
-The plugin supplies API-advertised manifests; this module never constructs CDN
-hosts. A writer owns the output cursor, independently of the worker's queue.
+The plugin supplies advertised manifests and known Akamai hostname probes.
+A writer validates alternatives and owns the cursor independently of the queue.
 """
 
 import hashlib
 import json
+import math
 import queue
 import re
 import struct
@@ -16,17 +17,19 @@ from collections import OrderedDict
 from concurrent.futures import CancelledError, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from Crypto.Cipher import AES
 from Crypto.Util.Padding import unpad
 from streamlink.exceptions import StreamError
 from streamlink.stream.hls import HLSStreamReader, HLSStreamWorker, parse_m3u8
 from streamlink.stream.hls.hls import HLSStreamWriter
+from streamlink.stream.hls.m3u8 import M3U8Parser, parse_tag
 from recording_continuity import EVENT_PREFIX
 
 
 HEDGE_DELAY = 2.0
+HISTORY_BUDGET = 2.0
 RECOVERY_TIMEOUT = 90.0
 API_REFRESH_INTERVAL = 30.0
 RECOVERY_REFRESH_INTERVAL = 5.0
@@ -68,6 +71,102 @@ def quality_from_url(url):
     return None
 
 
+def cdn_from_url(url):
+    host = (urlparse(url).hostname or "").lower()
+    if host == "akamaized.net" or host.endswith(".akamaized.net"):
+        return "akamai"
+    if any(host == domain or host.endswith("." + domain)
+           for domain in ("pstatic.net", "navercdn.com")):
+        return "korean"
+    return "unknown"
+
+
+@dataclass(frozen=True)
+class SourcePath:
+    url: str = field(repr=False)
+    history: bool = False
+    mode: str = "hls"
+    cdn: str = "unknown"
+    probe: bool = False
+
+    @property
+    def priority(self):
+        return ({"korean": 0, "unknown": 1, "akamai": 2}[self.cdn],
+                self.history, self.mode != "llhls")
+
+
+def source_path(value):
+    if isinstance(value, SourcePath):
+        return value
+    url, history = value
+    return SourcePath(url, history, "hls", cdn_from_url(url))
+
+
+@dataclass(frozen=True)
+class Part:
+    uri: str = field(repr=False)
+    duration: float
+    byterange: object = None
+    gap: bool = False
+    mapping: object = field(default=None, repr=False)
+    key: object = field(default=None, repr=False)
+
+
+class ChzzkM3U8Parser(M3U8Parser):
+    """Keep Streamlink's complete-segment cursor and add advertised LL parts."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.parts = []
+        self.m3u8.part_groups = {}
+        self.m3u8.trailing_parts = ()
+        self.m3u8.can_block_reload = False
+        self.m3u8.part_target = None
+
+    @parse_tag("EXT-X-PART")
+    def parse_part(self, value):
+        attr = self.parse_attributes(value)
+        duration = float(attr.get("DURATION", 0))
+        uri = attr.get("URI")
+        if not uri or not math.isfinite(duration) or duration <= 0:
+            raise ValueError("Invalid partial segment")
+        self.parts.append(Part(self.uri(uri), duration,
+                               self.parse_byterange(attr.get("BYTERANGE", "")),
+                               attr.get("GAP") == "YES", self._map, self._key))
+
+    @parse_tag("EXT-X-PART-INF")
+    def parse_part_inf(self, value):
+        target = float(self.parse_attributes(value).get("PART-TARGET", 0))
+        if math.isfinite(target) and target > 0:
+            self.m3u8.part_target = target
+
+    @parse_tag("EXT-X-SERVER-CONTROL")
+    def parse_server_control(self, value):
+        self.m3u8.can_block_reload = self.parse_attributes(value).get("CAN-BLOCK-RELOAD") == "YES"
+
+    @parse_tag("EXT-X-DISCONTINUITY-SEQUENCE")
+    def parse_discontinuity_sequence(self, value):
+        self.m3u8.discontinuity_sequence = int(value)
+
+    def get_segment(self, uri, **data):
+        segment = super().get_segment(uri, **data)
+        # PDT is often given only once in an LL playlist.
+        if segment.date is None and self.m3u8.segments:
+            previous = self.m3u8.segments[-1]
+            if previous.date is not None and not segment.discontinuity:
+                segment.date = previous.date + timedelta(seconds=previous.duration)
+        self.m3u8.part_groups[len(self.m3u8.segments)] = tuple(self.parts)
+        self.parts = []
+        return segment
+
+    def parse(self, data):
+        playlist = super().parse(data)
+        first = playlist.media_sequence or 0
+        playlist.part_groups = {first + i: parts for i, parts in playlist.part_groups.items()}
+        playlist.trailing_parts = tuple(self.parts)
+        return playlist
+
+
 def validate_media(data, is_map=False):
     """Reject empty/truncated TS or ISO-BMFF before exposing any bytes."""
     if not data:
@@ -104,6 +203,10 @@ class Manifest:
     history: bool = False
     playlist: object = field(default=None, repr=False)
     loaded_at: float = 0.0
+    mode: str = "hls"
+    cdn: str = "unknown"
+    probe: bool = False
+    lock: object = field(default_factory=threading.RLock, repr=False)
 
 
 @dataclass
@@ -112,6 +215,8 @@ class LocatedSegment:
     manifest: Manifest = field(repr=False)
     live_id: int
     rendition: str
+    parts: tuple = field(default=(), repr=False)
+    discontinuity_id: int | None = None
 
     def __getattr__(self, name):
         return getattr(self.segment, name)
@@ -129,13 +234,14 @@ class Download:
     located: LocatedSegment
     initialization: bytes
     media: bytes
+    mode: str = "hls"
 
 
 class ContinuitySource:
     """Small manifest pool refreshed from the API, with serialized discovery."""
 
     def __init__(self, stream, provider, live_id, paths, lookback=0, resume=None,
-                 time_machine_active=None):
+                 time_machine_active=None, mode="hls", cdn=None):
         self.stream = stream
         self.session = stream.session
         self.provider = provider
@@ -148,14 +254,18 @@ class ContinuitySource:
         self.time_machine_active = time_machine_active
         self.stop = threading.Event()
         self.lock = threading.RLock()
+        self.discovery_lock = threading.RLock()
         self.event_lock = threading.Lock()
         self.diagnostic_lock = threading.Lock()
         self.diagnostics = OrderedDict()
         self.last_refresh = time.monotonic()
         self.last_discovery = 0.0
-        self.paths = paths
+        self.paths = [source_path(p) for p in paths]
         self.manifests = OrderedDict()
-        self.primary = self.add(stream._url, False)
+        initial = next((p for p in self.paths if p.url == stream._url), None)
+        self.primary = self.add(stream._url, False,
+                                initial.mode if initial else mode,
+                                cdn or (initial.cdn if initial else cdn_from_url(stream._url)))
         self.ended = False
         self.changed = False
         self.recovering = False
@@ -187,21 +297,21 @@ class ContinuitySource:
         self.emit("diagnostic", stage=stage, role=role, category=category,
                   status=status, sequence=sequence, at=at)
 
-    def add(self, url, history):
+    def add(self, url, history, mode="hls", cdn=None, probe=False):
         parsed = urlparse(url)
-        key = (parsed.netloc, parsed.path, history)
-        manifest = self.manifests.get(key)
-        if manifest is None or manifest.url != url:
-            manifest = Manifest(url, history)
-            self.manifests[key] = manifest
-        self.manifests.move_to_end(key)
-        # Retain two advertised CDN origins per role, with at most two paths
-        # per origin. A second path must not evict the other CDN's fallback.
-        same_role = [k for k in self.manifests if k[2] == history]
-        hosts = list(dict.fromkeys(k[0] for k in reversed(same_role)))[:2]
-        same_host = [k for k in same_role if k[0] == parsed.netloc]
-        for old in [k for k in same_role if k[0] not in hosts] + same_host[:-2]:
-            self.manifests.pop(old)
+        key = (parsed.netloc, parsed.path, history, mode)
+        with self.lock:
+            manifest = self.manifests.get(key)
+            if manifest is None or manifest.url != url:
+                manifest = Manifest(url, history, mode=mode, cdn=cdn or cdn_from_url(url), probe=probe)
+                self.manifests[key] = manifest
+            self.manifests.move_to_end(key)
+            # Bound each CDN/role/mode separately. Keep the selected primary.
+            same_role = [k for k, m in self.manifests.items()
+                         if (m.cdn, m.history, m.mode) == (manifest.cdn, history, mode)
+                         and m is not getattr(self, "primary", None)]
+            for old in same_role[:-4]:
+                self.manifests.pop(old)
         return manifest
 
     def request_params(self):
@@ -210,26 +320,40 @@ class ContinuitySource:
             params.pop(name, None)
         return params
 
-    def playlist(self, manifest, force=False):
-        with self.lock:
+    def playlist(self, manifest, force=False, blocking=False):
+        with manifest.lock:
             if (not force and manifest.playlist is not None
                     and time.monotonic() - manifest.loaded_at < 2):
                 return manifest.playlist
             if self.stop.is_set():
                 raise Unavailable("Stopped")
             try:
+                url = manifest.url
+                previous = manifest.playlist
+                block = (blocking and previous is not None and manifest.mode == "llhls"
+                         and previous.can_block_reload and not previous.is_endlist)
+                if block:
+                    query = [pair for pair in urlparse(url).query.split("&")
+                             if pair and pair.split("=", 1)[0] not in {"_HLS_msn", "_HLS_part"}]
+                    query.extend([f"_HLS_msn={(previous.media_sequence or 0) + len(previous.segments)}",
+                                  f"_HLS_part={len(previous.trailing_parts)}"])
+                    url = urlunparse(urlparse(url)._replace(query="&".join(query)))
+                params = self.request_params()
+                # Blocking reload can normally wait up to three target durations.
+                # Give it that budget, capped below the no-progress deadline.
+                read_timeout = min(30, max(5, 3 * (previous.targetduration or 2))) if block else 5
                 with self.session.http.get(
-                    manifest.url, timeout=(5, 5), retries=0,
-                    exception=StreamError, **self.request_params(),
+                    url, timeout=(5, read_timeout), retries=0,
+                    exception=StreamError, **params,
                 ) as response:
                     response.encoding = "utf-8"
-                    playlist = parse_m3u8(response, parser=self.stream.__parser__)
+                    playlist = parse_m3u8(response.text, base_uri=manifest.url, parser=self.stream.__parser__)
                 if playlist.is_master:
                     matches = [p for p in playlist.playlists if p.stream_info
                                and quality_from_url(p.uri) == self.rendition]
                     if not matches:
                         raise Unavailable("Rendition unavailable")
-                    child = self.add(matches[0].uri, manifest.history)
+                    child = self.add(matches[0].uri, manifest.history, manifest.mode, manifest.cdn, manifest.probe)
                     return self.playlist(child, force)
                 if playlist.iframes_only or not playlist.segments:
                     raise Unavailable("No complete segments")
@@ -244,13 +368,18 @@ class ContinuitySource:
                     "Manifest request failed", status, "http" if status else "network")
                 self.report_failure("manifest", "history" if manifest.history else "current", failure)
                 if status in (401, 403):
-                    self.discover(force=True)
+                    # Refresh metadata only. Resolving manifests recursively
+                    # on a persistent 403 would recurse without a deadline.
+                    self.refresh(force=True)
+                    self.last_discovery = 0.0
                 if isinstance(error, Unavailable):
                     raise
                 raise failure from None
 
-    def discover(self, force=False):
-        with self.lock:
+    def refresh(self, force=False):
+        if not force and time.monotonic() - self.last_refresh < API_REFRESH_INTERVAL:
+            return
+        with self.discovery_lock:
             if self.stop.is_set():
                 return
             if force or time.monotonic() - self.last_refresh >= API_REFRESH_INTERVAL:
@@ -268,59 +397,67 @@ class ContinuitySource:
                 if live_id != self.live_id:
                     self.changed = True
                     raise BroadcastChanged("Broadcast changed")
-                self.paths = paths
-            if not force and time.monotonic() - self.last_discovery < API_REFRESH_INTERVAL:
-                return
-            self.last_discovery = time.monotonic()
-            for path, history in self.paths:
-                try:
-                    with self.session.http.get(
-                        path, timeout=(5, 5), retries=0, exception=StreamError,
-                        **self.request_params(),
-                    ) as response:
-                        response.encoding = "utf-8"
-                        playlist = parse_m3u8(response, parser=self.stream.__parser__)
-                    if playlist.is_master:
-                        matches = [p for p in playlist.playlists if p.stream_info
-                                   and quality_from_url(p.uri) == self.rendition]
-                        if not matches:
-                            continue
-                        url = matches[0].uri
-                    elif quality_from_url(path) == self.rendition:
-                        url = path
-                    else:
-                        continue
-                    candidate = self.add(url, history)
-                    if not history:
-                        self.primary = candidate
-                        self.stream._url = candidate.url
-                except (StreamError, ValueError) as error:
-                    response = getattr(getattr(error, "err", error), "response", None)
-                    status = getattr(response, "status_code", None)
-                    self.report_failure("manifest", "history" if history else "current",
-                                        Unavailable("Discovery failed", status,
-                                                    "http" if status else "network"))
-                    continue
+                self.paths = [source_path(p) for p in paths]
 
-    def candidates(self, refresh=False):
-        with self.lock:
-            if (refresh or time.monotonic() - self.last_refresh >= API_REFRESH_INTERVAL
-                    or len(self.manifests) == 1):
-                # Non-authentication failures may refresh discovery sooner,
-                # without flooding the API on every failed media retry.
-                self.discover(force=refresh and
-                              time.monotonic() - self.last_refresh >= RECOVERY_REFRESH_INTERVAL)
-            result = []
-            for manifest in list(self.manifests.values()):
-                try:
-                    playlist = self.playlist(manifest, force=refresh)
-                    result.append((manifest, playlist))
-                except Unavailable:
+    def resolve(self, path):
+        manifest = self.add(path.url, path.history, path.mode, path.cdn, path.probe)
+        playlist = self.playlist(manifest)
+        # playlist() follows a master, storing the parsed variant in the pool.
+        if playlist.uri != manifest.url:
+            manifest = self.add(playlist.uri, path.history, path.mode, path.cdn, path.probe)
+        return manifest, playlist
+
+    def discover(self, force=False):
+        self.refresh(force)
+        if not force and time.monotonic() - self.last_discovery < API_REFRESH_INTERVAL:
+            return
+        self.last_discovery = time.monotonic()
+        pending = sorted(self.paths, key=lambda p: p.priority)
+        tried = set()
+        while pending and len(tried) < 32:
+            path = pending.pop(0)
+            if path.history:
+                continue
+            if path.url in tried:
+                continue
+            tried.add(path.url)
+            try:
+                candidate, _ = self.resolve(path)
+                self.primary = candidate
+                self.stream._url = candidate.url
+                return
+            except Unavailable as error:
+                if error.status in (401, 403):
+                    pending = sorted([p for p in self.paths if p.url not in tried],
+                                     key=lambda p: p.priority)
+                continue
+
+    def candidates(self, refresh=False, group=None):
+        self.refresh(force=refresh and
+                     time.monotonic() - self.last_refresh >= RECOVERY_REFRESH_INTERVAL)
+        result = []
+        seen = set()
+        for path in sorted(self.paths, key=lambda p: p.priority):
+            if group == "korean" and path.cdn == "akamai":
+                continue
+            if group == "akamai" and path.cdn != "akamai":
+                continue
+            try:
+                manifest, _ = self.resolve(path)
+                if id(manifest) in seen:
                     continue
-            return result
+                seen.add(id(manifest))
+                result.append((manifest, self.playlist(manifest, force=refresh)))
+            except Unavailable:
+                continue
+        return result
 
     def locate(self, segment, manifest):
-        return LocatedSegment(segment, manifest, self.live_id, self.rendition)
+        parts = getattr(manifest.playlist, "part_groups", {}).get(segment.num, ())
+        sequence = getattr(manifest.playlist, "discontinuity_sequence", None)
+        if sequence is not None:
+            sequence += sum(s.discontinuity for s in manifest.playlist.segments if s.num <= segment.num)
+        return LocatedSegment(segment, manifest, self.live_id, self.rendition, parts, sequence)
 
     @staticmethod
     def matches(left, right):
@@ -330,25 +467,36 @@ class ContinuitySource:
             return left.manifest.url == right.manifest.url and left.num == right.num
         return (abs((left.date - right.date).total_seconds()) <= TIME_TOLERANCE
                 and abs(left.duration - right.duration) <= TIME_TOLERANCE
-                and left.discontinuity == right.discontinuity)
+                and left.discontinuity == right.discontinuity
+                and (left.discontinuity_id is None or right.discontinuity_id is None
+                     or left.discontinuity_id == right.discontinuity_id))
 
-    def alternatives(self, target, refresh=False):
-        candidates = self.candidates(refresh)
-        candidates.sort(key=lambda item: urlparse(item[0].url).netloc ==
-                        urlparse(target.manifest.url).netloc)
+    @staticmethod
+    def in_history_window(manifest, playlist, segment):
+        if not manifest.history:
+            return True
+        latest = playlist.segments[-1]
+        return (segment.date is not None and latest.date is not None
+                and (latest.date + timedelta(seconds=latest.duration) - segment.date).total_seconds()
+                <= 3600 + TIME_TOLERANCE)
+
+    def alternatives(self, target, refresh=False, group=None):
+        candidates = self.candidates(refresh, group)
         for manifest, playlist in candidates:
             for segment in playlist.segments:
                 located = self.locate(segment, manifest)
-                if segment.uri != target.uri and self.matches(target, located):
+                if ((segment.uri != target.uri or manifest.mode != target.manifest.mode)
+                        and self.in_history_window(manifest, playlist, segment)
+                        and self.matches(target, located)):
                     yield located
 
-    def between(self, previous, following, refresh=False):
+    def between(self, previous, following, refresh=False, candidates=None):
         """Yield the surviving prefix before a hole, preserving valid media."""
         if self.ended:
             raise BroadcastEnded("Broadcast ended")
         if self.changed:
             raise BroadcastChanged("Broadcast changed")
-        candidates = self.candidates(refresh)
+        candidates = self.candidates(refresh) if candidates is None else candidates
         if previous.end is None or following.date is None:
             segments = [self.locate(s, m) for m, p in candidates
                         if m.url == previous.manifest.url == following.manifest.url
@@ -371,7 +519,8 @@ class ContinuitySource:
             found = next((self.locate(s, m) for m, p in candidates for s in p.segments
                           if s.date is not None
                           and abs((s.date - position).total_seconds()) <= TIME_TOLERANCE
-                          and s.duration > 0), None)
+                          and s.duration > 0
+                          and self.in_history_window(m, p, s)), None)
             if found is None or found.end > following.date + timedelta(seconds=TIME_TOLERANCE):
                 # A sliding/temporarily unavailable manifest is not proof that
                 # every advertised CDN has permanently lost this interval.
@@ -388,6 +537,7 @@ class ChzzkContinuityWorker(HLSStreamWorker):
     def iter_segments(self):
         source = self.stream.continuity
         last = None
+        self.writer.prepare_standby()
         while not self.closed and not source.stop.is_set():
             try:
                 if last is None:
@@ -395,7 +545,8 @@ class ChzzkContinuityWorker(HLSStreamWorker):
                 if time.monotonic() - source.last_refresh >= API_REFRESH_INTERVAL:
                     source.discover()
                 manifest = source.primary
-                playlist = source.playlist(manifest, force=True)
+                playlist = source.playlist(manifest, force=True, blocking=last is not None)
+                self.writer.prefetch_parts(manifest, playlist)
                 segments = [source.locate(s, manifest) for s in playlist.segments]
                 if last is None:
                     resume = source.resume
@@ -459,7 +610,9 @@ class ChzzkContinuityWorker(HLSStreamWorker):
                     source.discover(force=True)
                     source.terminal = ("gap", "playlist_stalled")
                     return
-                if not self.wait(min(2, playlist.targetduration or 2)):
+                interval = (0.05 if manifest.mode == "llhls" and playlist.can_block_reload
+                            else min(2, playlist.part_target or playlist.targetduration or 2))
+                if not self.wait(interval):
                     return
             except BroadcastEnded:
                 return
@@ -482,7 +635,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         self.requests = ThreadPoolExecutor(max_workers=2 * self.threads,
                                           thread_name_prefix="chzzk-request")
         self.request_slots = threading.BoundedSemaphore(2 * self.threads)
-        self.lookups = ThreadPoolExecutor(max_workers=2, thread_name_prefix="chzzk-manifest")
+        self.lookups = ThreadPoolExecutor(max_workers=3, thread_name_prefix="chzzk-manifest")
         self.lookup_slots = threading.BoundedSemaphore(self.threads + 1)
         self.refresh_lock = threading.Lock()
         self.refresh_future = None
@@ -493,6 +646,129 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         self.initialization = None
         self.failed = False
         self.start_download = None
+        self.parts = OrderedDict()
+        self.standby_future = None
+        self.selected_source = None
+
+    def prepare_standby(self):
+        if self.standby_future is not None:
+            return
+        self.source.emit("source", cdn=self.source.primary.cdn,
+                         mode=self.source.primary.mode, state="selected")
+        self.selected_source = (self.source.primary.cdn, self.source.primary.mode)
+
+        def prepare():
+            if not any(p.cdn == "akamai" for p in self.source.paths):
+                self.source.emit("source", cdn="akamai", mode="hls", state="absent")
+                return
+            try:
+                candidates = self.source.candidates(group="akamai")
+                for manifest, playlist in candidates:
+                    if not playlist.segments:
+                        continue
+                    try:
+                        while not self.source.stop.is_set():
+                            if self.request_slots.acquire(timeout=0.1):
+                                break
+                        else:
+                            return
+                        try:
+                            if manifest.probe:
+                                # The hostname substitution is only a probe.
+                                # Verify a common dated interval and init/media
+                                # before announcing it as a usable standby.
+                                limit = time.monotonic() + HISTORY_BUDGET
+                                while (self.source.primary.playlist is None
+                                       and not self.source.stop.is_set()
+                                       and time.monotonic() < limit):
+                                    self.source.stop.wait(0.05)
+                                primary = self.source.primary
+                                ordinary = primary.playlist
+                                pair = next(((self.source.locate(b, manifest), self.source.locate(a, primary))
+                                             for b in reversed(playlist.segments)
+                                             for a in ordinary.segments
+                                             if self.source.matches(self.source.locate(a, primary),
+                                                                    self.source.locate(b, manifest))), None) if ordinary else None
+                                if pair is None:
+                                    raise Unavailable("Probe interval unavailable")
+                                self.download(*pair)
+                            else:
+                                self.load_map(self.source.locate(playlist.segments[-1], manifest))
+                        finally:
+                            self.request_slots.release()
+                    except Unavailable:
+                        continue
+                    if self.source.stop.is_set():
+                        return
+                    self.source.emit("source", cdn="akamai", mode=manifest.mode, state="ready")
+                    return
+            except (StreamError, ValueError):
+                pass
+            if not self.source.stop.is_set():
+                self.source.emit("source", cdn="akamai", mode="hls", state="unavailable")
+
+        self.standby_future = self.lookups.submit(prepare)
+
+    @staticmethod
+    def part_key(number, part):
+        return (number, part.uri, part.byterange,
+                part.mapping.uri if part.mapping else None)
+
+    def part_bytes(self, part):
+        data = self.http_bytes(part.uri, part.byterange)
+        validate_media(data)
+        if data[0] == 0x47:
+            raise Unavailable("Partial TS unsupported", category="invalid_media")
+        return data
+
+    def prefetch_parts(self, manifest, playlist):
+        if manifest.mode != "llhls" or manifest.history or self.source.stop.is_set():
+            return
+        number = (playlist.media_sequence or 0) + len(playlist.segments)
+        # Only fetch published parts of the unfinished group. PRELOAD-HINT
+        # is deliberately not treated as confirmed available media.
+        for part in playlist.trailing_parts:
+            if (part.gap or part.mapping is None
+                    or (part.key and part.key.method != "NONE")
+                    or (part.byterange and part.byterange.offset is None)):
+                continue
+            key = self.part_key(number, part)
+            with self.cache_lock:
+                if key in self.parts or not self.request_slots.acquire(blocking=False):
+                    continue
+                try:
+                    future = self.requests.submit(self.part_bytes, part)
+                except RuntimeError:
+                    self.request_slots.release()
+                    return
+                future.add_done_callback(lambda _: self.request_slots.release())
+                self.parts[key] = future
+                while len(self.parts) > 64:
+                    _, old = self.parts.popitem(last=False)
+                    old.cancel()
+
+    def download_parts(self, located):
+        parts = located.parts
+        if (not parts or located.map is None
+                or (located.key and located.key.method != "NONE")
+                or any(p.gap or p.mapping != located.map or p.key != located.key for p in parts)
+                or abs(sum(p.duration for p in parts) - located.duration) > TIME_TOLERANCE
+                or len({(p.uri, p.byterange) for p in parts}) != len(parts)):
+            raise Unavailable("Incomplete or unsupported partial group")
+        chunks = []
+        for part in parts:
+            with self.cache_lock:
+                future = self.parts.get(self.part_key(located.num, part))
+            # Every submitted request reserves a slot, and the pool has that
+            # many workers. A pending preload therefore always has a worker;
+            # sharing it cannot starve the pool with queued dependencies.
+            data = future.result(timeout=self.timeout) if future else self.part_bytes(part)
+            chunks.append(data)
+        if len({hashlib.sha256(data).digest() for data in chunks}) != len(chunks):
+            raise Unavailable("Duplicate partial media", category="invalid_media")
+        data = b"".join(chunks)
+        validate_media(data)
+        return data
 
     def accessible_start(self, segments, ordinary, manifest):
         # For gone old media (404/410), find the surviving tail within 30s.
@@ -629,16 +905,27 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         stage = "initialization"
         try:
             initialization = self.load_map(located)
-            if located.uri != target.uri:
+            if located.manifest is not target.manifest or located.uri != target.uri:
                 expected = self.load_map(target)
                 if hashlib.sha256(initialization).digest() != hashlib.sha256(expected).digest():
                     raise Unavailable("Different initialization", category="initialization")
             stage = "media"
-            media = self.decrypt(self.http_bytes(located.uri, located.byterange), located.key, located.num)
+            media = None
+            used_parts = False
+            if located.manifest.mode == "llhls" and located.parts:
+                try:
+                    media = self.download_parts(located)
+                    used_parts = True
+                except (Unavailable, ValueError, CancelledError, TimeoutError) as error:
+                    self.source.report_failure("media", "primary", error, located)
+                    # Whole-segment fallback discards every partial byte.
+            if media is None:
+                media = self.decrypt(self.http_bytes(located.uri, located.byterange), located.key, located.num)
             validate_media(media)
             if not initialization and media[0] != 0x47:
                 raise Unavailable("Missing fragment initialization", category="initialization")
-            return Download(located, initialization, media)
+            mode = "llhls" if used_parts else "hls"
+            return Download(located, initialization, media, mode)
         except (Unavailable, ValueError) as error:
             if isinstance(error, ValueError):
                 error = Unavailable("Invalid encrypted media", category="invalid_media")
@@ -669,6 +956,55 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                     raise Unavailable("Stopped") from None
             return self.refresh_future
 
+    def repair_chain(self, previous, following, refresh, deadline):
+        """Find missing positions without letting slow history age out Akamai."""
+        futures = {}
+        started = time.monotonic()
+
+        def submit(group):
+            if not self.lookup_slots.acquire(blocking=False):
+                return False
+            try:
+                future = self.lookups.submit(self.source.candidates, refresh, group)
+            except RuntimeError:
+                self.lookup_slots.release()
+                raise Unavailable("Stopped") from None
+            future.add_done_callback(lambda _: self.lookup_slots.release())
+            futures[group] = future
+            return True
+
+        submit("korean")
+        akamai_started = False
+        has_akamai = any(p.cdn == "akamai" for p in self.source.paths)
+        try:
+            while not self.source.stop.is_set() and time.monotonic() < deadline:
+                for group, future in list(futures.items()):
+                    if not future.done():
+                        continue
+                    del futures[group]
+                    try:
+                        candidates = future.result()
+                        chain = iter(self.source.between(previous, following, candidates=candidates))
+                        first = next(chain, None)
+                    except (BroadcastEnded, BroadcastChanged):
+                        raise
+                    except (StreamError, ValueError, CancelledError):
+                        continue
+                    if first is not None:
+                        yield first
+                        yield from chain
+                        return
+                if has_akamai and not akamai_started and (
+                        not futures or time.monotonic() - started >= HISTORY_BUDGET):
+                    akamai_started = submit("akamai")
+                if not futures:
+                    raise Unavailable("Required interval unavailable")
+                self.source.stop.wait(0.05)
+            raise Unavailable("Required interval unavailable")
+        finally:
+            for future in futures.values():
+                future.cancel()
+
     def fetch(self, target):
         if self.start_download and self.source.matches(target, self.start_download.located):
             return self.start_download
@@ -677,7 +1013,8 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         while not self.source.stop.is_set() and time.monotonic() < deadline:
             primary = self.submit_request(target, required, deadline)
             futures = [primary]
-            lookup = None
+            lookups = {}
+            pending = []
             refresh_needed = False
             refresh_candidates = False
             try:
@@ -697,15 +1034,24 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 # Manifest/API discovery can be slow too. Poll it alongside the
                 # primary response so a completed download is never held up by
                 # resolving a fallback that is no longer needed.
-                if self.lookup_slots.acquire(blocking=False):
+                def lookup_group(group):
+                    if not self.lookup_slots.acquire(blocking=False):
+                        return False
                     try:
-                        lookup = self.lookups.submit(
-                            lambda refresh=refresh_candidates: next(self.source.alternatives(required, refresh), None))
+                        future = self.lookups.submit(
+                            lambda: list(self.source.alternatives(required, refresh_candidates, group)))
                     except RuntimeError:
                         self.lookup_slots.release()
                         raise Unavailable("Stopped") from None
-                    lookup.add_done_callback(lambda _: self.lookup_slots.release())
-                while (futures or lookup) and not self.source.stop.is_set() and time.monotonic() < deadline:
+                    future.add_done_callback(lambda _: self.lookup_slots.release())
+                    lookups[group] = future
+                    return True
+
+                lookup_group("korean")
+                history_started = time.monotonic()
+                akamai_started = False
+                has_akamai = any(p.cdn == "akamai" for p in self.source.paths)
+                while (futures or lookups or pending or (has_akamai and not akamai_started)) and not self.source.stop.is_set() and time.monotonic() < deadline:
                     for future in list(futures):
                         if not future.done():
                             continue
@@ -720,25 +1066,30 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                         raise BroadcastEnded("Broadcast ended")
                     if self.source.changed:
                         raise BroadcastChanged("Broadcast changed")
-                    if lookup and lookup.done():
+                    for group, lookup in list(lookups.items()):
+                        if not lookup.done():
+                            continue
                         try:
-                            alternative = lookup.result()
+                            pending.extend(lookup.result())
                         except (BroadcastEnded, BroadcastChanged):
                             raise
                         except (StreamError, ValueError, CancelledError):
-                            alternative = None
-                        lookup = None
-                        if alternative:
-                            futures.append(self.submit_request(alternative, required, deadline))
-                    if futures or lookup:
+                            pass
+                        del lookups[group]
+                    # Let domestic current/history attempts finish first. A
+                    # slow history lookup gets two seconds before Akamai is
+                    # considered too, under the same recovery deadline.
+                    exhausted = "korean" not in lookups and not pending and not futures
+                    if has_akamai and not akamai_started and (
+                            exhausted or time.monotonic() - history_started >= HISTORY_BUDGET):
+                        akamai_started = lookup_group("akamai")
+                    while pending and len(futures) < 2:
+                        alternative = pending.pop(0)
+                        futures.append(self.submit_request(alternative, required, deadline))
+                    if futures or lookups or (has_akamai and not akamai_started):
                         self.source.stop.wait(0.05)
                 if refresh_needed:
                     self.refresh_future.result(timeout=max(0, deadline - time.monotonic()))
-                # Replace expired segment URLs by an API-advertised equivalent.
-                alternative = next(self.source.alternatives(required), None)
-                if alternative:
-                    target = alternative
-                    continue
                 # Retry the known media URL until the recovery deadline. A
                 # fragment absent from fresh playlists can still be fetchable.
                 self.source.stop.wait(max(0, min(1, deadline - time.monotonic())))
@@ -748,7 +1099,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 # A transient API/manifest failure is not proof of a gap.
                 self.source.stop.wait(max(0, min(1, deadline - time.monotonic())))
             finally:
-                if lookup:
+                for lookup in lookups.values():
                     lookup.cancel()
                 for future in futures:
                     future.cancel()
@@ -794,6 +1145,14 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         if self.source.stop.is_set():
             return False
         self.previous = target
+        selected = (result.located.manifest.cdn, result.mode)
+        if selected != self.selected_source:
+            self.source.emit("source", cdn=selected[0], mode=selected[1], state="selected")
+            self.selected_source = selected
+        with self.cache_lock:
+            for key in list(self.parts):
+                if key[0] <= target.num:
+                    self.parts.pop(key).cancel()
         self.start_download = None
         self.source.last_progress = time.monotonic()
         if self.source.recovering:
@@ -823,7 +1182,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 refresh = False
                 while not self.source.stop.is_set():
                     try:
-                        chain = self.source.between(self.previous, target, refresh)
+                        chain = self.repair_chain(self.previous, target, refresh, deadline)
                         for segment in chain:
                             if not self.deliver(segment, self.fetch(segment)):
                                 return

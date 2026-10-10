@@ -8,10 +8,12 @@ from dataclasses import dataclass
 from urllib.parse import urlparse, parse_qs
 
 from streamlink.plugin import Plugin, pluginargument, pluginmatcher
+from streamlink.exceptions import StreamError
 from streamlink.plugin.api import validate
 from streamlink.stream.hls import HLSStream
 from hls_continuity import (
-    ChzzkContinuityReader, ContinuitySource, Unavailable, parse_timestamp,
+    ChzzkContinuityReader, ChzzkM3U8Parser, ContinuitySource, SourcePath,
+    Unavailable, cdn_from_url, parse_timestamp,
 )
 
 log = logging.getLogger(__name__)
@@ -52,10 +54,12 @@ class ChzzkHLSStream(HLSStream):
 
     __shortname__ = "hls-chzzk"
     __reader__ = ChzzkContinuityReader
+    __parser__ = ChzzkM3U8Parser
 
     def __init__(self, session, url: str, channel_id: str, *args,
                  live_id=0, source_paths=(), start_lookback=0, resume=None,
                  time_machine_active=None,
+                 source_mode="hls", source_cdn=None,
                  **kwargs) -> None:
         super().__init__(session, url, *args, **kwargs)
         self._url = url
@@ -65,6 +69,7 @@ class ChzzkHLSStream(HLSStream):
             self, self._source_snapshot, live_id, source_paths,
             lookback=start_lookback, resume=resume,
             time_machine_active=time_machine_active,
+            mode=source_mode, cdn=source_cdn,
         )
 
     def _source_snapshot(self):
@@ -87,12 +92,13 @@ class ChzzkHLSStream(HLSStream):
 
 
 def source_paths(media):
-    """Extract only manifests actually advertised to this API caller."""
+    """Keep advertised sources and probe the known Akamai hostname mapping."""
     paths = []
     for item in media:
-        if item.get("mediaId") != "HLS" or item.get("protocol") != "HLS":
+        if item.get("mediaId") not in {"HLS", "LLHLS"} or item.get("protocol") != "HLS":
             continue
-        paths.append((item["path"], False))
+        mode = "llhls" if item["mediaId"] == "LLHLS" else "hls"
+        paths.append(SourcePath(item["path"], False, mode, cdn_from_url(item["path"])))
         for track in item.get("encodingTrack", []):
             p2p_path = track.get("p2pPath")
             if not isinstance(p2p_path, str):
@@ -102,10 +108,21 @@ def source_paths(media):
                     url = base64.b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
                     parsed = urlparse(url)
                     if parsed.scheme in ("http", "https") and parsed.netloc:
-                        paths.append((url, True))
+                        paths.append(SourcePath(url, True, "hls", cdn_from_url(url)))
                 except (ValueError, UnicodeError):
                     continue
-    return list(dict.fromkeys(paths))
+    # The user authorized testing Akamai even when the domestic API does not
+    # advertise it. Keep the entire signed path/query, substitute only these
+    # known CHZZK origins, and verify rendition/init/media before use.
+    for path in list(paths):
+        parsed = urlparse(path.url)
+        if (not path.history and path.cdn == "korean" and parsed.scheme == "https"
+                and parsed.hostname in {"nvelop-livecloud.pstatic.net", "livecloud.pstatic.net"}
+                and parsed.username is None and parsed.port in (None, 443)):
+            url = parsed._replace(netloc="livecloud.akamaized.net").geturl()
+            if not any(p.url == url and p.mode == path.mode for p in paths):
+                paths.append(SourcePath(url, False, path.mode, "akamai", probe=True))
+    return sorted(dict.fromkeys(paths), key=lambda p: p.priority)
 
 
 def resume_option(value):
@@ -301,24 +318,32 @@ class Chzzk(Plugin):
             return None
 
         streams = {}
-        for media_info in media:
-            if (
-                media_info["protocol"] == "HLS"
-                and media_info["mediaId"] == "HLS"
-            ):
-                media_path = media_info["path"]
-                hls_streams = ChzzkHLSStream.parse_variant_playlist(
-                    self.session,
-                    media_path,
-                    channel_id=channel_id,
-                    live_id=self.id,
-                    source_paths=source_paths(media),
-                    start_lookback=self.get_option("start-lookback"),
-                    resume=self.get_option("resume"),
-                    time_machine_active=data[8],
-                )
+        paths = source_paths(media)
+        # Resolve the preferred CDN first. A standby query must not delay a
+        # usable domestic stream or replace its rendition with the last result.
+        for path in paths:
+            if not path.history:
+                media_path = path.url
+                try:
+                    hls_streams = ChzzkHLSStream.parse_variant_playlist(
+                        self.session,
+                        media_path,
+                        channel_id=channel_id,
+                        live_id=self.id,
+                        source_paths=paths,
+                        source_mode=path.mode,
+                        source_cdn=path.cdn,
+                        start_lookback=self.get_option("start-lookback"),
+                        resume=self.get_option("resume"),
+                        time_machine_active=data[8],
+                    )
+                except (StreamError, ValueError):
+                    # Signed URLs can occur in the original request exception.
+                    continue
                 if hls_streams:
-                    streams.update(hls_streams)
+                    for name, stream in hls_streams.items():
+                        streams.setdefault(name, stream)
+                    break
         if not streams:
             log.error("No valid HLS streams found.")
             return None

@@ -1866,6 +1866,15 @@ for _language, _label in zip(SUPPORTED_LANGUAGES, _GUI_TEXT["previous_hour"], st
     TRANSLATIONS[_language]["gui.cli_recording_menu"] = TRANSLATIONS[_language]["gui.cli_recording_menu"].replace("\n0.", "\n6. " + _label + "\n0.")
 
 _CONTINUITY_TEXT = {
+    "source_selected": ("{channel_name}: {cdn}에서 {mode}으로 수신합니다.", "{channel_name}: receiving from {cdn} using {mode}.", "{channel_name}：通过 {cdn} 使用{mode}接收。", "{channel_name}：透過 {cdn} 使用{mode}接收。", "{channel_name}: {cdn}から{mode}で受信します。"),
+    "source_ready": ("{channel_name}: {cdn} 예비 경로가 준비되었습니다 ({mode}).", "{channel_name}: {cdn} standby is ready ({mode}).", "{channel_name}：{cdn} 备用路径已就绪（{mode}）。", "{channel_name}：{cdn} 備用路徑已就緒（{mode}）。", "{channel_name}: {cdn}の予備経路を準備しました（{mode}）。"),
+    "source_absent": ("{channel_name}: 확인할 Akamai 예비 주소가 없습니다.", "{channel_name}: no Akamai standby address is available to check.", "{channel_name}：没有可检查的 Akamai 备用地址。", "{channel_name}：沒有可檢查的 Akamai 備用位址。", "{channel_name}: 確認できるAkamaiの予備アドレスがありません。"),
+    "source_unavailable": ("{channel_name}: Akamai 예비 경로를 아직 사용할 수 없습니다. 복구할 때 다시 확인합니다.", "{channel_name}: Akamai standby is not ready yet; it will be checked again during recovery.", "{channel_name}：Akamai 备用路径尚不可用；恢复时会再次检查。", "{channel_name}：Akamai 備用路徑尚不可用；復原時會再次檢查。", "{channel_name}: Akamaiの予備経路はまだ利用できません。復旧時に再確認します。"),
+    "cdn_korean": ("한국 CDN", "Korean CDN", "韩国 CDN", "韓國 CDN", "韓国CDN"),
+    "cdn_akamai": ("Akamai", "Akamai", "Akamai", "Akamai", "Akamai"),
+    "cdn_unknown": ("제공된 CDN", "advertised CDN", "提供的 CDN", "提供的 CDN", "提供されたCDN"),
+    "mode_llhls": ("부분 조각", "partial segments", "部分片段", "部分片段", "部分セグメント"),
+    "mode_hls": ("전체 조각", "complete segments", "完整片段", "完整片段", "完全なセグメント"),
     "history_start": ("{channel_name}: 제공된 과거 {seconds}초부터 녹화를 시작합니다.", "{channel_name}: starting with {seconds} seconds of available history.", "{channel_name}：从可用的过去 {seconds} 秒开始录制。", "{channel_name}：從可用的過去 {seconds} 秒開始錄製。", "{channel_name}: 利用可能な過去{seconds}秒から録画します。"),
     "history_short": ("{channel_name}: 과거 1시간을 모두 사용할 수 없습니다. 제공된 {seconds}초부터 녹화하며, 과거 조각이 없으면 현재 방송부터 시작합니다.", "{channel_name}: a full previous hour is unavailable. Starting with {seconds} available seconds, or live if no past segments are accessible.", "{channel_name}：无法使用完整的过去一小时。从可用的 {seconds} 秒开始；没有历史片段时从当前直播开始。", "{channel_name}：無法使用完整的過去一小時。從可用的 {seconds} 秒開始；沒有歷史片段時從目前直播開始。", "{channel_name}: 過去1時間すべては利用できません。利用可能な{seconds}秒から開始し、過去のセグメントがなければ現在位置から開始します。"),
     "recovery_started": ("{channel_name}: {at} 위치의 누락 또는 지연된 조각을 복구하는 중입니다.", "{channel_name}: recovering missing or delayed media at {at}.", "{channel_name}：正在恢复 {at} 处缺失或延迟的片段。", "{channel_name}：正在復原 {at} 處缺失或延遲的片段。", "{channel_name}: {at}の欠落または遅延したセグメントを復旧中です。"),

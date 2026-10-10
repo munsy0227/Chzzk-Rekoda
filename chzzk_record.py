@@ -823,6 +823,9 @@ async def read_log_stream(
                                   for k, v in fields.items()}
                         if "reason" in fields:
                             fields["reason"] = tr("record.continuity_reason_" + fields["reason"])
+                        if event["kind"] == "source":
+                            fields["cdn"] = tr("record.cdn_" + fields["cdn"])
+                            fields["mode"] = tr("record.mode_" + fields["mode"])
                         log_message = (logger.debug if event["kind"] == "diagnostic" else
                                        logger.warning if warning else logger.info)
                         log_message(tr(key, channel_name=channel_name, **fields))

@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 EVENT_PREFIX = "CHZZK_REKODA_EVENT "
-KINDS = {"start", "recovery_started", "recovery_completed", "gap", "boundary", "diagnostic"}
+KINDS = {"start", "recovery_started", "recovery_completed", "gap", "boundary", "diagnostic", "source"}
 REASONS = {
     "resume_unavailable", "playlist_stalled", "playlist_unavailable",
     "broadcast_changed", "initialization_changed", "discontinuity",
@@ -46,6 +46,13 @@ def parse_event(line):
         return None
     if "after_gap" in event and type(event["after_gap"]) is not bool:
         return None
+    if event["kind"] == "source":
+        if (any(not isinstance(event.get(key), str) for key in ("cdn", "mode", "state"))
+                or event.get("cdn") not in {"korean", "akamai", "unknown"}
+                or event.get("mode") not in {"hls", "llhls"}
+                or event.get("state") not in {"selected", "ready", "absent", "unavailable"}):
+            return None
+        return {key: event[key] for key in ("version", "kind", "live_id", "rendition", "cdn", "mode", "state")}
     if event["kind"] == "diagnostic":
         if (any(not isinstance(event.get(key), str) for key in ("stage", "role", "category"))
                 or event["stage"] not in {"manifest", "api", "initialization", "media"}
@@ -139,4 +146,7 @@ class RecordingContinuity:
             details = {key: event.get(key) for key in (
                 "stage", "role", "category", "status", "sequence", "at")}
             return "record.continuity_diagnostic", {"details": json.dumps(details)}, False
+        if kind == "source":
+            return "record.source_" + event["state"], {
+                "cdn": event["cdn"], "mode": event["mode"]}, False
         return None
