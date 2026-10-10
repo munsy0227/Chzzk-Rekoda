@@ -25,7 +25,7 @@ import hls_continuity as continuity
 from config_store import normalize_config
 from i18n import SUPPORTED_LANGUAGES, translate
 from plugin.chzzk import ChzzkHLSStream, source_paths
-from recording_continuity import EVENT_PREFIX, RecordingContinuity, parse_event
+from recording_continuity import EVENT_PREFIX, REASONS, RecordingContinuity, parse_event
 from recording_options import effective_previous_hour
 
 
@@ -43,6 +43,7 @@ MEDIA = [box(b"moof", bytes([i])) + box(b"mdat", bytes([i]) * 10) for i in range
 class CDN:
     def __init__(self):
         self.assets = {}
+        self.responses = {}
         self.delays = {}
         self.trickle = {}
         self.statuses = {}
@@ -69,6 +70,10 @@ class CDN:
                     time.sleep(owner.delays.get(path, 0))
                     status = owner.statuses.get(path, 200 if path in owner.assets else 404)
                     body = owner.assets.get(path, b"") if status == 200 else b""
+                    with owner.lock:
+                        responses = owner.responses.get(path)
+                        if status == 200 and responses:
+                            body = responses.pop(0) if len(responses) > 1 else responses[0]
                     self.send_response(status)
                     self.send_header("Content-Length", str(len(body)))
                     self.end_headers()
@@ -190,6 +195,82 @@ class DeliveryTests(unittest.TestCase):
                                                (self.cdn.url("backup"), True)])),
                          INITIALIZATION + b"".join(MEDIA))
 
+    def test_sliding_playlist_does_not_end_retry_of_known_media_url(self):
+        self.cdn.playlist("primary")
+        stream = self.stream()
+        source = stream.continuity
+        manifest, playlist = source.candidates()[0]
+        target = source.locate(playlist.segments[0], manifest)
+        self.cdn.playlist("primary", indices=(2, 3))
+        source.playlist(manifest, force=True)
+        path = '/primary/1080p/0.m4v'
+        self.cdn.statuses[path] = 404
+        timer = threading.Timer(0.1, lambda: self.cdn.statuses.pop(path, None))
+        timer.start()
+        self.addCleanup(timer.join)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        with patch.object(continuity, "RECOVERY_TIMEOUT", 1.5):
+            self.assertEqual(reader.writer.fetch(target).media, MEDIA[0])
+        self.assertGreaterEqual(self.cdn.hits[path], 2)
+
+    def test_expired_manifest_window_is_rechecked_before_gap(self):
+        self.cdn.playlist("primary", indices=(0, 2, 3))
+        self.cdn.playlist("history", indices=(2, 3))
+        stream = self.stream([(self.cdn.url("primary"), False),
+                              (self.cdn.url("history"), True)])
+        source = stream.continuity
+        candidates = source.candidates()
+        manifest, playlist = next((m, p) for m, p in candidates if not m.history)
+        previous = source.locate(playlist.segments[0], manifest)
+        target = source.locate(playlist.segments[1], manifest)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        reader.writer.deliver(previous, reader.writer.download(previous, previous))
+        self.cdn.playlist("primary", indices=(2, 3))
+        source.playlist(manifest, force=True)
+        timer = threading.Timer(0.1, lambda: self.cdn.playlist("history"))
+        timer.start()
+        self.addCleanup(timer.join)
+        with patch.object(continuity, "RECOVERY_TIMEOUT", 2.5):
+            reader.writer.write(target, reader.writer.download(target, target))
+        self.assertEqual(reader.buffer.read(65536, block=False),
+                         INITIALIZATION + b"".join(MEDIA[:3]))
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
+
+    def test_http_failures_include_safe_deduplicated_diagnostics(self):
+        self.cdn.playlist("primary")
+        self.cdn.playlist("backup")
+        self.cdn.statuses['/primary/1080p/1.m4v'] = 503
+        self.assertEqual(self.read(self.stream([(self.cdn.url("primary"), False),
+                                               (self.cdn.url("backup"), True)])),
+                         INITIALIZATION + b"".join(MEDIA))
+        diagnostic = [e for e in self.events() if e["kind"] == "diagnostic"
+                      and e["status"] == 503]
+        self.assertEqual(len(diagnostic), 1)
+        self.assertEqual(diagnostic[0]["stage"], "media")
+        self.assertEqual(diagnostic[0]["role"], "primary")
+        self.assertEqual(diagnostic[0]["sequence"], 1)
+        self.assertEqual(diagnostic[0]["category"], "http")
+        self.assertNotIn("http://", json.dumps(diagnostic))
+
+    def test_recovery_deadline_still_bounds_missing_media(self):
+        self.cdn.playlist("primary")
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        target = stream.continuity.locate(playlist.segments[0], manifest)
+        self.cdn.playlist("primary", indices=(2, 3))
+        stream.continuity.playlist(manifest, force=True)
+        self.cdn.statuses['/primary/1080p/0.m4v'] = 404
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        before = time.monotonic()
+        with self.assertRaises(continuity.Unavailable):
+            reader.writer.fetch(target)
+        elapsed = time.monotonic() - before
+        self.assertGreaterEqual(elapsed, 0.5)
+        self.assertLess(elapsed, 1.2)
+
     def test_slow_manifest_lookup_does_not_hold_completed_primary(self):
         self.cdn.playlist("primary")
         stream = self.stream()
@@ -255,7 +336,9 @@ class DeliveryTests(unittest.TestCase):
         result = self.read(self.stream())
         self.assertEqual(result, INITIALIZATION + MEDIA[0])
         self.assertIn("gap", [e["kind"] for e in self.events()])
-        self.assertIsNone(self.events()[-1]["resume_from"])
+        self.assertEqual(self.events()[-1]["resume_from"],
+                         (START + timedelta(seconds=8)).isoformat())
+        self.assertTrue(self.events()[-1]["after_gap"])
 
     def test_partial_repair_preserves_prefix_without_duplicate_on_retry(self):
         self.cdn.playlist("primary", indices=(0, 3))
@@ -389,7 +472,8 @@ class DeliveryTests(unittest.TestCase):
         result = self.read(self.stream([(self.cdn.url("primary"), False),
                                        (self.cdn.url("history"), True)], lookback=3600))
         self.assertEqual(result, INITIALIZATION + MEDIA[2] + MEDIA[3])
-        self.assertEqual(self.events()[0]["available_seconds"], 8)
+        start = next(event for event in self.events() if event["kind"] == "start")
+        self.assertEqual(start["available_seconds"], 8)
 
     def test_resume_only_records_requested_tail(self):
         self.cdn.playlist("primary")
@@ -397,6 +481,26 @@ class DeliveryTests(unittest.TestCase):
                       **{"from": (START + timedelta(seconds=8)).isoformat()})
         self.assertEqual(self.read(self.stream(resume=resume)),
                          INITIALIZATION + MEDIA[2] + MEDIA[3])
+
+    def test_gap_resume_uses_earliest_tail_and_reports_expired_position(self):
+        self.cdn.playlist("primary", indices=(3,))
+        self.cdn.playlist("history", indices=(2, 3))
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      **{"from": (START + timedelta(seconds=4)).isoformat()})
+        self.assertEqual(self.read(self.stream([(self.cdn.url("primary"), False),
+                                               (self.cdn.url("history"), True)], resume=resume)),
+                         INITIALIZATION + MEDIA[2] + MEDIA[3])
+        gap = next(e for e in self.events() if e["kind"] == "gap")
+        self.assertEqual(gap["reason"], "resume_unavailable")
+        self.assertEqual(gap["from"], (START + timedelta(seconds=4)).isoformat())
+        self.assertEqual(gap["to"], (START + timedelta(seconds=8)).isoformat())
+
+    def test_strict_boundary_resume_does_not_silently_skip_expired_position(self):
+        self.cdn.playlist("primary", indices=(2, 3))
+        resume = dict(live_id=1, rendition="1080p",
+                      **{"from": (START + timedelta(seconds=4)).isoformat()})
+        self.assertEqual(self.read(self.stream(resume=resume)), b"")
+        self.assertIn("gap", [e["kind"] for e in self.events()])
 
     def test_broadcast_identity_mismatch_rejects_candidate(self):
         self.cdn.playlist("primary")
@@ -512,12 +616,56 @@ class SettingsAndProtocolTests(unittest.TestCase):
         self.assertIsNone(parse_event(EVENT_PREFIX + "[]"))
         self.assertIsNone(parse_event(EVENT_PREFIX + "x" * 5000))
 
+    def test_gap_boundary_preserves_resume_without_repeating_history(self):
+        state = RecordingContinuity()
+        state.begin(1)
+        state.accept(dict(kind="boundary", live_id=1, rendition="1080p",
+                          reason="segment_unavailable", resume_from=START.isoformat(), after_gap=True))
+        arguments = state.arguments(True)
+        self.assertEqual(arguments[1], "0")
+        self.assertEqual(json.loads(arguments[-1])["from"], START.isoformat())
+        self.assertTrue(json.loads(arguments[-1])["after_gap"])
+
+    def test_diagnostics_never_forward_exception_text_or_signed_urls(self):
+        state = RecordingContinuity()
+        state.begin(1)
+        event = dict(version=1, kind="diagnostic", live_id=1, rendition="1080p",
+                     stage="media", role="primary", category="http", status=403,
+                     sequence=42, at=START.isoformat(),
+                     exception="https://cdn.example/media?token=secret", cookie="secret")
+        parsed = parse_event(EVENT_PREFIX + json.dumps(event))
+        _, fields, warning = state.accept(parsed)
+        self.assertFalse(warning)
+        self.assertNotIn("secret", fields["details"])
+        self.assertNotIn("http", fields["details"].replace('"http"', ''))
+        for name, bad in (("status", True), ("sequence", -1), ("role", "secret"),
+                          ("category", "https://cdn.example"), ("after_gap", "false"),
+                          ("stage", []), ("role", {}), ("category", []), ("kind", [])):
+            malformed = dict(event, **{name: bad})
+            self.assertIsNone(parse_event(EVENT_PREFIX + json.dumps(malformed)))
+
+    def test_diagnostic_cache_is_bounded_and_does_not_store_exception_text(self):
+        from types import SimpleNamespace
+        source = continuity.ContinuitySource(
+            SimpleNamespace(session=None, _url="https://cdn.example/1080p/list.m3u8", name="test"),
+            None, 1, [])
+        with patch.object(source, "emit") as emit:
+            error = continuity.Unavailable("signed secret URL", 404, "http")
+            for sequence in range(140):
+                located = SimpleNamespace(num=sequence, date=START)
+                source.report_failure("media", "primary", error, located)
+                source.report_failure("media", "primary", error, located)
+        self.assertEqual(emit.call_count, 140)
+        self.assertEqual(len(source.diagnostics), 128)
+        self.assertNotIn("secret", str(source.diagnostics))
+
     def test_user_text_is_translated_in_every_locale(self):
         for locale in SUPPORTED_LANGUAGES:
             for key in ("gui.previous_hour", "gui.previous_hour_help", "record.history_short",
-                        "record.recovery_started", "record.continuity_gap"):
+                        "record.recovery_started", "record.continuity_gap", "record.continuity_diagnostic",
+                        *("record.continuity_reason_" + reason for reason in REASONS)):
                 self.assertNotEqual(translate(locale, key, channel_name="test", seconds=1,
-                                              at="now", start="a", end="b"), key)
+                                              at="now", start="a", end="b", reason="test", details="test"), key)
             self.assertIn("\n6.", translate(locale, "gui.cli_recording_menu"))
 
     def test_rejects_truncated_containers(self):
@@ -540,8 +688,11 @@ class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
     async def test_boundary_finalizes_file_and_resumes_without_replaying_history(self):
         await self.check_finalized_files("discontinuity")
 
-    async def test_unrecoverable_gap_finalizes_file_and_restarts_live(self):
+    async def test_unrecoverable_gap_finalizes_file_and_resumes_earliest_tail(self):
         await self.check_finalized_files("gap")
+
+    async def test_failed_fragment_resumes_after_only_the_missing_fragment(self):
+        await self.check_finalized_files("failed_segment")
 
     async def check_finalized_files(self, mode):
         import chzzk_record as recorder
@@ -565,10 +716,18 @@ class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
             fragments = [data[a:b] for a, b in zip(starts, starts[1:] + [len(data)])]
             initialization = data[:starts[0]]
             for prefix in ("primary", "continued"):
-                indices = (0, 1, 2, 3) if mode == "discontinuity" else (
-                    (0, 2, 3) if prefix == "primary" else (3,))
+                indices = ((0, 1, 2, 3) if mode == "discontinuity" or
+                           (mode == "failed_segment" and prefix == "primary") else
+                           (0, 2, 3) if prefix == "primary" else (2, 3))
                 cdn.playlist(prefix, indices=indices, initialization=initialization, media=fragments,
                              duration=250 / 60, discontinuity=2 if mode == "discontinuity" else None)
+            if mode == "failed_segment":
+                cdn.statuses['/primary/1080p/1.m4v'] = 503
+            if mode != "discontinuity":
+                path = '/continued/1080p/list.m3u8'
+                complete = cdn.assets[path]
+                live = complete.replace(b'\n#EXT-X-ENDLIST', b'')
+                cdn.responses[path] = [live] * 4 + [complete]
             stop = asyncio.Event()
             commands = []
 
@@ -592,6 +751,7 @@ from streamlink import Streamlink
 from plugin.chzzk import ChzzkHLSStream
 hls_continuity.RECOVERY_TIMEOUT=0.6;hls_continuity.HEDGE_DELAY=0.05
 settings=json.loads(sys.argv[1]);session=Streamlink()
+session.set_option('hls-live-edge',1)
 stream=ChzzkHLSStream(session,settings['url'],'test',live_id=1,
     source_paths=[(settings['url'],False),(settings['url'],True)],
     start_lookback=settings['lookback'],resume=settings['resume'])
@@ -633,16 +793,18 @@ finally:
             self.assertEqual(len(outputs), 2, (list(Path(directory).iterdir()),
                                                diagnostic_logger.mock_calls))
             self.assertFalse(list(Path(directory).glob("*.part")))
+            frame_counts = []
             for output in outputs:
                 data = json.loads(subprocess.check_output([
                     "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
                     "-show_entries", "stream=nb_read_frames", "-of", "json", str(output),
                 ], timeout=10))
-                self.assertEqual(int(data["streams"][0]["nb_read_frames"]),
-                                 500 if mode == "discontinuity" else 250)
+                frame_counts.append(int(data["streams"][0]["nb_read_frames"]))
+            self.assertEqual(sorted(frame_counts), [500, 500] if mode == "discontinuity" else [250, 500])
             self.assertEqual([c[c.index("--chzzk-start-lookback") + 1] for c in commands], ["3600", "0"])
-            self.assertEqual("--chzzk-resume" in commands[1], mode == "discontinuity")
-            if mode == "gap":
+            self.assertIn("--chzzk-resume", commands[1])
+            if mode != "discontinuity":
+                self.assertTrue(json.loads(commands[1][commands[1].index("--chzzk-resume") + 1])["after_gap"])
                 self.assertTrue(any("복구하지 못했습니다" in str(call)
                                     for call in diagnostic_logger.warning.call_args_list))
             self.assertNotIn("--hls-live-restart", commands[0])

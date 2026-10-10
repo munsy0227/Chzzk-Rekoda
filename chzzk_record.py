@@ -821,7 +821,10 @@ async def read_log_stream(
                         key, fields, warning = message
                         fields = {k: v if v is not None else tr("common.unknown")
                                   for k, v in fields.items()}
-                        log_message = logger.warning if warning else logger.info
+                        if "reason" in fields:
+                            fields["reason"] = tr("record.continuity_reason_" + fields["reason"])
+                        log_message = (logger.debug if event["kind"] == "diagnostic" else
+                                       logger.warning if warning else logger.info)
                         log_message(tr(key, channel_name=channel_name, **fields))
                 continue
             line_str = re.sub(

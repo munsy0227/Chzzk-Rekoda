@@ -1868,10 +1868,22 @@ for _language, _label in zip(SUPPORTED_LANGUAGES, _GUI_TEXT["previous_hour"], st
 _CONTINUITY_TEXT = {
     "history_start": ("{channel_name}: 제공된 과거 {seconds}초부터 녹화를 시작합니다.", "{channel_name}: starting with {seconds} seconds of available history.", "{channel_name}：从可用的过去 {seconds} 秒开始录制。", "{channel_name}：從可用的過去 {seconds} 秒開始錄製。", "{channel_name}: 利用可能な過去{seconds}秒から録画します。"),
     "history_short": ("{channel_name}: 과거 1시간을 모두 사용할 수 없습니다. 제공된 {seconds}초부터 녹화하며, 과거 조각이 없으면 현재 방송부터 시작합니다.", "{channel_name}: a full previous hour is unavailable. Starting with {seconds} available seconds, or live if no past segments are accessible.", "{channel_name}：无法使用完整的过去一小时。从可用的 {seconds} 秒开始；没有历史片段时从当前直播开始。", "{channel_name}：無法使用完整的過去一小時。從可用的 {seconds} 秒開始；沒有歷史片段時從目前直播開始。", "{channel_name}: 過去1時間すべては利用できません。利用可能な{seconds}秒から開始し、過去のセグメントがなければ現在位置から開始します。"),
-    "recovery_started": ("{channel_name}: {at} 위치의 누락 조각을 복구하는 중입니다.", "{channel_name}: recovering missing media at {at}.", "{channel_name}：正在恢复 {at} 处缺失的片段。", "{channel_name}：正在復原 {at} 處缺失的片段。", "{channel_name}: {at}の欠落セグメントを復旧中です。"),
+    "recovery_started": ("{channel_name}: {at} 위치의 누락 또는 지연된 조각을 복구하는 중입니다.", "{channel_name}: recovering missing or delayed media at {at}.", "{channel_name}：正在恢复 {at} 处缺失或延迟的片段。", "{channel_name}：正在復原 {at} 處缺失或延遲的片段。", "{channel_name}: {at}の欠落または遅延したセグメントを復旧中です。"),
     "recovery_completed": ("{channel_name}: 조각 복구 후 {at} 위치까지 이어서 녹화했습니다.", "{channel_name}: recovered media and continued through {at}.", "{channel_name}：片段已恢复，录制已继续至 {at}。", "{channel_name}：片段已復原，錄製已繼續至 {at}。", "{channel_name}: 復旧し、{at}まで録画を継続しました。"),
-    "continuity_gap": ("{channel_name}: 조각을 복구하지 못했습니다. 확인 가능한 공백 범위: {start} ~ {end}. 기존 데이터를 저장한 뒤 최신 방송부터 새 파일로 계속합니다.", "{channel_name}: media recovery failed. Known gap bounds: {start} to {end}. Saving existing data and continuing live in a new file.", "{channel_name}：片段恢复失败。可确认的空白边界：{start} 至 {end}。保存已有数据后，在新文件中从当前直播继续。", "{channel_name}：片段復原失敗。可確認的空白邊界：{start} 至 {end}。儲存已有資料後，在新檔案中從目前直播繼續。", "{channel_name}: 復旧に失敗しました。確認できる欠落の境界: {start} ～ {end}。既存データを保存し、新しいファイルで現在位置から継続します。"),
+    "continuity_gap": ("{channel_name}: 조각을 복구하지 못했습니다. 원인: {reason}. 확인 가능한 공백 범위: {start} ~ {end}. 기존 데이터를 저장한 뒤 가능한 가장 이른 위치부터 새 파일로 계속합니다.", "{channel_name}: media recovery failed. Reason: {reason}. Known gap bounds: {start} to {end}. Saving existing data and continuing from the earliest available position in a new file.", "{channel_name}：片段恢复失败。原因：{reason}。可确认的空白边界：{start} 至 {end}。保存已有数据后，在新文件中从最早可用的位置继续。", "{channel_name}：片段復原失敗。原因：{reason}。可確認的空白邊界：{start} 至 {end}。儲存已有資料後，在新檔案中從最早可用的位置繼續。", "{channel_name}: 復旧に失敗しました。理由: {reason}。確認できる欠落の境界: {start} ～ {end}。既存データを保存し、新しいファイルで利用可能な最も早い位置から継続します。"),
     "continuity_boundary": ("{channel_name}: 기존 파일을 정리하고 새 파일로 녹화를 이어갑니다.", "{channel_name}: finalizing the current file and continuing in a new file.", "{channel_name}：正在完成当前文件，并在新文件中继续录制。", "{channel_name}：正在完成目前檔案，並在新檔案中繼續錄製。", "{channel_name}: 現在のファイルを確定し、新しいファイルで録画を継続します。"),
+    "continuity_diagnostic": ("{channel_name}: 수신 진단 {details}", "{channel_name}: reception diagnostic {details}", "{channel_name}：接收诊断 {details}", "{channel_name}：接收診斷 {details}", "{channel_name}: 受信診断 {details}"),
+    "continuity_reason_resume_unavailable": ("재개 위치가 제공 목록에 없음", "resume position absent from available playlists", "可用列表中没有恢复位置", "可用清單中沒有續錄位置", "再開位置が利用可能な一覧にない"),
+    "continuity_reason_playlist_stalled": ("미디어 목록의 장시간 무진행", "playlist stopped advancing", "媒体列表长时间没有更新", "媒體清單長時間沒有更新", "プレイリストの更新停止"),
+    "continuity_reason_playlist_unavailable": ("미디어 목록을 가져오지 못함", "playlist could not be retrieved", "无法获取媒体列表", "無法取得媒體清單", "プレイリスト取得失敗"),
+    "continuity_reason_broadcast_changed": ("방송 변경", "broadcast changed", "直播已变更", "直播已變更", "配信の変更"),
+    "continuity_reason_initialization_changed": ("미디어 초기화 정보 변경", "media initialization changed", "媒体初始化信息已变更", "媒體初始化資訊已變更", "メディア初期化情報の変更"),
+    "continuity_reason_discontinuity": ("미디어 연속성 변경", "media discontinuity", "媒体不连续", "媒體不連續", "メディアの不連続"),
+    "continuity_reason_position_unknown": ("조각 위치를 대응할 수 없음", "segment positions could not be matched", "无法匹配片段位置", "無法對應片段位置", "セグメント位置の照合失敗"),
+    "continuity_reason_interval_unavailable": ("필요한 구간을 복구하지 못함", "required interval could not be recovered", "无法恢复所需区间", "無法復原所需區間", "必要な区間の復旧失敗"),
+    "continuity_reason_segment_unavailable": ("필요한 조각을 복구하지 못함", "required segment could not be recovered", "无法恢复所需片段", "無法復原所需片段", "必要なセグメントの復旧失敗"),
+    "continuity_reason_output_stalled": ("미디어 출력의 장시간 무진행", "media output stopped advancing", "媒体输出长时间没有进展", "媒體輸出長時間沒有進展", "メディア出力の停止"),
+    "continuity_reason_broadcast_ended": ("방송 종료", "broadcast ended", "直播已结束", "直播已結束", "配信終了"),
 }
 for _key, _texts in _CONTINUITY_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):

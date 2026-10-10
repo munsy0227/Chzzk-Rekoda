@@ -29,19 +29,17 @@ from recording_continuity import EVENT_PREFIX
 HEDGE_DELAY = 2.0
 RECOVERY_TIMEOUT = 90.0
 API_REFRESH_INTERVAL = 30.0
+RECOVERY_REFRESH_INTERVAL = 5.0
 TIME_TOLERANCE = 0.02
 
 
 class Unavailable(StreamError):
     """A required segment could not be delivered."""
 
-    def __init__(self, message, status=None):
+    def __init__(self, message, status=None, category="unavailable"):
         super().__init__(message)
         self.status = status
-
-
-class Expired(Unavailable):
-    pass
+        self.category = category
 
 
 class BroadcastEnded(Unavailable):
@@ -73,31 +71,31 @@ def quality_from_url(url):
 def validate_media(data, is_map=False):
     """Reject empty/truncated TS or ISO-BMFF before exposing any bytes."""
     if not data:
-        raise Unavailable("Empty media response")
+        raise Unavailable("Empty media response", category="invalid_media")
     if data[0] == 0x47 and not is_map:
         if len(data) % 188 or any(data[i] != 0x47 for i in range(0, len(data), 188)):
-            raise Unavailable("Incomplete transport stream")
+            raise Unavailable("Incomplete transport stream", category="invalid_media")
         return
     offset, boxes = 0, set()
     while offset < len(data):
         if len(data) - offset < 8:
-            raise Unavailable("Incomplete MP4 box header")
+            raise Unavailable("Incomplete MP4 box header", category="invalid_media")
         size, kind = struct.unpack_from(">I4s", data, offset)
         header = 8
         if size == 1:
             if len(data) - offset < 16:
-                raise Unavailable("Incomplete MP4 extended size")
+                raise Unavailable("Incomplete MP4 extended size", category="invalid_media")
             size = struct.unpack_from(">Q", data, offset + 8)[0]
             header = 16
         elif size == 0:
             size = len(data) - offset
         if size < header or offset + size > len(data):
-            raise Unavailable("Incomplete MP4 box")
+            raise Unavailable("Incomplete MP4 box", category="invalid_media")
         boxes.add(kind)
         offset += size
     required = {b"moov"} if is_map else {b"moof", b"mdat"}
     if not required <= boxes:
-        raise Unavailable("Unexpected media container")
+        raise Unavailable("Unexpected media container", category="invalid_media")
 
 
 @dataclass
@@ -151,6 +149,8 @@ class ContinuitySource:
         self.stop = threading.Event()
         self.lock = threading.RLock()
         self.event_lock = threading.Lock()
+        self.diagnostic_lock = threading.Lock()
+        self.diagnostics = OrderedDict()
         self.last_refresh = time.monotonic()
         self.last_discovery = 0.0
         self.paths = paths
@@ -168,6 +168,24 @@ class ContinuitySource:
         with self.event_lock:
             sys.stderr.write(EVENT_PREFIX + json.dumps(event) + "\n")
             sys.stderr.flush()
+
+    def report_failure(self, stage, role, error, located=None):
+        """Bounded, URL-free diagnostics; never serialize request exceptions."""
+        if self.stop.is_set() or isinstance(error, (BroadcastEnded, BroadcastChanged)):
+            return
+        status = getattr(error, "status", None)
+        category = getattr(error, "category", "network")
+        sequence = located.num if located is not None else None
+        at = timestamp(located.date) if located is not None else None
+        key = (stage, role, category, status, sequence, at)
+        with self.diagnostic_lock:
+            if key in self.diagnostics:
+                return
+            self.diagnostics[key] = None
+            while len(self.diagnostics) > 128:
+                self.diagnostics.popitem(last=False)
+        self.emit("diagnostic", stage=stage, role=role, category=category,
+                  status=status, sequence=sequence, at=at)
 
     def add(self, url, history):
         parsed = urlparse(url)
@@ -222,11 +240,14 @@ class ContinuitySource:
                 # Do not include signed URLs embedded in requests exceptions.
                 response = getattr(getattr(error, "err", error), "response", None)
                 status = getattr(response, "status_code", None)
+                failure = error if isinstance(error, Unavailable) else Unavailable(
+                    "Manifest request failed", status, "http" if status else "network")
+                self.report_failure("manifest", "history" if manifest.history else "current", failure)
                 if status in (401, 403):
                     self.discover(force=True)
                 if isinstance(error, Unavailable):
                     raise
-                raise Unavailable(type(error).__name__) from None
+                raise failure from None
 
     def discover(self, force=False):
         with self.lock:
@@ -234,7 +255,11 @@ class ContinuitySource:
                 return
             if force or time.monotonic() - self.last_refresh >= API_REFRESH_INTERVAL:
                 self.last_refresh = time.monotonic()
-                snapshot = self.provider()
+                try:
+                    snapshot = self.provider()
+                except (StreamError, ValueError) as error:
+                    self.report_failure("api", "current", error)
+                    raise
                 if snapshot is None:
                     self.ended = True
                     raise BroadcastEnded("Broadcast ended")
@@ -269,18 +294,26 @@ class ContinuitySource:
                     if not history:
                         self.primary = candidate
                         self.stream._url = candidate.url
-                except (StreamError, ValueError):
+                except (StreamError, ValueError) as error:
+                    response = getattr(getattr(error, "err", error), "response", None)
+                    status = getattr(response, "status_code", None)
+                    self.report_failure("manifest", "history" if history else "current",
+                                        Unavailable("Discovery failed", status,
+                                                    "http" if status else "network"))
                     continue
 
     def candidates(self, refresh=False):
         with self.lock:
             if (refresh or time.monotonic() - self.last_refresh >= API_REFRESH_INTERVAL
                     or len(self.manifests) == 1):
-                self.discover(force=refresh)
+                # Non-authentication failures may refresh discovery sooner,
+                # without flooding the API on every failed media retry.
+                self.discover(force=refresh and
+                              time.monotonic() - self.last_refresh >= RECOVERY_REFRESH_INTERVAL)
             result = []
             for manifest in list(self.manifests.values()):
                 try:
-                    playlist = self.playlist(manifest)
+                    playlist = self.playlist(manifest, force=refresh)
                     result.append((manifest, playlist))
                 except Unavailable:
                     continue
@@ -309,13 +342,13 @@ class ContinuitySource:
                 if segment.uri != target.uri and self.matches(target, located):
                     yield located
 
-    def between(self, previous, following):
+    def between(self, previous, following, refresh=False):
         """Yield the surviving prefix before a hole, preserving valid media."""
         if self.ended:
             raise BroadcastEnded("Broadcast ended")
         if self.changed:
             raise BroadcastChanged("Broadcast changed")
-        candidates = self.candidates()
+        candidates = self.candidates(refresh)
         if previous.end is None or following.date is None:
             segments = [self.locate(s, m) for m, p in candidates
                         if m.url == previous.manifest.url == following.manifest.url
@@ -340,9 +373,8 @@ class ContinuitySource:
                           and abs((s.date - position).total_seconds()) <= TIME_TOLERANCE
                           and s.duration > 0), None)
             if found is None or found.end > following.date + timedelta(seconds=TIME_TOLERANCE):
-                if candidates and all(p.segments[0].date and p.segments[0].date > position
-                                      for _, p in candidates):
-                    raise Expired("Interval outside available window")
+                # A sliding/temporarily unavailable manifest is not proof that
+                # every advertised CDN has permanently lost this interval.
                 raise Unavailable("Required interval no longer available")
             yield found
             position = found.end
@@ -370,11 +402,18 @@ class ChzzkContinuityWorker(HLSStreamWorker):
                     if resume and resume["live_id"] == source.live_id and resume["rendition"] == source.rendition:
                         cutoff = parse_timestamp(resume["from"])
                         available = [source.locate(s, m) for m, p in source.candidates()
-                                     for s in p.segments if s.date and s.date >= cutoff]
+                                     for s in p.segments if s.date and
+                                     s.date >= cutoff - timedelta(seconds=TIME_TOLERANCE)]
                         segments = sorted(available, key=lambda s: s.date)
-                        if not segments or abs((segments[0].date - cutoff).total_seconds()) > TIME_TOLERANCE:
+                        if not segments:
                             source.terminal = ("gap", "resume_unavailable")
                             return
+                        if abs((segments[0].date - cutoff).total_seconds()) > TIME_TOLERANCE:
+                            if not resume.get("after_gap", False):
+                                source.terminal = ("gap", "resume_unavailable")
+                                return
+                            source.emit("gap", reason="resume_unavailable",
+                                        **{"from": timestamp(cutoff), "to": timestamp(segments[0].date)})
                     elif source.lookback and segments[-1].end:
                         cutoff = segments[-1].end - timedelta(seconds=source.lookback)
                         candidates = source.candidates()
@@ -520,32 +559,38 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 retries=0, exception=StreamError, **params,
             ) as response:
                 if byterange and response.status_code != 206:
-                    raise Unavailable("Byte range not honored")
+                    raise Unavailable("Byte range not honored", category="truncated")
                 data = bytearray()
                 # read1 returns currently received bytes instead of waiting to
                 # fill a chunk. Even a trickling body cannot postpone deadline
                 # and stop checks until an entire 64 KiB has arrived.
                 while chunk := response.raw.read1(65536, decode_content=True):
                     if self.source.stop.is_set() or time.monotonic() > deadline:
-                        raise Unavailable("Media request interrupted")
+                        raise Unavailable("Media request interrupted", category="timeout")
                     data.extend(chunk)
                 length = response.headers.get("Content-Length")
                 if length and not response.headers.get("Content-Encoding") and len(data) != int(length):
-                    raise Unavailable("Incomplete HTTP response")
+                    raise Unavailable("Incomplete HTTP response", category="truncated")
                 if byterange and len(data) != byterange.range:
-                    raise Unavailable("Incomplete byte range")
+                    raise Unavailable("Incomplete byte range", category="truncated")
                 return bytes(data)
         except Exception as error:
             status = getattr(getattr(error, "err", error), "response", None)
             if status is not None and status.status_code in (401, 403):
-                raise Unavailable("token", status.status_code) from None
+                raise Unavailable("token", status.status_code, "http") from None
             if status is not None:
-                raise Unavailable("http", status.status_code) from None
+                raise Unavailable("http", status.status_code, "http") from None
             if isinstance(error, Unavailable):
                 raise
             if isinstance(error, (BroadcastEnded, BroadcastChanged)):
                 raise
-            raise Unavailable(type(error).__name__) from None
+            cause = getattr(error, "err", error)
+            name = type(cause).__name__
+            category = ("timeout" if "timeout" in name.lower() else
+                        "truncated" if name in {"ProtocolError", "IncompleteRead",
+                                                "ChunkedEncodingError", "ContentDecodingError"}
+                        else "network")
+            raise Unavailable("Media request failed", category=category) from None
 
     def decrypt(self, data, key, number):
         if key is None or key.method == "NONE":
@@ -581,16 +626,25 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         return data
 
     def download(self, located, target):
-        initialization = self.load_map(located)
-        if located.uri != target.uri:
-            expected = self.load_map(target)
-            if hashlib.sha256(initialization).digest() != hashlib.sha256(expected).digest():
-                raise Unavailable("Different initialization")
-        media = self.decrypt(self.http_bytes(located.uri, located.byterange), located.key, located.num)
-        validate_media(media)
-        if not initialization and media[0] != 0x47:
-            raise Unavailable("Missing fragment initialization")
-        return Download(located, initialization, media)
+        stage = "initialization"
+        try:
+            initialization = self.load_map(located)
+            if located.uri != target.uri:
+                expected = self.load_map(target)
+                if hashlib.sha256(initialization).digest() != hashlib.sha256(expected).digest():
+                    raise Unavailable("Different initialization", category="initialization")
+            stage = "media"
+            media = self.decrypt(self.http_bytes(located.uri, located.byterange), located.key, located.num)
+            validate_media(media)
+            if not initialization and media[0] != 0x47:
+                raise Unavailable("Missing fragment initialization", category="initialization")
+            return Download(located, initialization, media)
+        except (Unavailable, ValueError) as error:
+            if isinstance(error, ValueError):
+                error = Unavailable("Invalid encrypted media", category="invalid_media")
+            self.source.report_failure(stage, "primary" if located.uri == target.uri else "alternate",
+                                       error, located)
+            raise error from None
 
     def submit_request(self, located, target, deadline):
         while not self.source.stop.is_set() and time.monotonic() < deadline:
@@ -625,16 +679,19 @@ class ChzzkContinuityWriter(HLSStreamWriter):
             futures = [primary]
             lookup = None
             refresh_needed = False
+            refresh_candidates = False
             try:
                 try:
                     return primary.result(timeout=HEDGE_DELAY)
                 except Unavailable as error:
                     futures.remove(primary)
+                    refresh_candidates = True
                     if error.status in (401, 403):
                         self.refresh_token()
                         refresh_needed = True
                 except ValueError:
                     futures.remove(primary)
+                    refresh_candidates = True
                 except TimeoutError:
                     pass
                 # Manifest/API discovery can be slow too. Poll it alongside the
@@ -642,7 +699,8 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 # resolving a fallback that is no longer needed.
                 if self.lookup_slots.acquire(blocking=False):
                     try:
-                        lookup = self.lookups.submit(lambda: next(self.source.alternatives(required), None))
+                        lookup = self.lookups.submit(
+                            lambda refresh=refresh_candidates: next(self.source.alternatives(required, refresh), None))
                     except RuntimeError:
                         self.lookup_slots.release()
                         raise Unavailable("Stopped") from None
@@ -681,11 +739,8 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 if alternative:
                     target = alternative
                     continue
-                elif target.date is not None:
-                    candidates = self.source.candidates()
-                    if candidates and all(p.segments[0].date and p.segments[0].date > target.date
-                                          for _, p in candidates):
-                        break
+                # Retry the known media URL until the recovery deadline. A
+                # fragment absent from fresh playlists can still be fetchable.
                 self.source.stop.wait(max(0, min(1, deadline - time.monotonic())))
             except (BroadcastEnded, BroadcastChanged):
                 raise
@@ -697,25 +752,35 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                     lookup.cancel()
                 for future in futures:
                     future.cancel()
+        self.source.report_failure("media", "primary",
+                                   Unavailable("Recovery deadline", category="timeout"), required)
         raise Unavailable("Required segment unavailable")
 
-    def boundary(self, following, reason):
+    def boundary(self, following, reason, resume_from=None, after_gap=False):
         if self.failed or self.source.stop.is_set():
             return
         self.failed = True
         self.source.emit("boundary", reason=reason,
-                         resume_from=timestamp(following.date) if following else None)
+                         resume_from=timestamp(following.date if following else resume_from),
+                         after_gap=after_gap)
         self.close()
 
     def fail(self, previous, following, reason, missing_next=False):
         if self.failed or self.source.stop.is_set():
             return
+        start = previous.end if previous else following.date if following else None
+        if start is None and self.source.resume:
+            start = parse_timestamp(self.source.resume["from"])
         self.source.emit("gap", reason=reason,
-                         **{"from": timestamp(previous.end) if previous else
-                            timestamp(following.date) if following else None,
+                         **{"from": timestamp(start),
                             "to": timestamp(following.end if missing_next else following.date)
                             if following else None})
-        self.boundary(None, reason)
+        # Keep the earliest position after the known hole instead of jumping
+        # to a moving live edge during process/file finalization.
+        resume_from = (following.end if missing_next else following.date) if following else None
+        if reason == "broadcast_ended":
+            resume_from = None
+        self.boundary(None, reason, resume_from=resume_from, after_gap=resume_from is not None)
 
     def deliver(self, target, result):
         if self.previous and (target.discontinuity or result.initialization != self.initialization):
@@ -755,9 +820,10 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 self.source.emit("recovery_started", at=timestamp(previous.end))
                 self.source.recovering = True
                 deadline = time.monotonic() + RECOVERY_TIMEOUT
+                refresh = False
                 while not self.source.stop.is_set():
                     try:
-                        chain = self.source.between(self.previous, target)
+                        chain = self.source.between(self.previous, target, refresh)
                         for segment in chain:
                             if not self.deliver(segment, self.fetch(segment)):
                                 return
@@ -769,13 +835,11 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                     except BroadcastChanged:
                         self.boundary(None, "broadcast_changed")
                         return
-                    except Expired:
-                        self.fail(self.previous, target, "interval_unavailable")
-                        return
                     except Unavailable:
                         if time.monotonic() >= deadline:
                             self.fail(self.previous, target, "interval_unavailable")
                             return
+                        refresh = True
                         self.source.stop.wait(1)
         if not self.source.stop.is_set():
             self.deliver(target, result)

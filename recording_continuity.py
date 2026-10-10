@@ -6,7 +6,7 @@ from datetime import datetime
 
 
 EVENT_PREFIX = "CHZZK_REKODA_EVENT "
-KINDS = {"start", "recovery_started", "recovery_completed", "gap", "boundary"}
+KINDS = {"start", "recovery_started", "recovery_completed", "gap", "boundary", "diagnostic"}
 REASONS = {
     "resume_unavailable", "playlist_stalled", "playlist_unavailable",
     "broadcast_changed", "initialization_changed", "discontinuity",
@@ -34,15 +34,30 @@ def parse_event(line):
     except (ValueError, TypeError):
         return None
     if (not isinstance(event, dict) or event.get("version") != 1
-            or event.get("kind") not in KINDS
+            or not isinstance(event.get("kind"), str) or event["kind"] not in KINDS
             or type(event.get("live_id")) is not int
             or not isinstance(event.get("rendition"), str)
             or len(event["rendition"]) > 32):
         return None
     if any(not valid_time(event.get(key)) for key in ("at", "from", "to", "resume_from")):
         return None
-    if event["kind"] in {"gap", "boundary"} and event.get("reason") not in REASONS:
+    if event["kind"] in {"gap", "boundary"} and (
+            not isinstance(event.get("reason"), str) or event["reason"] not in REASONS):
         return None
+    if "after_gap" in event and type(event["after_gap"]) is not bool:
+        return None
+    if event["kind"] == "diagnostic":
+        if (any(not isinstance(event.get(key), str) for key in ("stage", "role", "category"))
+                or event["stage"] not in {"manifest", "api", "initialization", "media"}
+                or event.get("role") not in {"current", "history", "primary", "alternate"}
+                or event.get("category") not in {
+                    "http", "network", "timeout", "truncated", "invalid_media",
+                    "initialization", "unavailable"}):
+            return None
+        status, sequence = event.get("status"), event.get("sequence")
+        if ((status is not None and (type(status) is not int or not 100 <= status <= 599))
+                or (sequence is not None and (type(sequence) is not int or sequence < 0))):
+            return None
     if event["kind"] == "start":
         seconds = event.get("available_seconds")
         if (event.get("requested_seconds") not in (0, 3600)
@@ -100,6 +115,8 @@ class RecordingContinuity:
             start = event.get("resume_from")
             self.resume = (dict(live_id=self.live_id, rendition=event["rendition"],
                                 **{"from": start}) if start else None)
+            if self.resume is not None and event.get("after_gap", False):
+                self.resume["after_gap"] = True
         if kind == "start":
             if event["requested_seconds"] == 0:
                 return None
@@ -112,7 +129,14 @@ class RecordingContinuity:
             return "record.continuity_gap", {
                 "start": format_log_time(event.get("from")),
                 "end": format_log_time(event.get("to")),
+                "reason": event["reason"],
             }, True
         if kind == "boundary":
             return "record.continuity_boundary", {}, False
+        if kind == "diagnostic":
+            # Keep only validated, URL-free fields even if a child supplies
+            # additional JSON properties containing exception text.
+            details = {key: event.get(key) for key in (
+                "stage", "role", "category", "status", "sequence", "at")}
+            return "record.continuity_diagnostic", {"details": json.dumps(details)}, False
         return None

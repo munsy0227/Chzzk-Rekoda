@@ -112,7 +112,8 @@ def resume_option(value):
     data = json.loads(value)
     if (not isinstance(data, dict) or type(data.get("live_id")) is not int
             or not isinstance(data.get("rendition"), str)
-            or not isinstance(data.get("from"), str)):
+            or not isinstance(data.get("from"), str)
+            or type(data.get("after_gap", False)) is not bool):
         raise ValueError("Invalid resume position")
     parse_timestamp(data["from"])
     return data
