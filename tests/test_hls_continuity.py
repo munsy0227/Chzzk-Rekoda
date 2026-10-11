@@ -3,6 +3,7 @@
 import contextlib
 import asyncio
 import io
+import hashlib
 import json
 import os
 import shutil
@@ -28,6 +29,7 @@ from plugin.chzzk import ChzzkHLSStream, source_paths
 from recording_continuity import EVENT_PREFIX, REASONS, RecordingContinuity, parse_event
 from recording_options import effective_previous_hour
 from continuity_report import ContinuityReport, summarize
+from recording_buffer import BufferFull, MediaBuffer
 
 
 START = datetime(2026, 10, 10, tzinfo=timezone.utc)
@@ -197,6 +199,201 @@ class DeliveryTests(unittest.TestCase):
     def events(self):
         return [parse_event(line) for line in self.stderr.getvalue().splitlines()
                 if line.startswith(EVENT_PREFIX)]
+
+    def test_seen_segment_survives_sliding_manifest_and_frozen_metadata(self):
+        self.cdn.playlist('primary')
+        stream = self.stream()
+        source = stream.continuity
+        manifest, old = source.candidates()[0]
+        previous = source.locate(old.segments[0], manifest, old)
+        following = source.locate(old.segments[2], manifest, old)
+        self.cdn.playlist('primary', indices=(2, 3))
+        source.playlist(manifest, force=True)
+        chain = list(source.between(previous, following))
+        self.assertEqual([s.num for s in chain], [1])
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        self.assertEqual(reader.writer.fetch(chain[0]).media, MEDIA[1])
+        old.segments[0].date += timedelta(seconds=99)
+        self.assertEqual(previous.date, START)
+
+    def test_capture_continues_when_output_queue_is_full_and_missing_head_retries(self):
+        self.cdn.playlist('primary', indices=(0,), end=False)
+        stream = self.stream()
+        source = stream.continuity
+        manifest, playlist = source.candidates()[0]
+        first = source.locate(playlist.segments[0], manifest, playlist)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        reader.writer.deliver(first, reader.writer.download(first, first))
+        progress = source.last_progress
+        # Simulate backpressure without draining the Streamlink output queue.
+        for _ in range(reader.writer._queue.maxsize):
+            reader.writer._queue.put(object())
+        self.cdn.playlist('primary', indices=(1, 2, 3), end=False)
+        self.cdn.statuses['/primary/1080p/1.m4v'] = 503
+        source.recovering = True
+        source.emit('recovery_started', at=(START + timedelta(seconds=4)).isoformat())
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline and len(reader.writer.media_buffer.entries()) < 2:
+            time.sleep(0.02)
+        rows = reader.writer.media_buffer.entries()
+        self.assertEqual([row['at'] for row in rows],
+                         [(START + timedelta(seconds=n)).isoformat() for n in (8, 12)])
+        self.assertGreaterEqual(self.cdn.hits['/primary/1080p/list.m3u8'], 2)
+        self.assertLessEqual(self.cdn.peak, 4)
+        self.assertEqual(reader.writer.previous.num, 0)
+        self.assertEqual(source.last_progress, progress)
+        self.assertIsNone(source.recovery_deadline)
+        self.assertFalse(any(e['kind'] == 'checkpoint' and e['from'] != START.isoformat()
+                             for e in self.events()))
+
+    def test_buffered_media_survives_recreation_after_remote_media_disappears(self):
+        self.cdn.playlist('primary')
+        with tempfile.TemporaryDirectory() as directory:
+            first = self.stream()
+            first.buffer_dir = directory
+            manifest, playlist = first.continuity.candidates()[0]
+            reader = continuity.ChzzkContinuityReader(first)
+            for segment in playlist.segments[1:]:
+                item = first.continuity.locate(segment, manifest, playlist)
+                result = reader.writer.fetch(item)
+                self.assertIsInstance(result, continuity.BufferedDownload)
+            reader.writer.close()
+            for index in (1, 2, 3):
+                self.cdn.statuses[f'/primary/1080p/{index}.m4v'] = 404
+            self.cdn.playlist('primary', indices=(3,))
+            resume = dict(live_id=1, rendition='1080p', after_gap=True,
+                          **{'from': (START + timedelta(seconds=4)).isoformat()},
+                          recovery_deadline=(datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat())
+            second = self.stream(resume=resume)
+            second.buffer_dir = directory
+            output = self.read(second)
+            self.assertEqual(output, INITIALIZATION + b''.join(MEDIA[1:]))
+            self.assertFalse(any(e['kind'] == 'gap' for e in self.events()))
+
+    def test_recovery_preserves_tail_seen_on_alternate_without_changing_primary(self):
+        self.cdn.playlist('primary', indices=(0,), end=False)
+        self.cdn.playlist('history', indices=(2, 3))
+        stream = self.stream([(self.cdn.url('primary'), False), (self.cdn.url('history'), True)])
+        source = stream.continuity
+        primary = source.primary
+        playlist = source.playlist(primary)
+        first = source.locate(playlist.segments[0], primary, playlist)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        reader.writer.deliver(first, reader.writer.download(first, first))
+        source.emit('recovery_started', at=first.end.isoformat())
+        self.cdn.statuses['/primary/1080p/list.m3u8'] = 503
+        alternate = source.add(self.cdn.url('history'), True)
+        source.playlist(alternate, force=True)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and len(reader.writer.media_buffer.entries()) < 2:
+            time.sleep(0.01)
+        self.assertEqual([row['at'] for row in reader.writer.media_buffer.entries()],
+                         [(START + timedelta(seconds=n)).isoformat() for n in (8, 12)])
+        self.assertIs(source.primary, primary)
+
+    def test_corrupt_buffer_is_rejected_and_refetched_from_known_url(self):
+        self.cdn.playlist('primary')
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        target = stream.continuity.locate(playlist.segments[0], manifest, playlist)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        cached = reader.writer.fetch(target)
+        (cached.buffer.root / (cached.row['key'] + '.bin')).write_bytes(b'bad')
+        self.assertEqual(reader.writer.fetch(target).media, MEDIA[0])
+        self.assertTrue(any(e['kind'] == 'buffer_status' for e in self.events()))
+
+    def test_corruption_after_download_is_refetched_before_output(self):
+        self.cdn.playlist('primary')
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        target = stream.continuity.locate(playlist.segments[0], manifest, playlist)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        cached = reader.writer.fetch(target)
+        (cached.buffer.root / (cached.row['key'] + '.bin')).write_bytes(b'x' * cached.row['size'])
+        self.assertTrue(reader.writer.deliver(target, cached))
+        self.assertEqual(reader.buffer.read(len(INITIALIZATION) + len(MEDIA[0]), block=False),
+                         INITIALIZATION + MEDIA[0])
+        self.assertEqual(self.cdn.hits['/primary/1080p/0.m4v'], 2)
+
+    def test_full_store_pauses_followup_future_until_output_frees_capacity(self):
+        self.cdn.playlist('primary')
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        first, second = [stream.continuity.locate(s, manifest, playlist) for s in playlist.segments[:2]]
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        reader.writer.output_target = first
+        cached = reader.writer.fetch(first)
+        buffer = reader.writer.media_buffer
+        buffer.max_bytes = buffer.used + 1
+        future = reader.writer.executor.submit(reader.writer.fetch, second)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not buffer.byte_full:
+            time.sleep(0.01)
+        self.assertTrue(buffer.byte_full)
+        self.assertFalse(future.done())
+        hits = self.cdn.hits['/primary/1080p/1.m4v']
+        time.sleep(0.15)
+        self.assertEqual(self.cdn.hits['/primary/1080p/1.m4v'], hits)
+        self.assertEqual(buffer.entries(), [cached.row])
+        self.assertTrue(reader.writer.deliver(first, cached))
+        reader.writer.output_target = second
+        result = future.result(timeout=2)
+        self.assertIsInstance(result, continuity.BufferedDownload)
+        self.assertTrue(reader.writer.deliver(second, result))
+
+    def test_stop_during_capture_does_not_leave_late_media(self):
+        self.cdn.playlist('primary', indices=(0,), end=False)
+        with tempfile.TemporaryDirectory() as directory:
+            stream = self.stream()
+            stream.buffer_dir = directory
+            manifest, playlist = stream.continuity.candidates()[0]
+            first = stream.continuity.locate(playlist.segments[0], manifest, playlist)
+            reader = continuity.ChzzkContinuityReader(stream)
+            reader.writer.deliver(first, reader.writer.download(first, first))
+            self.cdn.playlist('primary', indices=(1, 2, 3), end=False)
+            self.cdn.delays['/primary/1080p/1.m4v'] = 0.2
+            stream.continuity.emit('recovery_started', at=first.end.isoformat())
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and not self.cdn.hits['/primary/1080p/1.m4v']:
+                time.sleep(0.01)
+            self.assertGreater(self.cdn.hits['/primary/1080p/1.m4v'], 0)
+            reader.writer.close()
+            reader.writer.capture_requests.shutdown(wait=True, cancel_futures=True)
+            self.assertEqual(list(Path(directory).iterdir()), [])
+
+    def test_playlist_update_keeps_observed_parts_and_discontinuity_sequence(self):
+        self.cdn.ll_playlist('primary', counts=(2, 3, 1, 4))
+        stream = self.stream()
+        manifest, old = stream.continuity.candidates()[0]
+        old.discontinuity_sequence = 7
+        observed = stream.continuity.locate(old.segments[0], manifest, old)
+        self.cdn.ll_playlist('primary', counts=(4, 1, 2, 3))
+        fresh = stream.continuity.playlist(manifest, force=True)
+        fresh.discontinuity_sequence = 99
+        frozen = stream.continuity.locate(old.segments[0], manifest, old)
+        self.assertEqual(len(observed.parts), 2)
+        self.assertEqual(len(frozen.parts), 2)
+        self.assertEqual(observed.discontinuity_id, 7)
+        self.assertEqual(frozen.discontinuity_id, 7)
+
+    def test_buffer_write_failure_keeps_direct_validated_output(self):
+        self.cdn.playlist('primary')
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        target = stream.continuity.locate(playlist.segments[0], manifest, playlist)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        with patch.object(reader.writer.media_buffer, 'store', side_effect=OSError('secret')):
+            result = reader.writer.fetch(target)
+            self.assertEqual(result.media, MEDIA[0])
+            self.assertTrue(reader.writer.deliver(target, result))
+        self.assertNotIn('secret', self.stderr.getvalue())
 
     def test_normal_order_exactly_once(self):
         self.cdn.playlist("primary")
@@ -1040,6 +1237,77 @@ class LLHLSTests(unittest.TestCase):
             self.assertEqual(self.cdn.hits['/primary/1080p/1.m4v'], 1)
 
 
+class BufferStorageTests(unittest.TestCase):
+    def metadata(self, number=0):
+        return dict(at=(START + timedelta(seconds=4 * number)).isoformat(), duration=4,
+                    number=number, discontinuity=False, discontinuity_id=0, cdn='korean', mode='hls')
+
+    def test_byte_and_time_limits_keep_earliest_media_and_count_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            buffer = MediaBuffer(directory, 1, '1080p', max_seconds=8)
+            row = buffer.store(self.metadata(), INITIALIZATION, MEDIA[0])
+            buffer.max_bytes = buffer.used + 1
+            with self.assertRaises(BufferFull):
+                buffer.store(self.metadata(1), INITIALIZATION, MEDIA[1])
+            self.assertEqual(buffer.entries(), [row])
+            self.assertEqual(buffer.used, sum(p.stat().st_size for p in Path(directory).iterdir()))
+            buffer.max_bytes = 256 * 1024 * 1024
+            with self.assertRaises(BufferFull):
+                buffer.store(self.metadata(2), INITIALIZATION, MEDIA[2])
+            buffer.discard_before(START + timedelta(seconds=4))
+            self.assertEqual(buffer.used, 0)
+            self.assertEqual(buffer.entries(), [])
+
+    def test_time_limit_starts_at_earliest_pending_position_before_storage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            buffer = MediaBuffer(directory, 1, '1080p', max_seconds=8)
+            buffer.note_pending(START)
+            self.assertFalse(buffer.can_store(START + timedelta(seconds=8), 4))
+            self.assertTrue(buffer.can_store(START + timedelta(seconds=4), 4))
+            buffer.discard_before(START + timedelta(seconds=4))
+            self.assertTrue(buffer.can_store(START + timedelta(seconds=8), 4))
+
+    def test_incomplete_write_is_removed_and_recording_identity_isolated(self):
+        with tempfile.TemporaryDirectory() as directory:
+            buffer = MediaBuffer(directory, 1, '1080p')
+            with patch.object(Path, 'replace', side_effect=OSError('disk full')):
+                with self.assertRaises(OSError):
+                    buffer.store(self.metadata(), INITIALIZATION, MEDIA[0])
+            self.assertEqual(list(Path(directory).iterdir()), [])
+            self.assertEqual(buffer.used, 0)
+            for live_id, rendition in ((2, '1080p'), (1, '720p')):
+                buffer = MediaBuffer(directory, 1, '1080p')
+                buffer.store(self.metadata(), INITIALIZATION, MEDIA[0])
+                other = MediaBuffer(directory, live_id, rendition)
+                self.assertEqual(other.entries(), [])
+                self.assertEqual(other.used, 0)
+
+    def test_snapshot_and_same_cdn_status_are_safe_and_translated(self):
+        event = dict(version=1, kind='recovery_snapshot', live_id=1, rendition='1080p',
+                     observed_at=START.isoformat(), cdn='korean', mode='llhls', role='current',
+                     result='waiting', lookup_result='available', elapsed_ms=3,
+                     buffered_count=1, buffered_bytes=100, window_from=START.isoformat(),
+                     window_to=(START + timedelta(seconds=4)).isoformat(), target=START.isoformat(),
+                     url='https://secret', cookie='secret')
+        clean = parse_event(EVENT_PREFIX + json.dumps(event))
+        self.assertNotIn('secret', json.dumps(clean))
+        for field, value in (('elapsed_ms', float('nan')), ('buffered_bytes', -1),
+                             ('buffered_count', True), ('observed_at', 'invalid'), ('cdn', [])):
+            self.assertIsNone(parse_event(EVENT_PREFIX + json.dumps(dict(event, **{field: value}))))
+        for language in SUPPORTED_LANGUAGES:
+            for key in ('record.buffer_unavailable', 'record.buffer_cleanup_failed',
+                        'record.source_ready_same_cdn', 'record.source_ready_other_cdn'):
+                self.assertNotEqual(translate(language, key, channel_name='test', cdn='test', mode='test'), key)
+        state = RecordingContinuity()
+        state.begin(1)
+        message = state.accept(dict(version=1, kind='source', live_id=1, rendition='1080p',
+                                    cdn='akamai', mode='hls', state='ready', independent_cdn=False))
+        self.assertEqual(message[0], 'record.source_ready_same_cdn')
+        message = state.accept(dict(version=1, kind='source', live_id=1, rendition='1080p',
+                                    cdn='akamai', mode='hls', state='ready', independent_cdn=True))
+        self.assertEqual(message[0], 'record.source_ready_other_cdn')
+
+
 class SettingsAndProtocolTests(unittest.TestCase):
     def test_previous_hour_inheritance_and_strict_booleans(self):
         config = normalize_config({"record_previous_hour": "false"})
@@ -1244,6 +1512,11 @@ class ContinuityReportTests(unittest.TestCase):
             report.finish(True)
             text = path.read_text()
             self.assertNotIn("secret", text)
+            header = json.loads(text.splitlines()[0])
+            root = Path(continuity.__file__).parent
+            self.assertEqual(header['components_sha256'], {
+                name: hashlib.sha256((root / name).read_bytes()).hexdigest()
+                for name in ('plugin/chzzk.py', 'hls_continuity.py', 'recording_buffer.py')})
             self.assertTrue(summarize(text.splitlines())["passed"])
 
     def test_report_write_failure_marks_evidence_incomplete(self):
@@ -1372,6 +1645,9 @@ class MockStream:
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
 class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disk_handoff_preserves_received_frames_when_remote_tail_disappears(self):
+        await self.check_finalized_files('buffer_gap')
+
     async def test_unknown_next_stall_resumes_all_1000_frames_and_audio(self):
         await self.check_finalized_files("stall")
 
@@ -1414,6 +1690,8 @@ class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
                            (mode == "failed_segment" and prefix == "primary") else
                            (3,) if mode == "stall_gap" else
                            (0, 2, 3) if prefix == "primary" else (2, 3))
+                if mode == 'buffer_gap':
+                    indices = (0, 2, 3) if prefix == 'primary' else (3,)
                 cdn.playlist(prefix, indices=indices, initialization=initialization, media=fragments,
                              duration=250 / 60, discontinuity=2 if mode == "discontinuity" else None,
                              end=not (mode.startswith("stall") and prefix == "primary"))
@@ -1435,11 +1713,16 @@ class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
 
             async def start_streamlink(sandbox, command):
                 commands.append(command)
+                if mode == 'buffer_gap' and len(commands) == 2:
+                    for prefix in ('primary', 'continued'):
+                        for index in (2, 3):
+                            cdn.statuses[f'/{prefix}/1080p/{index}.m4v'] = 404
                 resume = (json.loads(command[command.index("--chzzk-resume") + 1])
                           if "--chzzk-resume" in command else None)
                 lookback = int(command[command.index("--chzzk-start-lookback") + 1])
                 prefix = "primary" if len(commands) == 1 else "continued"
-                settings = dict(url=cdn.url(prefix), resume=resume, lookback=lookback)
+                settings = dict(url=cdn.url(prefix), resume=resume, lookback=lookback,
+                                buffer_dir=command[command.index('--chzzk-buffer-dir') + 1])
                 code = """
 import json,sys
 import hls_continuity
@@ -1450,7 +1733,7 @@ settings=json.loads(sys.argv[1]);session=Streamlink()
 session.set_option('hls-live-edge',1)
 stream=ChzzkHLSStream(session,settings['url'],'test',live_id=1,
     source_paths=[(settings['url'],False),(settings['url'],True)],
-    start_lookback=settings['lookback'],resume=settings['resume'])
+    start_lookback=settings['lookback'],resume=settings['resume'],buffer_dir=settings['buffer_dir'])
 stream.continuity.provider=lambda:(1,[(settings['url'],False),(settings['url'],True)])
 reader=stream.open()
 try:
@@ -1497,6 +1780,11 @@ finally:
             self.assertEqual(len(outputs), 2, (list(Path(directory).iterdir()),
                                                diagnostic_logger.mock_calls))
             self.assertFalse(list(Path(directory).glob("*.part")))
+            self.assertFalse(list(Path(directory).glob('.chzzk-buffer-*')))
+            self.assertEqual(commands[0][commands[0].index('--chzzk-buffer-dir') + 1],
+                             commands[1][commands[1].index('--chzzk-buffer-dir') + 1])
+            if mode == 'buffer_gap':
+                self.assertAlmostEqual(summary['gap_seconds'], 250 / 60, places=4)
             frame_counts = []
             audio_counts = []
             packet_times = {"video": [], "audio": []}
@@ -1523,14 +1811,15 @@ finally:
             self.assertEqual(sorted(frame_counts), [500, 500] if intact else [250, 500])
             if intact:
                 self.assertEqual(sum(frame_counts), 1000)
-                source = json.loads(subprocess.check_output([
-                    "ffprobe", "-v", "error", "-count_frames", "-select_streams", "a:0",
-                    "-show_entries", "stream=nb_read_frames", "-of", "json", str(fixture),
-                ], timeout=10))
-                self.assertLessEqual(abs(sum(audio_counts) - int(source["streams"][0]["nb_read_frames"])), 2)
-                for kind, limit in (("video", 0.04), ("audio", 0.06)):
-                    pts = sorted(packet_times[kind])
-                    self.assertLess(max(b - a for a, b in zip(pts, pts[1:])), limit)
+            source = json.loads(subprocess.check_output([
+                "ffprobe", "-v", "error", "-count_frames", "-select_streams", "a:0",
+                "-show_entries", "stream=nb_read_frames", "-of", "json", str(fixture),
+            ], timeout=10))
+            expected_audio = int(source["streams"][0]["nb_read_frames"]) * (1 if intact else 0.75)
+            self.assertLessEqual(abs(sum(audio_counts) - expected_audio), 2 if intact else 3)
+            for kind, limit in (("video", 0.04), ("audio", 0.06)):
+                pts = sorted(packet_times[kind])
+                self.assertLess(max(b - a for a, b in zip(pts, pts[1:])), limit)
             self.assertEqual([c[c.index("--chzzk-start-lookback") + 1] for c in commands], ["3600", "0"])
             self.assertIn("--chzzk-resume", commands[1])
             if mode != "discontinuity":

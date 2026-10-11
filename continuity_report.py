@@ -1,6 +1,7 @@
 """Optional URL-free NDJSON recording evidence and end-of-run CI verdict."""
 
 import argparse
+import hashlib
 import json
 from collections import defaultdict
 from datetime import datetime
@@ -13,7 +14,14 @@ class ContinuityReport:
     def __init__(self, path):
         self.file = Path(path).open("w", encoding="utf-8")
         self.failed = False
-        self.write({"version": 1, "kind": "report_started"})
+        root = Path(__file__).resolve().parent
+        components = {}
+        for name in ('plugin/chzzk.py', 'hls_continuity.py', 'recording_buffer.py'):
+            try:
+                components[name] = hashlib.sha256((root / name).read_bytes()).hexdigest()
+            except OSError:
+                pass
+        self.write({"version": 1, "kind": "report_started", 'components_sha256': components})
 
     def write(self, row):
         try:
@@ -54,6 +62,13 @@ def summarize(lines):
                 raise ValueError("Invalid report")
             kind = row.get("kind")
             if kind == "report_started":
+                components = row.get('components_sha256', {})
+                if (not isinstance(components, dict)
+                        or any(name not in {'plugin/chzzk.py', 'hls_continuity.py', 'recording_buffer.py'}
+                               or not isinstance(value, str) or len(value) != 64
+                               or any(c not in '0123456789abcdef' for c in value)
+                               for name, value in components.items())):
+                    raise ValueError('Invalid component hashes')
                 if started or finished:
                     errors += 1
                 started = True

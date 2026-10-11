@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 
 EVENT_PREFIX = "CHZZK_REKODA_EVENT "
 KINDS = {"start", "checkpoint", "recovery_started", "recovery_completed",
-         "gap", "boundary", "diagnostic", "source"}
+         "gap", "boundary", "diagnostic", "source", "recovery_snapshot", "buffer_status"}
 REASONS = {
     "resume_unavailable", "playlist_stalled", "playlist_unavailable",
     "broadcast_changed", "initialization_changed", "discontinuity",
@@ -41,7 +41,8 @@ def parse_event(line):
             or len(event["rendition"]) > 32):
         return None
     if any(not valid_time(event.get(key)) for key in (
-            "at", "from", "to", "resume_from", "recovery_deadline")):
+            "at", "from", "to", "resume_from", "recovery_deadline",
+            "observed_at", "lookup_at", "window_from", "window_to", "target")):
         return None
     if event["kind"] in {"gap", "boundary"} and (
             not isinstance(event.get("reason"), str) or event["reason"] not in REASONS):
@@ -54,7 +55,32 @@ def parse_event(line):
                 or event.get("mode") not in {"hls", "llhls"}
                 or event.get("state") not in {"selected", "ready", "absent", "unavailable"}):
             return None
-        return {key: event[key] for key in ("version", "kind", "live_id", "rendition", "cdn", "mode", "state")}
+        if 'independent_cdn' in event and type(event['independent_cdn']) is not bool:
+            return None
+        return {key: event[key] for key in ("version", "kind", "live_id", "rendition", "cdn", "mode", "state", 'independent_cdn') if key in event}
+    if event['kind'] == 'buffer_status':
+        if event.get('state') != 'unavailable':
+            return None
+        return {key: event[key] for key in ('version', 'kind', 'live_id', 'rendition', 'state')}
+    if event['kind'] == 'recovery_snapshot':
+        if (any(not isinstance(event.get(key), str) for key in
+                ('cdn', 'mode', 'role', 'result', 'lookup_result'))
+                or event.get('cdn') not in {'korean', 'akamai', 'unknown'}
+                or event.get('mode') not in {'hls', 'llhls'}
+                or event.get('role') not in {'current', 'history'}
+                or event.get('result') not in {'started', 'waiting', 'completed', 'boundary', 'buffer_full'}
+                or event.get('lookup_result') not in {'available', 'unavailable', 'http', 'network', 'timeout',
+                                                     'truncated', 'invalid_media', 'initialization', 'dns', 'tls', 'connect', 'parse'}
+                or event.get('observed_at') is None
+                or type(event.get('elapsed_ms')) not in (int, float)
+                or not math.isfinite(event['elapsed_ms']) or not 0 <= event['elapsed_ms'] <= 86400000
+                or type(event.get('buffered_count')) is not int or not 0 <= event['buffered_count'] <= 2048
+                or type(event.get('buffered_bytes')) is not int or not 0 <= event['buffered_bytes'] <= 256 * 1024 * 1024):
+            return None
+        start, end = event.get('window_from'), event.get('window_to')
+        if ((start is None) != (end is None)
+                or (start is not None and datetime.fromisoformat(end) <= datetime.fromisoformat(start))):
+            return None
     if event["kind"] == "diagnostic":
         if (any(not isinstance(event.get(key), str) for key in ("stage", "role", "category"))
                 or event["stage"] not in {"manifest", "api", "initialization", "media"}
@@ -92,6 +118,8 @@ def parse_event(line):
         "gap": {"from", "to", "reason"},
         "boundary": {"reason", "resume_from", "after_gap", "recovery_deadline"},
         "diagnostic": {"stage", "role", "category", "status", "sequence", "at"},
+        'recovery_snapshot': {'observed_at', 'lookup_at', 'cdn', 'mode', 'role', 'result', 'lookup_result', 'elapsed_ms',
+                              'window_from', 'window_to', 'target', 'recovery_deadline', 'buffered_count', 'buffered_bytes'},
     }
     allowed = {"version", "kind", "live_id", "rendition"} | fields[event["kind"]]
     return {key: value for key, value in event.items() if key in allowed}
@@ -190,7 +218,17 @@ class RecordingContinuity:
             details = {key: event.get(key) for key in (
                 "stage", "role", "category", "status", "sequence", "at")}
             return "record.continuity_diagnostic", {"details": json.dumps(details)}, False
+        if kind == 'recovery_snapshot':
+            details = {key: value for key, value in event.items()
+                       if key not in {'version', 'kind', 'live_id', 'rendition'}}
+            return 'record.continuity_diagnostic', {'details': json.dumps(details)}, False
+        if kind == 'buffer_status':
+            return 'record.buffer_unavailable', {}, True
         if kind == "source":
-            return "record.source_" + event["state"], {
+            key = 'record.source_' + event['state']
+            if event['state'] == 'ready' and 'independent_cdn' in event:
+                key = ('record.source_ready_other_cdn' if event['independent_cdn']
+                       else 'record.source_ready_same_cdn')
+            return key, {
                 "cdn": event["cdn"], "mode": event["mode"]}, False
         return None

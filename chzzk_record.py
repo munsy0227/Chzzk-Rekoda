@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -829,7 +830,7 @@ async def read_log_stream(
                         if event["kind"] == "source":
                             fields["cdn"] = tr("record.cdn_" + fields["cdn"])
                             fields["mode"] = tr("record.mode_" + fields["mode"])
-                        log_message = (logger.debug if event["kind"] == "diagnostic" else
+                        log_message = (logger.debug if event["kind"] in {"diagnostic", 'recovery_snapshot'} else
                                        logger.warning if warning else logger.info)
                         log_message(tr(key, channel_name=channel_name, **fields))
                 continue
@@ -2221,6 +2222,8 @@ async def record_stream(
     runtime_hevc_failures: Dict[str, str] = {}
     runtime_h264_failures: Dict[str, str] = {}
     consecutive_streamlink_failures = 0
+    media_buffer_directory = None
+    media_buffer_live_id = None
 
     try:
         while not shutdown_event.is_set():
@@ -2261,6 +2264,12 @@ async def record_stream(
                                     return
                                 break
                         if status == "CLOSE":
+                            if media_buffer_directory is not None:
+                                try:
+                                    await asyncio.to_thread(media_buffer_directory.cleanup)
+                                except OSError:
+                                    logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
+                                media_buffer_directory = None
                             runtime_av1_failures.clear()
                             runtime_hevc_failures.clear()
                             runtime_h264_failures.clear()
@@ -2351,6 +2360,20 @@ async def record_stream(
                         f"[{safe_current_time}] {channel_name} {live_title}"
                     )
                     output_dir.mkdir(parents=True, exist_ok=True)
+                    current_live_id = live_info.get('liveId')
+                    if media_buffer_directory is not None and media_buffer_live_id != current_live_id:
+                        try:
+                            await asyncio.to_thread(media_buffer_directory.cleanup)
+                        except OSError:
+                            logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
+                        media_buffer_directory = None
+                    if media_buffer_directory is None:
+                        try:
+                            media_buffer_directory = tempfile.TemporaryDirectory(
+                                prefix='.chzzk-buffer-', dir=output_dir)
+                            media_buffer_live_id = current_live_id
+                        except OSError:
+                            logger.warning(tr('record.buffer_unavailable', channel_name=channel_name))
                     segment_output_template = None
                     reserved_output_path: Optional[Path] = None
                     if split_seconds > 0:
@@ -2394,6 +2417,8 @@ async def record_stream(
                             stream_url,
                             plan["stream"],
                             *continuity.arguments(record_previous_hour),
+                            '--chzzk-buffer-dir',
+                            media_buffer_directory.name if media_buffer_directory is not None else '-',
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
                             "--stream-segment-timeout",
@@ -3030,6 +3055,11 @@ async def record_stream(
     finally:
         if active_attempt is not None:
             await active_attempt.cleanup()
+        if media_buffer_directory is not None:
+            try:
+                await asyncio.to_thread(media_buffer_directory.cleanup)
+            except OSError:
+                logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
         if recording_started and temp_output_path and temp_output_path.exists():
             logger.warning(
                 tr("record.unfinished_file_left", path=temp_output_path)
