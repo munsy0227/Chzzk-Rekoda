@@ -27,6 +27,7 @@ from i18n import SUPPORTED_LANGUAGES, translate
 from plugin.chzzk import ChzzkHLSStream, source_paths
 from recording_continuity import EVENT_PREFIX, REASONS, RecordingContinuity, parse_event
 from recording_options import effective_previous_hour
+from continuity_report import ContinuityReport, summarize
 
 
 START = datetime(2026, 10, 10, tzinfo=timezone.utc)
@@ -361,9 +362,9 @@ class DeliveryTests(unittest.TestCase):
         self.cdn.playlist("primary", indices=(0, 2, 3))
         result = self.read(self.stream())
         self.assertEqual(result, INITIALIZATION + MEDIA[0])
-        self.assertIn("gap", [e["kind"] for e in self.events()])
+        self.assertNotIn("gap", [e["kind"] for e in self.events()])
         self.assertEqual(self.events()[-1]["resume_from"],
-                         (START + timedelta(seconds=8)).isoformat())
+                         (START + timedelta(seconds=4)).isoformat())
         self.assertTrue(self.events()[-1]["after_gap"])
 
     def test_partial_repair_preserves_prefix_without_duplicate_on_retry(self):
@@ -372,8 +373,9 @@ class DeliveryTests(unittest.TestCase):
         result = self.read(self.stream([(self.cdn.url("primary"), False),
                                        (self.cdn.url("history"), True)]))
         self.assertEqual(result, INITIALIZATION + MEDIA[0] + MEDIA[1])
-        gap = next(e for e in self.events() if e["kind"] == "gap")
-        self.assertEqual(gap["from"], (START + timedelta(seconds=8)).isoformat())
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["resume_from"], (START + timedelta(seconds=8)).isoformat())
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
 
     def test_broadcast_end_drains_already_queued_media(self):
         self.cdn.playlist("primary")
@@ -388,9 +390,11 @@ class DeliveryTests(unittest.TestCase):
         result = self.read(self.stream([(self.cdn.url("primary"), False),
                                        (self.cdn.url("backup"), True)]))
         self.assertEqual(result, INITIALIZATION + MEDIA[0])
-        self.assertIn("gap", [e["kind"] for e in self.events()])
-        gap = next(e for e in self.events() if e["kind"] == "gap")
-        self.assertEqual(gap["to"], (START + timedelta(seconds=8)).isoformat())
+        self.assertIn("boundary", [e["kind"] for e in self.events()])
+        self.assertNotIn("gap", [e["kind"] for e in self.events()])
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["resume_from"],
+                         (START + timedelta(seconds=4)).isoformat())
 
     def test_no_dates_disallow_cross_manifest_recovery(self):
         self.cdn.playlist("primary", dated=False)
@@ -526,7 +530,117 @@ class DeliveryTests(unittest.TestCase):
         resume = dict(live_id=1, rendition="1080p",
                       **{"from": (START + timedelta(seconds=4)).isoformat()})
         self.assertEqual(self.read(self.stream(resume=resume)), b"")
-        self.assertIn("gap", [e["kind"] for e in self.events()])
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertFalse(boundary["after_gap"])
+        self.assertNotIn("gap", [e["kind"] for e in self.events()])
+
+    def test_unknown_next_stall_preserves_delivered_cursor_and_deadline(self):
+        self.cdn.playlist("primary")
+        stream = self.stream()
+        manifest, playlist = stream.continuity.candidates()[0]
+        target = stream.continuity.locate(playlist.segments[0], manifest)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        self.assertTrue(reader.writer.deliver(target, reader.writer.download(target, target)))
+        reader.writer.fail(target, None, "output_stalled")
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["resume_from"], target.end.isoformat())
+        self.assertIn("recovery_deadline", boundary)
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
+        state = RecordingContinuity()
+        state.begin(1)
+        for event in self.events():
+            state.accept(event)
+        args = state.arguments(True)
+        restored = json.loads(args[-1])
+        self.assertEqual(restored["from"], target.end.isoformat())
+        self.assertEqual(restored["recovery_deadline"], boundary["recovery_deadline"])
+        self.assertEqual(args[1], "0")
+
+    def test_expired_resume_checks_exact_position_before_skipping(self):
+        self.cdn.playlist("primary")
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      recovery_deadline=START.isoformat(),
+                      **{"from": (START + timedelta(seconds=4)).isoformat()})
+        self.assertEqual(self.read(self.stream(resume=resume)), INITIALIZATION + b"".join(MEDIA[1:]))
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
+
+    def test_expired_resume_skips_only_unavailable_media(self):
+        self.cdn.playlist("primary")
+        self.cdn.statuses['/primary/1080p/1.m4v'] = 503
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      recovery_deadline=START.isoformat(),
+                      **{"from": (START + timedelta(seconds=4)).isoformat()})
+        self.assertEqual(self.read(self.stream(resume=resume)), INITIALIZATION + b"".join(MEDIA[2:]))
+        gaps = [e for e in self.events() if e["kind"] == "gap"]
+        self.assertEqual(len(gaps), 1)
+        self.assertEqual(gaps[0]["from"], resume["from"])
+        self.assertEqual(gaps[0]["to"], (START + timedelta(seconds=8)).isoformat())
+        self.assertLess(self.cdn.hits['/primary/1080p/1.m4v'], 3)
+
+    def test_pending_resume_waits_for_temporarily_absent_position(self):
+        self.cdn.playlist("primary", indices=(2, 3))
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      recovery_deadline=(datetime.now(timezone.utc) + timedelta(seconds=2)).isoformat(),
+                      **{"from": (START + timedelta(seconds=4)).isoformat()})
+        timer = threading.Timer(0.2, lambda: self.cdn.playlist("primary", indices=(1, 2, 3)))
+        timer.start()
+        self.addCleanup(timer.join)
+        with patch.object(continuity, "RECOVERY_TIMEOUT", 2):
+            self.assertEqual(self.read(self.stream(resume=resume)), INITIALIZATION + b"".join(MEDIA[1:]))
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
+
+    def test_resume_without_tail_waits_and_cancels_without_empty_restart(self):
+        self.cdn.playlist("primary")
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      recovery_deadline=START.isoformat(),
+                      **{"from": (START + timedelta(seconds=20)).isoformat()})
+        reader = self.stream(resume=resume).open()
+        result = []
+        task = threading.Thread(target=lambda: result.append(reader.read(65536)))
+        task.start()
+        time.sleep(0.2)
+        before = time.monotonic()
+        reader.close()
+        task.join(timeout=2)
+        self.assertFalse(task.is_alive())
+        self.assertLess(time.monotonic() - before, 1)
+        self.assertEqual(result, [b""])
+        self.assertFalse(any(e["kind"] in {"checkpoint", "gap", "boundary"} for e in self.events()))
+
+    def test_transient_manifest_error_recovers_all_media_without_gap(self):
+        self.cdn.playlist("primary", indices=(0,), end=False)
+        stream = self.stream()
+        original = stream.continuity.playlist
+        failures = []
+
+        def playlist(manifest, force=False, blocking=False):
+            if blocking and not failures:
+                failures.append(True)
+                self.cdn.playlist("primary")
+                raise continuity.Unavailable("temporary", category="network")
+            return original(manifest, force, blocking)
+
+        # A live playlist normally polls every two seconds, so allow a retry.
+        with patch.object(stream.continuity, "playlist", playlist), \
+                patch.object(continuity, "RECOVERY_TIMEOUT", 3):
+            self.assertEqual(self.read(stream), INITIALIZATION + b"".join(MEDIA))
+        self.assertEqual(len(failures), 1)
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
+
+    def test_broadcast_end_clears_pending_resume_without_gap(self):
+        self.cdn.playlist("primary")
+        resume = dict(live_id=1, rendition="1080p", after_gap=True,
+                      recovery_deadline=START.isoformat(),
+                      **{"from": (START + timedelta(seconds=20)).isoformat()})
+        stream = self.stream(resume=resume)
+        stream.continuity.provider = lambda: None
+        stream.continuity.last_refresh = 0
+        self.assertEqual(self.read(stream), b"")
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["reason"], "broadcast_ended")
+        self.assertIsNone(boundary["resume_from"])
+        self.assertFalse(any(e["kind"] == "gap" for e in self.events()))
 
     def test_broadcast_identity_mismatch_rejects_candidate(self):
         self.cdn.playlist("primary")
@@ -1063,8 +1177,207 @@ class SettingsAndProtocolTests(unittest.TestCase):
             self.assertIsNone(parse_event(EVENT_PREFIX + json.dumps(bad)))
 
 
+class ContinuityReportTests(unittest.TestCase):
+    def event(self, kind, **fields):
+        return dict(version=1, kind=kind, channel_id="test", live_id=1, rendition="1080p", **fields)
+
+    def checkpoint(self, start, end):
+        return self.event("checkpoint", **{
+            "from": (START + timedelta(seconds=start)).isoformat(),
+            "to": (START + timedelta(seconds=end)).isoformat()})
+
+    def verdict(self, events, finish=True):
+        rows = [dict(version=1, kind="report_started"), *events]
+        if finish:
+            rows.append(dict(version=1, kind="report_finished", complete=True))
+        return summarize(json.dumps(row) for row in rows)
+
+    def test_recovery_and_normal_file_boundaries_do_not_fail_ci(self):
+        events = [self.checkpoint(0, 4), self.event("recovery_started", at=START.isoformat()),
+                  self.event("boundary", reason="output_stalled", after_gap=True,
+                             resume_from=(START + timedelta(seconds=4)).isoformat()),
+                  self.checkpoint(4, 8),
+                  self.event("boundary", reason="initialization_changed",
+                             resume_from=(START + timedelta(seconds=8)).isoformat()),
+                  self.checkpoint(8, 12), self.event("recovery_started", at=START.isoformat())]
+        self.assertTrue(self.verdict(events)["passed"])
+
+    def test_real_gap_fails_and_overlapping_evidence_is_counted_once(self):
+        events = [self.checkpoint(0, 4), self.checkpoint(8, 12),
+                  self.event("gap", reason="resume_unavailable", **{
+                      "from": (START + timedelta(seconds=4)).isoformat(),
+                      "to": (START + timedelta(seconds=10)).isoformat()})]
+        summary = self.verdict(events)
+        self.assertFalse(summary["passed"])
+        self.assertEqual(summary["gap_count"], 1)
+        self.assertEqual(summary["gap_seconds"], 6)
+
+    def test_unresolved_boundary_and_undated_output_fail_ci(self):
+        for event in (self.event("boundary", reason="output_stalled", resume_from=None),
+                      self.event("checkpoint", **{"from": None, "to": None})):
+            summary = self.verdict([self.checkpoint(0, 4), event])
+            self.assertFalse(summary["passed"])
+            self.assertEqual(summary["unresolved_count"], 1)
+
+    def test_incomplete_empty_and_malformed_reports_fail_ci(self):
+        self.assertFalse(self.verdict([self.checkpoint(0, 4)], finish=False)["passed"])
+        self.assertFalse(self.verdict([])["passed"])
+        self.assertFalse(summarize(["truncated JSON"])["passed"])
+        rows = [json.dumps(dict(version=1, kind="report_started")),
+                json.dumps(self.checkpoint(0, 4)),
+                json.dumps(dict(version=1, kind="report_finished", complete=True)),
+                json.dumps(self.checkpoint(4, 8))]
+        self.assertFalse(summarize(rows)["passed"])
+
+    def test_duplicate_output_fails_but_explicit_clock_reset_does_not(self):
+        self.assertFalse(self.verdict([self.checkpoint(4, 8), self.checkpoint(4, 8)])["passed"])
+        events = [self.checkpoint(4, 8), self.event("boundary", reason="discontinuity",
+                  resume_from=START.isoformat()), self.checkpoint(0, 4)]
+        self.assertTrue(self.verdict(events)["passed"])
+
+    def test_report_filters_secret_fields_and_closes_with_footer(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "events.jsonl"
+            report = ContinuityReport(path)
+            event = self.checkpoint(0, 4)
+            report.record("test", dict(event, url="https://secret", cookie="secret", exception="secret"))
+            report.finish(True)
+            text = path.read_text()
+            self.assertNotIn("secret", text)
+            self.assertTrue(summarize(text.splitlines())["passed"])
+
+    def test_report_write_failure_marks_evidence_incomplete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "events.jsonl"
+            report = ContinuityReport(path)
+            with patch.object(report.file, "flush", side_effect=OSError("Disk full")):
+                report.record("test", self.checkpoint(0, 4))
+            self.assertTrue(report.failed)
+            report.finish(True)
+            self.assertFalse(summarize(path.read_text().splitlines())["passed"])
+
+    def test_start_selection_preserves_checkpoint_until_new_media_arrives(self):
+        state = RecordingContinuity()
+        state.begin(1)
+        state.accept(self.checkpoint(0, 4))
+        saved = json.loads(state.arguments(False)[-1])
+        state.begin(1)
+        state.accept(self.event("start", at=(START + timedelta(seconds=8)).isoformat(),
+                                requested_seconds=0, available_seconds=4))
+        self.assertEqual(json.loads(state.arguments(False)[-1]), saved)
+        state.accept(self.checkpoint(4, 8))
+        self.assertNotIn("recovery_deadline", state.resume)
+        self.assertEqual(state.resume["from"], (START + timedelta(seconds=8)).isoformat())
+        state.begin(2)
+        self.assertIsNone(state.resume)
+        self.assertEqual(state.arguments(True)[1], "3600")
+
+    def test_deadline_survives_process_recreation_and_is_not_renewed(self):
+        from plugin.chzzk import resume_option
+
+        state = RecordingContinuity()
+        state.begin(1)
+        expired = START.isoformat()
+        state.accept(self.event("boundary", reason="output_stalled", after_gap=True,
+                                resume_from=START.isoformat(), recovery_deadline=expired))
+        for _ in range(3):
+            restored = resume_option(state.arguments(False)[-1])
+            self.assertEqual(restored["recovery_deadline"], expired)
+            source = continuity.ContinuitySource(MockStream(), lambda: None, 1, (), resume=restored)
+            self.assertLessEqual(source.recovery_limit() - time.monotonic(), 0)
+            state.begin(1)
+        with self.assertRaises(ValueError):
+            resume_option(json.dumps(dict(restored, recovery_deadline="without timezone")))
+
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash") and shutil.which("timeout"),
+                         "GNU timeout and Bash required")
+    def test_ci_helper_finishes_recording_before_verdict_and_retains_evidence(self):
+        root = Path(__file__).resolve().parents[1]
+        for gap, recorder_status in ((False, 0), (True, 0), (False, 7)):
+            with self.subTest(gap=gap, recorder_status=recorder_status), \
+                    tempfile.TemporaryDirectory() as directory:
+                project = Path(directory)
+                scripts = project / "scripts"
+                scripts.mkdir()
+                shutil.copy2(root / "scripts/run_long_recording_test.sh", scripts)
+                for name in ("continuity_report.py", "recording_continuity.py", "i18n.py"):
+                    shutil.copy2(root / name, project)
+                output = project / "output"
+                output.mkdir()
+                binaries = project / "bin"
+                binaries.mkdir()
+                fake_uv = binaries / "uv"
+                fake_uv.write_text("#!" + os.sys.executable + "\n" + r"""
+import json, os, sys, time
+from pathlib import Path
+if sys.argv[4] != 'chzzk_record.py':
+    os.execv(sys.executable, [sys.executable, *sys.argv[4:]])
+report = Path(sys.argv[-1])
+Path('log.log').write_text('Recording started for fixture\n')
+(report.parent / 'fixture.ts').write_bytes(b'media')
+with report.open('w') as stream:
+    for row in json.loads(os.environ['FIXTURE_ROWS']):
+        stream.write(json.dumps(row) + '\n')
+    stream.flush()
+    time.sleep(0.1)
+    (report.parent / 'recording-finished').touch()
+    stream.write(json.dumps(dict(version=1, kind='report_finished', complete=True)) + '\n')
+raise SystemExit(int(os.environ['FIXTURE_STATUS']))
+""")
+                fake_uv.chmod(0o755)
+                # Keep monitor sleeps short so their children close captured
+                # output pipes promptly when the helper cleans up its shells.
+                fake_sleep = binaries / "sleep"
+                fake_sleep.write_text("#!" + os.sys.executable +
+                                      "\nimport time\ntime.sleep(0.02)\n")
+                fake_sleep.chmod(0o755)
+                rows = [dict(version=1, kind="report_started"), self.checkpoint(0, 4),
+                        self.checkpoint(8 if gap else 4, 12 if gap else 8)]
+                env = dict(os.environ, PATH=str(binaries) + os.pathsep + os.environ["PATH"],
+                           FIXTURE_ROWS=json.dumps(rows), FIXTURE_STATUS=str(recorder_status))
+                result = subprocess.run(["bash", str(scripts / "run_long_recording_test.sh"),
+                                         "1", "180", str(output)], env=env,
+                                        capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, recorder_status or int(gap), result.stderr)
+                self.assertTrue((output / "recording-finished").exists())
+                summary = json.loads((output / "continuity-summary.json").read_text())
+                self.assertEqual(summary["checkpoint_count"], 2)
+                self.assertEqual(summary["gap_count"], int(gap))
+                self.assertEqual(summary["error_count"], 0)
+                self.assertIn("report_finished", (output / "continuity.jsonl").read_text())
+
+    def test_safe_exception_classification_and_checkpoint_validation(self):
+        import socket
+        import ssl
+
+        for error, expected in ((socket.gaierror("https://secret"), "dns"),
+                                (ssl.SSLError("cookie=secret"), "tls"),
+                                (TimeoutError("secret"), "timeout")):
+            self.assertEqual(continuity.failure_category(error), expected)
+        invalid = self.checkpoint(4, 0)
+        self.assertIsNone(parse_event(EVENT_PREFIX + json.dumps(invalid)))
+        for key in ("record.recovery_restart", "record.continuity_report_help",
+                    "record.continuity_report_collision", "record.continuity_report_failed",
+                    "record.continuity_report_write_failed", "record.continuity_summary"):
+            for language in SUPPORTED_LANGUAGES:
+                self.assertNotEqual(translate(language, key, channel_name="test", at="now", error="test",
+                                              gaps=0, seconds=0, unresolved=0, duplicates=0, errors=0), key)
+
+
+class MockStream:
+    _url = "http://127.0.0.1/1080p/list.m3u8"
+    name = "1080p"
+    session = None
+
+
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg required")
 class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
+    async def test_unknown_next_stall_resumes_all_1000_frames_and_audio(self):
+        await self.check_finalized_files("stall")
+
+    async def test_unknown_next_stall_reports_only_permanent_hole(self):
+        await self.check_finalized_files("stall_gap")
+
     async def test_boundary_finalizes_file_and_resumes_without_replaying_history(self):
         await self.check_finalized_files("discontinuity")
 
@@ -1096,11 +1409,14 @@ class RecorderIntegrationTests(unittest.IsolatedAsyncioTestCase):
             fragments = [data[a:b] for a, b in zip(starts, starts[1:] + [len(data)])]
             initialization = data[:starts[0]]
             for prefix in ("primary", "continued"):
-                indices = ((0, 1, 2, 3) if mode == "discontinuity" or
+                indices = ((0, 1) if mode.startswith("stall") and prefix == "primary" else
+                           (0, 1, 2, 3) if mode in {"discontinuity", "stall"} or
                            (mode == "failed_segment" and prefix == "primary") else
+                           (3,) if mode == "stall_gap" else
                            (0, 2, 3) if prefix == "primary" else (2, 3))
                 cdn.playlist(prefix, indices=indices, initialization=initialization, media=fragments,
-                             duration=250 / 60, discontinuity=2 if mode == "discontinuity" else None)
+                             duration=250 / 60, discontinuity=2 if mode == "discontinuity" else None,
+                             end=not (mode.startswith("stall") and prefix == "primary"))
             if mode == "failed_segment":
                 cdn.statuses['/primary/1080p/1.m4v'] = 503
             if mode != "discontinuity":
@@ -1152,9 +1468,12 @@ finally:
 
             config = normalize_config({})
             diagnostic_logger = Mock()
+            report_path = Path(directory) / "continuity.jsonl"
+            report = ContinuityReport(report_path)
             with contextlib.ExitStack() as stack:
                 stack.enter_context(patch.object(recorder, "shutdown_event", stop))
                 stack.enter_context(patch.object(recorder, "logger", diagnostic_logger))
+                stack.enter_context(patch.object(recorder, "continuity_report", report))
                 stack.enter_context(patch.object(recorder, "channel_progress", {}))
                 stack.enter_context(patch.object(recorder, "channel_progress_lock", asyncio.Lock()))
                 stack.enter_context(patch.object(recorder, "get_session_cookies", AsyncMock(return_value={})))
@@ -1169,22 +1488,54 @@ finally:
                     config["hevc_settings"], config["av1_settings"], "ts", 0,
                     config["h264_settings"], config["quality_settings"], True,
                 ), timeout=25)
-            outputs = list(Path(directory).glob("*.ts"))
+            report.finish(True)
+            summary = summarize(report_path.read_text().splitlines())
+            self.assertEqual(summary["passed"], mode in {"discontinuity", "stall"}, summary)
+            self.assertEqual(summary["gap_count"], 0 if summary["passed"] else 1)
+            self.assertEqual(summary["unresolved_count"], 0)
+            outputs = sorted(Path(directory).glob("*.ts"))
             self.assertEqual(len(outputs), 2, (list(Path(directory).iterdir()),
                                                diagnostic_logger.mock_calls))
             self.assertFalse(list(Path(directory).glob("*.part")))
             frame_counts = []
+            audio_counts = []
+            packet_times = {"video": [], "audio": []}
+            offset_seconds = 0
             for output in outputs:
                 data = json.loads(subprocess.check_output([
-                    "ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0",
-                    "-show_entries", "stream=nb_read_frames", "-of", "json", str(output),
+                    "ffprobe", "-v", "error", "-count_frames", "-show_streams", "-show_packets",
+                    "-show_entries", "stream=codec_type,nb_read_frames:packet=codec_type,pts_time",
+                    "-of", "json", str(output),
                 ], timeout=10))
-                frame_counts.append(int(data["streams"][0]["nb_read_frames"]))
-            self.assertEqual(sorted(frame_counts), [500, 500] if mode == "discontinuity" else [250, 500])
+                video = next(s for s in data["streams"] if s["codec_type"] == "video")
+                audio = next(s for s in data["streams"] if s["codec_type"] == "audio")
+                count = int(video["nb_read_frames"])
+                frame_counts.append(count)
+                audio_counts.append(int(audio["nb_read_frames"]))
+                first_video = min(float(p["pts_time"]) for p in data["packets"]
+                                  if p["codec_type"] == "video" and "pts_time" in p)
+                for kind in packet_times:
+                    packet_times[kind].extend(float(p["pts_time"]) - first_video + offset_seconds
+                                              for p in data["packets"]
+                                              if p["codec_type"] == kind and "pts_time" in p)
+                offset_seconds += count / 60
+            intact = mode in {"discontinuity", "stall"}
+            self.assertEqual(sorted(frame_counts), [500, 500] if intact else [250, 500])
+            if intact:
+                self.assertEqual(sum(frame_counts), 1000)
+                source = json.loads(subprocess.check_output([
+                    "ffprobe", "-v", "error", "-count_frames", "-select_streams", "a:0",
+                    "-show_entries", "stream=nb_read_frames", "-of", "json", str(fixture),
+                ], timeout=10))
+                self.assertLessEqual(abs(sum(audio_counts) - int(source["streams"][0]["nb_read_frames"])), 2)
+                for kind, limit in (("video", 0.04), ("audio", 0.06)):
+                    pts = sorted(packet_times[kind])
+                    self.assertLess(max(b - a for a, b in zip(pts, pts[1:])), limit)
             self.assertEqual([c[c.index("--chzzk-start-lookback") + 1] for c in commands], ["3600", "0"])
             self.assertIn("--chzzk-resume", commands[1])
             if mode != "discontinuity":
                 self.assertTrue(json.loads(commands[1][commands[1].index("--chzzk-resume") + 1])["after_gap"])
+            if not intact:
                 self.assertTrue(any("복구하지 못했습니다" in str(call)
                                     for call in diagnostic_logger.warning.call_args_list))
             self.assertNotIn("--hls-live-restart", commands[0])

@@ -98,7 +98,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: long-recording-log-${{ github.run_id }}
-          path: log.log
+          path: |
+            log.log
+            ${{ runner.temp }}/chzzk-long-recording/continuity.jsonl
+            ${{ runner.temp }}/chzzk-long-recording/continuity-summary.json
           if-no-files-found: warn
           retention-days: 7
           compression-level: 9

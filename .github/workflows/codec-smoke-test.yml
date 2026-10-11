@@ -176,6 +176,8 @@ jobs:
           name: codec-smoke-logs-${{ github.run_id }}
           path: |
             ${{ runner.temp }}/chzzk-codec-logs
+            ${{ runner.temp }}/chzzk-codec-*/continuity.jsonl
+            ${{ runner.temp }}/chzzk-codec-*/continuity-summary.json
             log.log
           if-no-files-found: warn
           retention-days: 7

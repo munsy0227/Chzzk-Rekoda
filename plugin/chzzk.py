@@ -133,7 +133,12 @@ def resume_option(value):
             or type(data.get("after_gap", False)) is not bool):
         raise ValueError("Invalid resume position")
     parse_timestamp(data["from"])
-    return data
+    if "recovery_deadline" in data:
+        if not isinstance(data["recovery_deadline"], str) or len(data["recovery_deadline"]) > 40:
+            raise ValueError("Invalid recovery deadline")
+        parse_timestamp(data["recovery_deadline"])
+    return {key: value for key, value in data.items() if key in {
+        "live_id", "rendition", "from", "after_gap", "recovery_deadline"}}
 
 
 class LiveDetail(TypedDict):

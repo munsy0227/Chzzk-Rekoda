@@ -241,6 +241,7 @@ def setup_logger() -> logging.Logger:
 
 
 logger = logging.getLogger("Recorder")
+continuity_report = None
 
 
 def install_internal_dns_resolver() -> None:
@@ -815,6 +816,8 @@ async def read_log_stream(
         if process_name == "streamlink":
             if line_str.startswith(EVENT_PREFIX):
                 event = parse_event(line_str)
+                if continuity_report is not None:
+                    continuity_report.record(channel_id, event if event is not None else {})
                 if event is not None and continuity is not None:
                     message = continuity.accept(event)
                     if message:
@@ -2971,6 +2974,12 @@ async def record_stream(
                                         reserved_output_path.unlink()
 
                     if continuity.boundary and not shutdown_event.is_set():
+                        if not continuity.attempt_output:
+                            try:
+                                await asyncio.wait_for(shutdown_event.wait(), timeout=timeout)
+                                break
+                            except asyncio.TimeoutError:
+                                pass
                         continue
                     if streamlink_retry_delay is not None:
                         logger.info(
@@ -3318,10 +3327,11 @@ def run():
 
     from process_lock import FileLock
 
-    global CONFIG_FILE_PATH, LOG_FILE_PATH, console
+    global CONFIG_FILE_PATH, LOG_FILE_PATH, console, continuity_report
     parser = argparse.ArgumentParser()
     parser.add_argument("--gui-events", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, default=CONFIG_FILE_PATH)
+    parser.add_argument("--continuity-report", type=Path, help=tr("record.continuity_report_help"))
     args = parser.parse_args()
     CONFIG_FILE_PATH = args.config.resolve()
     LOG_FILE_PATH = CONFIG_FILE_PATH.parent / "log.log"
@@ -3341,12 +3351,31 @@ def run():
         else:
             print(message, file=sys.stderr)
         return 1
+    result = 1
     try:
+        if args.continuity_report is not None:
+            from continuity_report import ContinuityReport
+
+            try:
+                report_path = args.continuity_report.resolve()
+                if report_path in {CONFIG_FILE_PATH, LOG_FILE_PATH}:
+                    raise OSError(tr("record.continuity_report_collision"))
+                continuity_report = ContinuityReport(report_path)
+            except OSError as error:
+                print(tr("record.continuity_report_failed", error=error), file=sys.stderr)
+                return 1
         with terminal_display_mode() as vt_enabled:
             console = Console(legacy_windows=False if vt_enabled else None)
-            return asyncio.run(main(args.gui_events))
+            result = asyncio.run(main(args.gui_events))
     finally:
+        if continuity_report is not None:
+            continuity_report.finish(result == 0)
+            if continuity_report.failed:
+                print(tr("record.continuity_report_write_failed"), file=sys.stderr)
+                result = 1
+            continuity_report = None
         lock.__exit__(None, None, None)
+    return result
 
 
 if __name__ == "__main__":

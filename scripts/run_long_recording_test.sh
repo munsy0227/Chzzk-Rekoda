@@ -20,6 +20,8 @@ fi
 
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 failure_marker="$output_dir/.recording-stalled"
+continuity_report="$output_dir/continuity.jsonl"
+continuity_summary="$output_dir/continuity-summary.json"
 duration_seconds=$((duration_minutes * 60))
 started_at=$(date +%s)
 recorder_pid=""
@@ -56,7 +58,7 @@ timeout \
     --signal=TERM \
     --kill-after=120s \
     "${duration_seconds}s" \
-    uv run --no-sync python chzzk_record.py &
+    uv run --no-sync python chzzk_record.py --continuity-report "$continuity_report" &
 recorder_pid=$!
 
 (
@@ -106,6 +108,13 @@ janitor_pid=""
 
 elapsed_seconds=$(($(date +%s) - started_at))
 
+# Always retain the verdict, including early recorder exits and output stalls.
+set +e
+uv run --no-sync python continuity_report.py "$continuity_report" \
+    --summary "$continuity_summary" --language en
+continuity_status=$?
+set -e
+
 if [[ -e "$failure_marker" ]]; then
     exit 1
 fi
@@ -135,6 +144,10 @@ fi
 if [[ -z "$(find_recording_files -size +0c -print -quit)" ]]; then
     echo "::error::No non-empty recording segment remained after recording."
     exit 1
+fi
+
+if (( continuity_status != 0 )); then
+    exit "$continuity_status"
 fi
 
 echo "Recording test completed after ${elapsed_seconds} seconds without a detected stall."

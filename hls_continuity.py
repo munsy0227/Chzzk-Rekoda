@@ -16,7 +16,7 @@ import time
 from collections import OrderedDict
 from concurrent.futures import CancelledError, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse, urlunparse
 
 from Crypto.Cipher import AES
@@ -62,6 +62,33 @@ def parse_timestamp(value):
     if result.tzinfo is None:
         raise ValueError("A timezone is required")
     return result
+
+
+def failure_category(error):
+    """Classify exception types without retaining exception messages/URLs."""
+    names = set()
+    pending = [error]
+    seen = set()
+    while pending and len(seen) < 16:
+        cause = pending.pop()
+        if not isinstance(cause, BaseException) or id(cause) in seen:
+            continue
+        seen.add(id(cause))
+        names.add(type(cause).__name__.lower())
+        pending.extend(getattr(cause, key, None) for key in (
+            "err", "reason", "__cause__", "__context__"))
+        pending.extend(cause.args)
+    if any("timeout" in name for name in names):
+        return "timeout"
+    if any("ssl" in name or "certificate" in name for name in names):
+        return "tls"
+    if names & {"gaierror", "nameresolutionerror"}:
+        return "dns"
+    if names & {"protocolerror", "incompleteread", "chunkedencodingerror", "contentdecodingerror"}:
+        return "truncated"
+    if any("connection" in name for name in names):
+        return "connect"
+    return "parse" if "valueerror" in names else "network"
 
 
 def quality_from_url(url):
@@ -270,7 +297,31 @@ class ContinuitySource:
         self.changed = False
         self.recovering = False
         self.last_progress = time.monotonic()
+        self.recovery_deadline = None
+        self.recovery_wall = None
+        self.waiting_for_resume = bool(resume and resume["live_id"] == self.live_id
+                                      and resume["rendition"] == self.rendition)
+        if self.waiting_for_resume and resume.get("recovery_deadline"):
+            self.recovery_wall = parse_timestamp(resume["recovery_deadline"])
+            remaining = max(0, min(RECOVERY_TIMEOUT,
+                (self.recovery_wall - datetime.now(timezone.utc)).total_seconds()))
+            self.recovery_deadline = time.monotonic() + remaining
         self.terminal = None
+
+    def recovery_limit(self, limit=None):
+        with self.lock:
+            if self.recovery_deadline is None:
+                self.recovery_deadline = (limit if limit is not None else
+                                          time.monotonic() + RECOVERY_TIMEOUT)
+                self.recovery_wall = datetime.now(timezone.utc) + timedelta(
+                    seconds=max(0, self.recovery_deadline - time.monotonic()))
+            return self.recovery_deadline
+
+    def progressed(self):
+        with self.lock:
+            self.last_progress = time.monotonic()
+            self.recovery_deadline = None
+            self.recovery_wall = None
 
     def emit(self, kind, **fields):
         event = dict(version=1, kind=kind, live_id=self.live_id,
@@ -284,7 +335,7 @@ class ContinuitySource:
         if self.stop.is_set() or isinstance(error, (BroadcastEnded, BroadcastChanged)):
             return
         status = getattr(error, "status", None)
-        category = getattr(error, "category", "network")
+        category = getattr(error, "category", failure_category(error))
         sequence = located.num if located is not None else None
         at = timestamp(located.date) if located is not None else None
         key = (stage, role, category, status, sequence, at)
@@ -365,7 +416,7 @@ class ContinuitySource:
                 response = getattr(getattr(error, "err", error), "response", None)
                 status = getattr(response, "status_code", None)
                 failure = error if isinstance(error, Unavailable) else Unavailable(
-                    "Manifest request failed", status, "http" if status else "network")
+                    "Manifest request failed", status, "http" if status else failure_category(error))
                 self.report_failure("manifest", "history" if manifest.history else "current", failure)
                 if status in (401, 403):
                     # Refresh metadata only. Resolving manifests recursively
@@ -540,6 +591,10 @@ class ChzzkContinuityWorker(HLSStreamWorker):
         self.writer.prepare_standby()
         while not self.closed and not source.stop.is_set():
             try:
+                if source.ended:
+                    raise BroadcastEnded("Broadcast ended")
+                if source.changed:
+                    raise BroadcastChanged("Broadcast changed")
                 if last is None:
                     source.discover()
                 if time.monotonic() - source.last_refresh >= API_REFRESH_INTERVAL:
@@ -551,20 +606,17 @@ class ChzzkContinuityWorker(HLSStreamWorker):
                 if last is None:
                     resume = source.resume
                     if resume and resume["live_id"] == source.live_id and resume["rendition"] == source.rendition:
-                        cutoff = parse_timestamp(resume["from"])
-                        available = [source.locate(s, m) for m, p in source.candidates()
-                                     for s in p.segments if s.date and
-                                     s.date >= cutoff - timedelta(seconds=TIME_TOLERANCE)]
-                        segments = sorted(available, key=lambda s: s.date)
+                        source.waiting_for_resume = True
+                        segments = self.writer.resume_segments()
                         if not segments:
-                            source.terminal = ("gap", "resume_unavailable")
-                            return
-                        if abs((segments[0].date - cutoff).total_seconds()) > TIME_TOLERANCE:
-                            if not resume.get("after_gap", False):
-                                source.terminal = ("gap", "resume_unavailable")
+                            if source.terminal:
                                 return
-                            source.emit("gap", reason="resume_unavailable",
-                                        **{"from": timestamp(cutoff), "to": timestamp(segments[0].date)})
+                            if not self.wait(1):
+                                return
+                            continue
+                        source.waiting_for_resume = False
+                        manifest = source.primary
+                        playlist = manifest.playlist
                     elif source.lookback and segments[-1].end:
                         cutoff = segments[-1].end - timedelta(seconds=source.lookback)
                         candidates = source.candidates()
@@ -603,29 +655,56 @@ class ChzzkContinuityWorker(HLSStreamWorker):
                             continue
                     queued |= yield segment
                     last = segment
-                if playlist.is_endlist:
+                if playlist.is_endlist and not manifest.history:
                     return
-                if not queued and time.monotonic() - source.last_progress >= RECOVERY_TIMEOUT:
-                    # Check API before interpreting a stopped playlist as a gap.
-                    source.discover(force=True)
-                    source.terminal = ("gap", "playlist_stalled")
-                    return
+                if not queued and time.monotonic() - source.last_progress >= 5:
+                    limit = source.recovery_limit(source.last_progress + RECOVERY_TIMEOUT)
+                    if time.monotonic() >= limit:
+                        source.terminal = ("gap", "playlist_stalled")
+                        return
+                    self.refresh_stalled_playlist(last)
                 interval = (0.05 if manifest.mode == "llhls" and playlist.can_block_reload
                             else min(2, playlist.part_target or playlist.targetduration or 2))
                 if not self.wait(interval):
                     return
             except BroadcastEnded:
+                source.terminal = ("boundary", "broadcast_ended")
                 return
             except BroadcastChanged:
                 source.terminal = ("boundary", "broadcast_changed")
                 return
             except (StreamError, ValueError):
-                if time.monotonic() - source.last_progress >= RECOVERY_TIMEOUT:
+                limit = source.recovery_limit(source.last_progress + RECOVERY_TIMEOUT)
+                if (not source.waiting_for_resume and time.monotonic() >= limit):
                     source.terminal = ("gap", "playlist_unavailable")
                     return
                 source.recovering = True
+                self.refresh_stalled_playlist(last)
                 if not self.wait(1):
                     return
+
+    def refresh_stalled_playlist(self, last):
+        """Try dated current/history alternatives even with no queued next media."""
+        source = self.stream.continuity
+        if time.monotonic() - source.last_discovery < RECOVERY_REFRESH_INTERVAL:
+            return
+        source.last_discovery = time.monotonic()
+        try:
+            candidates = self.writer.resume_candidates()
+            if last is None:
+                if candidates:
+                    source.primary = candidates[0][0]
+                return
+            for manifest, playlist in candidates:
+                following = [source.locate(s, manifest) for s in playlist.segments
+                             if ((last.end and s.date and s.date >= last.end - timedelta(seconds=TIME_TOLERANCE))
+                                 or (last.end is None and manifest.url == last.manifest.url and s.num > last.num))
+                             and source.in_history_window(manifest, playlist, s)]
+                if following:
+                    source.primary = manifest
+                    return
+        except (StreamError, ValueError):
+            pass
 
 
 class ChzzkContinuityWriter(HLSStreamWriter):
@@ -649,6 +728,79 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         self.parts = OrderedDict()
         self.standby_future = None
         self.selected_source = None
+        self.delivery_lock = threading.RLock()
+
+    def resume_candidates(self):
+        """Bound slow Korean discovery while allowing Akamai within two seconds."""
+        futures = {}
+        started = time.monotonic()
+        limit = started + HISTORY_BUDGET + 5
+        result = []
+
+        def submit(group):
+            if not self.lookup_slots.acquire(blocking=False):
+                return False
+            try:
+                future = self.lookups.submit(self.source.candidates, True, group)
+            except RuntimeError:
+                self.lookup_slots.release()
+                return False
+            future.add_done_callback(lambda _: self.lookup_slots.release())
+            futures[group] = future
+            return True
+
+        submit("korean")
+        akamai_started = not any(p.cdn == "akamai" for p in self.source.paths)
+        try:
+            while not self.source.stop.is_set() and time.monotonic() < limit:
+                for group, future in list(futures.items()):
+                    if future.done():
+                        del futures[group]
+                        try:
+                            result.extend(future.result())
+                        except (StreamError, ValueError, CancelledError):
+                            pass
+                if not akamai_started and (not futures or time.monotonic() - started >= HISTORY_BUDGET):
+                    akamai_started = submit("akamai")
+                if not futures and akamai_started:
+                    break
+                self.source.stop.wait(0.05)
+            return result
+        finally:
+            for future in futures.values():
+                future.cancel()
+
+    def resume_segments(self):
+        source = self.source
+        resume = source.resume
+        cutoff = parse_timestamp(resume["from"])
+        candidates = self.resume_candidates()
+        available = [source.locate(s, m) for m, p in candidates for s in p.segments
+                     if s.date and s.date >= cutoff - timedelta(seconds=TIME_TOLERANCE)
+                     and source.in_history_window(m, p, s)]
+        available.sort(key=lambda s: (s.date, s.manifest.cdn == "akamai", s.manifest.mode != "llhls"))
+        exact = [s for s in available if abs((s.date - cutoff).total_seconds()) <= TIME_TOLERANCE]
+        pending = "recovery_deadline" in resume
+        expired = pending and time.monotonic() >= source.recovery_limit()
+        if not exact and not resume.get("after_gap", False):
+            source.terminal = ("gap", "resume_unavailable")
+            return []
+        if pending and not expired and not exact:
+            return []
+        # After the shared deadline, probe each candidate once; never start a
+        # fresh 90-second retry for a position already known to be unavailable.
+        attempts = available if expired or not pending else exact
+        for target in attempts:
+            try:
+                probe_limit = time.monotonic() + self.timeout
+                future = self.submit_request(target, target, probe_limit)
+                result = future.result(timeout=max(0, probe_limit - time.monotonic()))
+            except (StreamError, ValueError, CancelledError, TimeoutError):
+                continue
+            self.start_download = result
+            source.primary = target.manifest
+            return [target] + [s for s in available if s.date > target.date]
+        return []
 
     def prepare_standby(self):
         if self.standby_future is not None:
@@ -860,13 +1012,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 raise
             if isinstance(error, (BroadcastEnded, BroadcastChanged)):
                 raise
-            cause = getattr(error, "err", error)
-            name = type(cause).__name__
-            category = ("timeout" if "timeout" in name.lower() else
-                        "truncated" if name in {"ProtocolError", "IncompleteRead",
-                                                "ChunkedEncodingError", "ContentDecodingError"}
-                        else "network")
-            raise Unavailable("Media request failed", category=category) from None
+            raise Unavailable("Media request failed", category=failure_category(error)) from None
 
     def decrypt(self, data, key, number):
         if key is None or key.method == "NONE":
@@ -1031,6 +1177,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                     refresh_candidates = True
                 except TimeoutError:
                     pass
+                deadline = min(deadline, self.source.recovery_limit(deadline))
                 # Manifest/API discovery can be slow too. Poll it alongside the
                 # primary response so a completed download is never held up by
                 # resolving a fallback that is no longer needed.
@@ -1108,32 +1255,45 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         raise Unavailable("Required segment unavailable")
 
     def boundary(self, following, reason, resume_from=None, after_gap=False):
-        if self.failed or self.source.stop.is_set():
-            return
-        self.failed = True
-        self.source.emit("boundary", reason=reason,
-                         resume_from=timestamp(following.date if following else resume_from),
-                         after_gap=after_gap)
-        self.close()
+        with self.delivery_lock:
+            if self.failed or self.source.stop.is_set():
+                return
+            self.failed = True
+            fields = dict(reason=reason,
+                          resume_from=timestamp(following.date if following else resume_from),
+                          after_gap=after_gap)
+            if after_gap:
+                self.source.recovery_limit()
+                fields["recovery_deadline"] = timestamp(self.source.recovery_wall)
+            self.source.emit("boundary", **fields)
+            self.close()
 
     def fail(self, previous, following, reason, missing_next=False):
+        with self.delivery_lock:
+            return self._fail(self.previous or previous, following, reason, missing_next)
+
+    def _fail(self, previous, following, reason, missing_next=False):
         if self.failed or self.source.stop.is_set():
             return
         start = previous.end if previous else following.date if following else None
         if start is None and self.source.resume:
             start = parse_timestamp(self.source.resume["from"])
-        self.source.emit("gap", reason=reason,
-                         **{"from": timestamp(start),
-                            "to": timestamp(following.end if missing_next else following.date)
-                            if following else None})
-        # Keep the earliest position after the known hole instead of jumping
-        # to a moving live edge during process/file finalization.
-        resume_from = (following.end if missing_next else following.date) if following else None
+        # No gap is confirmed until the next validated media is actually
+        # delivered. Preserve the last output end, including unknown-next stalls.
+        resume_from = start
         if reason == "broadcast_ended":
             resume_from = None
-        self.boundary(None, reason, resume_from=resume_from, after_gap=resume_from is not None)
+        allow_gap = (resume_from is not None and (reason != "resume_unavailable"
+                     or bool(self.source.resume and self.source.resume.get("after_gap", False))))
+        self.boundary(None, reason, resume_from=resume_from, after_gap=allow_gap)
 
     def deliver(self, target, result):
+        with self.delivery_lock:
+            if self.failed or self.source.stop.is_set():
+                return False
+            return self._deliver(target, result)
+
+    def _deliver(self, target, result):
         if self.previous and (target.discontinuity or result.initialization != self.initialization):
             self.boundary(target, "discontinuity" if target.discontinuity else "initialization_changed")
             return False
@@ -1144,6 +1304,12 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         self.reader.buffer.write(result.media)
         if self.source.stop.is_set():
             return False
+        if self.previous is None and self.source.resume and target.date:
+            cutoff = parse_timestamp(self.source.resume["from"])
+            if (target.date - cutoff).total_seconds() > TIME_TOLERANCE:
+                self.source.emit("gap", reason="resume_unavailable",
+                                 **{"from": timestamp(cutoff), "to": timestamp(target.date)})
+        self.source.emit("checkpoint", **{"from": timestamp(target.date), "to": timestamp(target.end)})
         self.previous = target
         selected = (result.located.manifest.cdn, result.mode)
         if selected != self.selected_source:
@@ -1154,7 +1320,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 if key[0] <= target.num:
                     self.parts.pop(key).cancel()
         self.start_download = None
-        self.source.last_progress = time.monotonic()
+        self.source.progressed()
         if self.source.recovering:
             self.source.emit("recovery_completed", at=timestamp(target.end))
             self.source.recovering = False
@@ -1178,7 +1344,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
             if missing:
                 self.source.emit("recovery_started", at=timestamp(previous.end))
                 self.source.recovering = True
-                deadline = time.monotonic() + RECOVERY_TIMEOUT
+                deadline = self.source.recovery_limit()
                 refresh = False
                 while not self.source.stop.is_set():
                     try:
@@ -1186,7 +1352,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                         for segment in chain:
                             if not self.deliver(segment, self.fetch(segment)):
                                 return
-                            deadline = time.monotonic() + RECOVERY_TIMEOUT
+                            deadline = self.source.recovery_limit()
                         break
                     except BroadcastEnded:
                         self.fail(self.previous, target, "broadcast_ended")
@@ -1261,5 +1427,6 @@ class ChzzkContinuityReader(HLSStreamReader):
             except OSError:
                 if source.stop.is_set():
                     return self.buffer.read(size, block=False)
-                if time.monotonic() - source.last_progress >= RECOVERY_TIMEOUT + 5:
+                limit = source.recovery_deadline or source.last_progress + RECOVERY_TIMEOUT
+                if not source.waiting_for_resume and time.monotonic() >= limit + 5:
                     self.writer.fail(self.writer.previous, None, "output_stalled")
