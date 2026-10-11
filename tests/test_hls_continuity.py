@@ -1562,8 +1562,7 @@ class ContinuityReportTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             resume_option(json.dumps(dict(restored, recovery_deadline="without timezone")))
 
-    @unittest.skipUnless(os.name == "posix" and shutil.which("bash") and shutil.which("timeout"),
-                         "GNU timeout and Bash required")
+    @unittest.skipUnless(os.name == "posix" and shutil.which("bash"), "Bash required")
     def test_ci_helper_finishes_recording_before_verdict_and_retains_evidence(self):
         root = Path(__file__).resolve().parents[1]
         for gap, recorder_status in ((False, 0), (True, 0), (False, 7)):
@@ -1573,6 +1572,7 @@ class ContinuityReportTests(unittest.TestCase):
                 scripts = project / "scripts"
                 scripts.mkdir()
                 shutil.copy2(root / "scripts/run_long_recording_test.sh", scripts)
+                shutil.copy2(root / "scripts/run_recording_test.py", scripts)
                 for name in ("continuity_report.py", "recording_continuity.py", "i18n.py"):
                     shutil.copy2(root / name, project)
                 output = project / "output"
@@ -1580,11 +1580,12 @@ class ContinuityReportTests(unittest.TestCase):
                 binaries = project / "bin"
                 binaries.mkdir()
                 fake_uv = binaries / "uv"
-                fake_uv.write_text("#!" + os.sys.executable + "\n" + r"""
+                fake_uv.write_text("#!" + os.sys.executable +
+                                   "\nimport os, sys\nos.execv(sys.executable, [sys.executable, *sys.argv[4:]])\n")
+                fake_uv.chmod(0o755)
+                (project / "chzzk_record.py").write_text(r"""
 import json, os, sys, time
 from pathlib import Path
-if sys.argv[4] != 'chzzk_record.py':
-    os.execv(sys.executable, [sys.executable, *sys.argv[4:]])
 report = Path(sys.argv[-1])
 Path('log.log').write_text('Recording started for fixture\n')
 (report.parent / 'fixture.ts').write_bytes(b'media')
@@ -1597,13 +1598,6 @@ with report.open('w') as stream:
     stream.write(json.dumps(dict(version=1, kind='report_finished', complete=True)) + '\n')
 raise SystemExit(int(os.environ['FIXTURE_STATUS']))
 """)
-                fake_uv.chmod(0o755)
-                # Keep monitor sleeps short so their children close captured
-                # output pipes promptly when the helper cleans up its shells.
-                fake_sleep = binaries / "sleep"
-                fake_sleep.write_text("#!" + os.sys.executable +
-                                      "\nimport time\ntime.sleep(0.02)\n")
-                fake_sleep.chmod(0o755)
                 rows = [dict(version=1, kind="report_started"), self.checkpoint(0, 4),
                         self.checkpoint(8 if gap else 4, 12 if gap else 8)]
                 env = dict(os.environ, PATH=str(binaries) + os.pathsep + os.environ["PATH"],

@@ -3,6 +3,21 @@ name: Long recording test
 on:
   workflow_dispatch:
     inputs:
+      channel_uuid:
+        description: Channel UUID (leave blank to use the original test channel)
+        required: false
+        default: "64a90ba95d1f9feb0a798a20bbf0f40c"
+        type: string
+      test_os:
+        description: Operating system (GitHub's latest stable runner image)
+        required: true
+        default: linux
+        type: choice
+        options:
+          - linux
+          - windows
+          - macos
+          - all
       duration_minutes:
         description: Recording duration in minutes (270-330)
         required: true
@@ -18,11 +33,15 @@ concurrency:
 
 jobs:
   record:
-    name: Record CHZZK stream
-    runs-on: ubuntu-24.04
+    name: Record CHZZK stream (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: ${{ fromJSON(inputs.test_os == 'all' && '["ubuntu-latest","windows-latest","macos-latest"]' || inputs.test_os == 'windows' && '["windows-latest"]' || inputs.test_os == 'macos' && '["macos-latest"]' || '["ubuntu-latest"]') }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 355
     env:
-      CHANNEL_ID: 64a90ba95d1f9feb0a798a20bbf0f40c
+      CHANNEL_ID: ${{ inputs.channel_uuid }}
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
 
     steps:
@@ -36,72 +55,44 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install FFmpeg and Python dependencies
+      - name: Install Python dependencies
+        run: uv sync --locked
+
+      - name: Validate test input
+        run: uv run --no-sync python scripts/run_recording_test.py validate long
+
+      - name: Install FFmpeg on Linux
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install --yes ffmpeg
-          uv sync --locked
 
-      - name: Configure long recording test
-        run: |
-          OUTPUT_DIR="$RUNNER_TEMP/chzzk-long-recording"
-          echo "OUTPUT_DIR=$OUTPUT_DIR" >> "$GITHUB_ENV"
+      - name: Install FFmpeg on macOS
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
 
-          if [[ ! "$DURATION_MINUTES" =~ ^[0-9]+$ ]] \
-            || (( DURATION_MINUTES < 270 || DURATION_MINUTES > 330 )); then
-            echo "::error::duration_minutes must be between 270 and 330."
-            exit 1
-          fi
+      - name: Install FFmpeg on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/install_ffmpeg_ci_windows.ps1
 
-          mkdir -p "$OUTPUT_DIR"
-          jq -n \
-            --arg channel_id "$CHANNEL_ID" \
-            --arg output_dir "$OUTPUT_DIR" \
-            '{
-              channels: [{
-                id: $channel_id,
-                name: "GitHub Actions long recording",
-                output_dir: $output_dir,
-                identifier: "long_recording",
-                active: "on"
-              }],
-              delays: {long_recording: 0},
-              timeout: 30,
-              stream_segment_threads: 2,
-              output_format: "ts",
-              recording_split_minutes: 5,
-              hevc_settings: {enable: false},
-              av1_settings: {enable: false},
-              log_enabled: true,
-              cookies: {NID_SES: "", NID_AUT: ""},
-              dns_settings: {enable: false},
-              language: "en"
-            }' > config.json
-
-      - name: Verify that the test channel is live
-        run: |
-          uv run --no-sync streamlink \
-            --plugin-dirs plugin \
-            --stream-url \
-            "https://chzzk.naver.com/live/$CHANNEL_ID" \
-            best > /dev/null
+      - name: Save test environment
+        if: always()
+        run: uv run --no-sync python scripts/run_recording_test.py environment
 
       - name: Run long recording test
-        run: |
-          bash scripts/run_long_recording_test.sh \
-            "$DURATION_MINUTES" \
-            180 \
-            "$OUTPUT_DIR"
+        run: uv run --no-sync python scripts/run_recording_test.py long
 
       - name: Upload recorder log
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: long-recording-log-${{ github.run_id }}
+          name: long-recording-log-${{ matrix.runner }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            log.log
+            ${{ runner.temp }}/chzzk-long-recording/log.log
             ${{ runner.temp }}/chzzk-long-recording/continuity.jsonl
             ${{ runner.temp }}/chzzk-long-recording/continuity-summary.json
+            ${{ runner.temp }}/chzzk-test-environment.json
           if-no-files-found: warn
           retention-days: 7
           compression-level: 9

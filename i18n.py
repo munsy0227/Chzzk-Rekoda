@@ -1907,3 +1907,71 @@ _CONTINUITY_TEXT = {
 for _key, _texts in _CONTINUITY_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["record." + _key] = _text
+
+
+_CI_TEXT = {
+    "description": (
+        "GitHub Actions 녹화 테스트 실행기", "GitHub Actions recording test runner",
+        "GitHub Actions 录制测试运行器", "GitHub Actions 錄製測試執行器", "GitHub Actions 録画テスト実行ツール"),
+    "invalid_channel": (
+        "채널 UUID는 32자리 16진수여야 합니다.", "Channel UUID must contain 32 hexadecimal characters.",
+        "频道 UUID 必须是 32 位十六进制字符。", "頻道 UUID 必須是 32 位十六進位字元。", "チャンネル UUID は32桁の16進数で指定してください。"),
+    "positive_integer": (
+        "녹화 시간과 무출력 제한은 양의 정수여야 합니다.", "Recording duration and stall timeout must be positive integers.",
+        "录制时长和无输出超时必须是正整数。", "錄製時間和無輸出逾時必須是正整數。", "録画時間と無出力の制限時間は正の整数で指定してください。"),
+    "duration_range": (
+        "녹화 시간은 {minimum}~{maximum}분이어야 합니다.", "Recording duration must be between {minimum} and {maximum} minutes.",
+        "录制时长必须在 {minimum} 到 {maximum} 分钟之间。", "錄製時間必須介於 {minimum} 到 {maximum} 分鐘。", "録画時間は{minimum}～{maximum}分で指定してください。"),
+    "shutdown_timeout": (
+        "{seconds}초 안에 녹화기가 종료되지 않아 강제로 정리합니다.", "Recorder did not exit within {seconds} seconds; forcing cleanup.",
+        "录制器未在 {seconds} 秒内退出，将强制清理。", "錄製器未在 {seconds} 秒內結束，將強制清理。", "録画プロセスが{seconds}秒以内に終了しないため、強制終了します。"),
+    "cleanup_failed": (
+        "녹화기의 하위 프로세스 정리에 실패했습니다.", "Cleaning up the recorder's child processes failed.",
+        "清理录制器的子进程失败。", "清理錄製器的子程序失敗。", "録画プロセスの子プロセスの終了処理に失敗しました。"),
+    "stalled": (
+        "{seconds}초 동안 녹화 파일에 새 데이터가 기록되지 않았습니다.", "No recording output was written for {seconds} seconds.",
+        "录制文件已有 {seconds} 秒未写入新数据。", "錄製檔案已有 {seconds} 秒未寫入新資料。", "{seconds}秒間、録画ファイルに新しいデータが書き込まれていません。"),
+    "recorder_exit": (
+        "녹화기가 상태 코드 {status}로 종료됐습니다.", "Recorder exited with status {status}.",
+        "录制器以状态码 {status} 退出。", "錄製器以狀態碼 {status} 結束。", "録画プロセスが終了コード{status}で終了しました。"),
+    "early_exit": (
+        "요청한 녹화 시간보다 일찍 녹화기가 종료됐습니다.", "Recorder exited before the requested duration.",
+        "录制器在请求的录制时长结束前退出。", "錄製器在要求的錄製時間結束前退出。", "指定した録画時間より早く録画プロセスが終了しました。"),
+    "never_started": (
+        "테스트 채널의 녹화가 시작되지 않았습니다.", "The recorder never started writing the test channel.",
+        "测试频道的录制未开始。", "測試頻道的錄製未開始。", "テストチャンネルの録画が開始されませんでした。"),
+    "ffmpeg_failure": (
+        "FFmpeg에서 손상된 입력 또는 치명적인 오류를 보고했습니다.", "FFmpeg reported corrupt input or a fatal failure.",
+        "FFmpeg 报告了损坏的输入或致命错误。", "FFmpeg 回報了損壞的輸入或嚴重錯誤。", "FFmpeg が入力の破損または致命的なエラーを報告しました。"),
+    "empty_output": (
+        "데이터가 있는 녹화 파일이 남아 있지 않습니다.", "No non-empty recording segment remained after recording.",
+        "录制后没有非空的录制文件。", "錄製後沒有非空的錄製檔案。", "録画後にデータのある録画ファイルが残っていません。"),
+    "completed": (
+        "녹화 테스트가 {seconds}초 후 완료됐으며 중단이 감지되지 않았습니다.", "Recording test completed after {seconds} seconds without a detected stall.",
+        "录制测试在 {seconds} 秒后完成，未检测到停滞。", "錄製測試在 {seconds} 秒後完成，未偵測到停滯。", "録画テストが{seconds}秒後に完了し、停止は検出されませんでした。"),
+    "live_failed": (
+        "테스트 채널 {channel}의 방송 중 여부를 확인할 수 없습니다.", "Could not verify that test channel {channel} is live.",
+        "无法确认测试频道 {channel} 正在直播。", "無法確認測試頻道 {channel} 正在直播。", "テストチャンネル{channel}が配信中であることを確認できません。"),
+    "encoder_failed": (
+        "{encoder} 인코더의 최소 실행 검증에 실패했습니다.", "The minimal encoding probe failed for {encoder}.",
+        "{encoder} 编码器的最小运行验证失败。", "{encoder} 編碼器的最小執行驗證失敗。", "{encoder}エンコーダーの最小実行テストに失敗しました。"),
+    "missing_video": (
+        "{codec} 녹화 파일에 영상 코덱 정보가 없습니다.", "The {codec} recording has no video codec metadata.",
+        "{codec} 录制文件没有视频编码信息。", "{codec} 錄製檔案沒有影像編碼資訊。", "{codec}録画ファイルに映像コーデック情報がありません。"),
+    "codec_mismatch": (
+        "{codec} 녹화 결과의 코덱이 {actual}입니다.", "The {codec} recording produced {actual} instead of {codec}.",
+        "{codec} 录制结果的编码是 {actual}，与预期不符。", "{codec} 錄製結果的編碼是 {actual}，與預期不符。", "{codec}録画の出力コーデックは{actual}で、期待した{codec}と異なります。"),
+    "codec_verified": (
+        "{codec} 녹화 코덱 확인 완료: {path}", "Verified {codec} output: {path}",
+        "已验证 {codec} 录制编码：{path}", "已驗證 {codec} 錄製編碼：{path}", "{codec}出力を確認しました: {path}"),
+    "test_failed": (
+        "녹화 테스트 실행에 실패했습니다: {category}", "Recording test execution failed: {category}",
+        "录制测试执行失败：{category}", "錄製測試執行失敗：{category}", "録画テストの実行に失敗しました: {category}"),
+    "windows_install_failed": (
+        "Windows FFmpeg 설치 검증에 실패했습니다: {stage}", "Windows FFmpeg installation verification failed: {stage}",
+        "Windows FFmpeg 安装验证失败：{stage}", "Windows FFmpeg 安裝驗證失敗：{stage}", "Windows FFmpeg のインストール検証に失敗しました: {stage}"),
+}
+
+for _key, _texts in _CI_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["ci." + _key] = _text

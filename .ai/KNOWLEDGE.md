@@ -11,6 +11,8 @@
 
 ## 현재 코드 구조
 
+- GitHub 수동 `Long recording test`/`Codec smoke test`는 `channel_uuid`(빈 입력이면 기존 `64a90ba95d1f9feb0a798a20bbf0f40c`)와 `test_os=linux/windows/macos/all`을 받는다. Linux 기본값, `*-latest` 안정 이미지, 전체 선택의 병렬 실행과 `fail-fast: false`를 사용한다. `scripts/run_recording_test.py`는 임시 폴더 설정·녹화 감시·정리·연속성/코덱 판정을 공용화하고 기존 Bash helper는 세 인수 래퍼다. GUI 제어 파이프로 정상 중지하며 120초 초과 시 하위 프로세스까지 정리해 실패한다. Windows CI는 SHA-256 확인한 Gyan full FFmpeg를 사용한다. OS/run ID/run attempt별 아티팩트에 실패 로그·보고서·요약·실제 환경 버전을 7일 보관하며 설정 원문은 업로드하지 않는다. 승인 범위는 [계획](plans/recording-test-platforms.md), 검증과 미검증 범위는 [작업 기록](worklogs/2026-10-11-recording-test-platforms.md)에 있다.
+
 - `chzzk_record.py`: `asyncio` 기반 녹화 관리, Streamlink/FFmpeg 자식 프로세스 실행, 인코더 probe/fallback, Rich 진행 화면을 포함한다. `manage_recording_tasks()`, `record_stream()`, `display_progress()`, `main()`이 주요 연결 지점이다.
 - `chzzk_record.py`의 uvloop 설정, 로거 생성, DNS 설치는 `run()`/`main()`에서 수행한다. import 시 파일/UI 부수 효과를 없앴다. CLI 실행은 그대로이며 GUI는 `--gui-events --config` 인자를 사용한다.
 - `settings.py`: `main()` 실행 가드가 있는 CLI다. 채널/녹화·화질/인코딩/NAVER 로그인/네트워크/언어·로그의 6개 메뉴, 0번 뒤로/종료로 구성한다. `config_store.py`의 공용 설정, `channel_service.py`의 채널 검색, `browser_login.py`의 쿠키 수집을 사용한다.
