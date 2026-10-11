@@ -11,6 +11,8 @@
 
 ## 현재 코드 구조
 
+- 수동 `Long recording test`/`Codec smoke test`의 main 워크플로는 실행 입력을 등록하고 `actions/checkout`의 `ref: dev`로 dev 녹화 코드를 검사한다(2026-10-11). `channel_uuid`는 빈 입력이면 기존 채널, `test_os=linux/windows/macos/all`은 Linux 기본값과 GitHub `*-latest` matrix를 사용한다. Python 실행기·연속성 보고·Windows FFmpeg 설치기는 체크아웃한 dev에서 사용한다. main의 수동 실행도 dev 코드를 검사하므로 실제 녹화 버전은 checkout 단계의 SHA로 확인한다. 적용 범위와 검증은 [등록 작업 기록](worklogs/2026-10-11-recording-workflow-registration.md)을 참고한다.
+
 - `chzzk_record.py`: `asyncio` 기반 녹화 관리, Streamlink/FFmpeg 자식 프로세스 실행, 인코더 probe/fallback, Rich 진행 화면을 포함한다. `manage_recording_tasks()`, `record_stream()`, `display_progress()`, `main()`이 주요 연결 지점이다.
 - `chzzk_record.py`의 uvloop 설정, 로거 생성, DNS 설치는 `run()`/`main()`에서 수행한다. import 시 파일/UI 부수 효과를 없앴다. CLI 실행은 그대로이며 GUI는 `--gui-events --config` 인자를 사용한다.
 - `settings.py`: `main()` 실행 가드가 있는 CLI다. 채널/녹화·화질/인코딩/NAVER 로그인/네트워크/언어·로그의 6개 메뉴, 0번 뒤로/종료로 구성한다. `config_store.py`의 공용 설정, `channel_service.py`의 채널 검색, `browser_login.py`의 쿠키 수집을 사용한다.
