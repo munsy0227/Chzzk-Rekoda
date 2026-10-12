@@ -1812,7 +1812,7 @@ _GUI_TEXT.update({
     "install_gui_ready": ("설치가 완료되었습니다. GUI를 엽니다. 처음 실행하면 설정 마법사가 표시됩니다.", "Installation complete. Opening the GUI; the setup wizard appears on first launch.", "安装完成。正在打开 GUI，首次启动将显示设置向导。", "安裝完成。正在開啟 GUI，首次啟動會顯示設定精靈。", "インストールが完了しました。GUI を開きます。初回は設定ウィザードが表示されます。"),
     "install_failed": ("설치를 완료하지 못했습니다: {error}", "Installation could not finish: {error}", "无法完成安装：{error}", "無法完成安裝：{error}", "インストールを完了できませんでした: {error}"),
     "cli_main_menu": ("1. 채널 관리\n2. 녹화 · 화질\n3. 인코딩\n4. 네이버 로그인\n5. 네트워크\n6. 언어 · 로그\n0. 종료", "1. Channels\n2. Recording and quality\n3. Encoding\n4. NAVER login\n5. Network\n6. Language and logs\n0. Exit", "1. 频道管理\n2. 录制与画质\n3. 编码\n4. NAVER 登录\n5. 网络\n6. 语言与日志\n0. 退出", "1. 頻道管理\n2. 錄製與畫質\n3. 編碼\n4. NAVER 登入\n5. 網路\n6. 語言與記錄\n0. 結束", "1. チャンネル管理\n2. 録画・画質\n3. エンコード\n4. NAVER ログイン\n5. ネットワーク\n6. 言語・ログ\n0. 終了"),
-    "cli_channel_menu": ("1. 채널 추가\n2. 채널 삭제\n3. 녹화 사용 여부\n4. 채널별 분할 · 화질\n0. 뒤로", "1. Add channel\n2. Remove channel\n3. Enable recording\n4. Channel split and quality\n0. Back", "1. 添加频道\n2. 删除频道\n3. 启用录制\n4. 频道分割与画质\n0. 返回", "1. 新增頻道\n2. 刪除頻道\n3. 啟用錄製\n4. 頻道分割與畫質\n0. 返回", "1. チャンネル追加\n2. チャンネル削除\n3. 録画の有効化\n4. チャンネル別の分割・画質\n0. 戻る"),
+    "cli_channel_menu": ("1. 채널 추가\n2. 채널 삭제\n3. 녹화 사용 여부\n4. 채널별 분할 · 화질 · 최근 1시간\n0. 뒤로", "1. Add channel\n2. Remove channel\n3. Enable recording\n4. Channel split, quality and previous hour\n0. Back", "1. 添加频道\n2. 删除频道\n3. 启用录制\n4. 频道分割、画质与最近一小时\n0. 返回", "1. 新增頻道\n2. 刪除頻道\n3. 啟用錄製\n4. 頻道分割、畫質與最近一小時\n0. 返回", "1. チャンネル追加\n2. チャンネル削除\n3. 録画の有効化\n4. チャンネル別の分割・画質・直近1時間\n0. 戻る"),
     "cli_recording_menu": ("1. 다운로드 스레드\n2. 방송 확인 간격\n3. 파일 형식\n4. 기본 분할 간격\n5. 기본 화질 · FPS\n0. 뒤로", "1. Download threads\n2. Broadcast check interval\n3. File format\n4. Default split interval\n5. Default quality and FPS\n0. Back", "1. 下载线程\n2. 直播检查间隔\n3. 文件格式\n4. 默认分割间隔\n5. 默认画质与 FPS\n0. 返回", "1. 下載執行緒\n2. 直播檢查間隔\n3. 檔案格式\n4. 預設分割間隔\n5. 預設畫質與 FPS\n0. 返回", "1. ダウンロードスレッド\n2. 配信確認間隔\n3. ファイル形式\n4. 既定の分割間隔\n5. 既定の画質・FPS\n0. 戻る"),
     "cli_encoding_menu": ("1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 뒤로", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. Back", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 返回", "1. H.264\n2. HEVC (H.265)\n3. AV1\n0. 戻る"),
     "cli_auth_menu": ("1. 브라우저로 로그인\n2. 쿠키 직접 입력\n3. 쿠키 삭제\n0. 뒤로", "1. Browser login\n2. Enter cookies\n3. Delete cookies\n0. Back", "1. 浏览器登录\n2. 输入 Cookie\n3. 删除 Cookie\n0. 返回", "1. 瀏覽器登入\n2. 輸入 Cookie\n3. 刪除 Cookie\n0. 返回", "1. ブラウザーでログイン\n2. Cookie を入力\n3. Cookie を削除\n0. 戻る"),
@@ -1844,6 +1844,149 @@ _GUI_TEXT.update({
     "more_actions": ("명령 더보기", "More actions", "更多操作", "更多操作", "その他の操作"),
 })
 
+_GUI_TEXT.update({
+    "previous_hour": ("최근 1시간부터 녹화", "Record the previous hour", "从最近一小时开始录制", "從最近一小時開始錄製", "直近1時間から録画"),
+    "previous_hour_on": ("사용", "On", "使用", "使用", "使用する"),
+    "previous_hour_help": (
+        "다음 녹화 시작부터 적용합니다. 실제로 제공되는 과거 조각에서 최대 1시간 전부터 시작합니다. 제공 분량은 채널마다 다르며, 과거 조각을 사용할 수 없으면 현재 방송부터 시작합니다. 타임머신 버튼 표시 여부만으로 판단하지 않습니다. 기본값은 꺼짐이며 누락 복구는 이 설정과 관계없이 자동으로 시도합니다.",
+        "Applies to the next recording start. Starts up to one hour earlier using actually available past segments. Availability varies by channel; starts live if past segments are unavailable. The time-machine button alone does not determine availability. Off by default; missing-segment recovery is attempted automatically regardless of this setting.",
+        "下次开始录制时生效。从实际可用的历史片段开始，最多回溯一小时。各频道提供的时长不同；历史片段不可用时从当前直播开始。不仅依据时光机按钮判断。默认关闭；无论此设置如何，都会自动尝试恢复缺失片段。",
+        "下次開始錄製時生效。從實際可用的歷史片段開始，最多回溯一小時。各頻道提供的時長不同；歷史片段無法使用時從目前直播開始。不僅依據時光機按鈕判斷。預設關閉；無論此設定為何，都會自動嘗試復原缺失片段。",
+        "次の録画開始時に適用します。実際に利用できる過去の断片から最大1時間前まで遡ります。提供時間はチャンネルごとに異なり、過去の断片を利用できない場合は現在の配信から開始します。タイムマシンボタンの表示だけでは判断しません。既定はオフです。この設定にかかわらず欠落した断片の復旧を自動で試みます。",
+    ),
+    "cli_previous_hour_global": ("최근 1시간부터 녹화: 1=사용, 2=사용 안 함: ", "Record previous hour: 1=on, 2=off: ", "录制最近一小时：1=开启，2=关闭：", "錄製最近一小時：1=開啟，2=關閉：", "直近1時間から録画: 1=オン、2=オフ: "),
+    "cli_previous_hour_channel": ("채널 시작 위치: 1=전체 설정 따름, 2=최근 1시간, 3=현재 방송: ", "Channel start: 1=inherit, 2=previous hour, 3=live: ", "频道起点：1=继承，2=最近一小时，3=当前直播：", "頻道起點：1=繼承，2=最近一小時，3=目前直播：", "チャンネル開始位置: 1=全体設定、2=直近1時間、3=現在位置: "),
+})
 for _key, _texts in _GUI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["gui." + _key] = _text
+
+# The menu above is generated after the shared GUI text is installed.
+for _language, _label in zip(SUPPORTED_LANGUAGES, _GUI_TEXT["previous_hour"], strict=True):
+    TRANSLATIONS[_language]["gui.cli_recording_menu"] = TRANSLATIONS[_language]["gui.cli_recording_menu"].replace("\n0.", "\n6. " + _label + "\n0.")
+
+_CONTINUITY_TEXT = {
+    "recovery_restart": ("{channel_name}: 출력이 중단되어 {at} 재개 위치와 복구 기한을 보존하고 새 파일에서 복구를 이어갑니다.", "{channel_name}: output stopped; preserving resume position {at} and the recovery deadline in a new file.", "{channel_name}：输出停止；保留恢复位置 {at} 和恢复期限，在新文件中继续恢复。", "{channel_name}：輸出停止；保留續錄位置 {at} 和復原期限，在新檔案中繼續復原。", "{channel_name}: 出力が停止したため、再開位置 {at} と復旧期限を保持し、新しいファイルで復旧を続けます。"),
+    "continuity_report_help": ("녹화 연속성 이벤트를 JSONL 보고서에 저장합니다.", "Save recording continuity events to a JSONL report.", "将录制连续性事件保存到 JSONL 报告。", "將錄製連續性事件儲存到 JSONL 報告。", "録画の連続性イベントをJSONLレポートに保存します。"),
+    "continuity_report_collision": ("보고서 경로는 설정 파일이나 로그 파일과 달라야 합니다.", "The report path must differ from the config and log paths.", "报告路径必须与配置和日志路径不同。", "報告路徑必須與設定和日誌路徑不同。", "レポートのパスは設定やログのパスと異なる必要があります。"),
+    "continuity_report_failed": ("연속성 보고서를 열 수 없습니다: {error}", "Cannot open continuity report: {error}", "无法打开连续性报告：{error}", "無法開啟連續性報告：{error}", "連続性レポートを開けません: {error}"),
+    "continuity_report_write_failed": ("연속성 보고서를 끝까지 저장하지 못했습니다.", "The continuity report could not be fully saved.", "未能完整保存连续性报告。", "未能完整儲存連續性報告。", "連続性レポートを最後まで保存できませんでした。"),
+    "continuity_summary": ("녹화 연속성 검사: 공백 {gaps}개 · {seconds}초, 미확인 중단 {unresolved}개, 중복 {duplicates}개, 보고서·출력 오류 {errors}개.", "Recording continuity: {gaps} gaps / {seconds} seconds, {unresolved} unresolved interruptions, {duplicates} duplicates, {errors} report/output errors.", "录制连续性：{gaps} 处空白 / {seconds} 秒，{unresolved} 处未确认中断，{duplicates} 处重复，{errors} 个报告或输出错误。", "錄製連續性：{gaps} 處空白 / {seconds} 秒，{unresolved} 處未確認中斷，{duplicates} 處重複，{errors} 個報告或輸出錯誤。", "録画の連続性: 欠落 {gaps} 件 / {seconds} 秒、未確認の中断 {unresolved} 件、重複 {duplicates} 件、レポート・出力エラー {errors} 件。"),
+    "source_selected": ("{channel_name}: {cdn}에서 {mode}으로 수신합니다.", "{channel_name}: receiving from {cdn} using {mode}.", "{channel_name}：通过 {cdn} 使用{mode}接收。", "{channel_name}：透過 {cdn} 使用{mode}接收。", "{channel_name}: {cdn}から{mode}で受信します。"),
+    "source_ready": ("{channel_name}: {cdn} 예비 경로가 준비되었습니다 ({mode}).", "{channel_name}: {cdn} standby is ready ({mode}).", "{channel_name}：{cdn} 备用路径已就绪（{mode}）。", "{channel_name}：{cdn} 備用路徑已就緒（{mode}）。", "{channel_name}: {cdn}の予備経路を準備しました（{mode}）。"),
+    "source_absent": ("{channel_name}: 확인할 Akamai 예비 주소가 없습니다.", "{channel_name}: no Akamai standby address is available to check.", "{channel_name}：没有可检查的 Akamai 备用地址。", "{channel_name}：沒有可檢查的 Akamai 備用位址。", "{channel_name}: 確認できるAkamaiの予備アドレスがありません。"),
+    "source_unavailable": ("{channel_name}: Akamai 예비 경로를 아직 사용할 수 없습니다. 복구할 때 다시 확인합니다.", "{channel_name}: Akamai standby is not ready yet; it will be checked again during recovery.", "{channel_name}：Akamai 备用路径尚不可用；恢复时会再次检查。", "{channel_name}：Akamai 備用路徑尚不可用；復原時會再次檢查。", "{channel_name}: Akamaiの予備経路はまだ利用できません。復旧時に再確認します。"),
+    "cdn_korean": ("한국 CDN", "Korean CDN", "韩国 CDN", "韓國 CDN", "韓国CDN"),
+    "cdn_akamai": ("Akamai", "Akamai", "Akamai", "Akamai", "Akamai"),
+    "cdn_unknown": ("제공된 CDN", "advertised CDN", "提供的 CDN", "提供的 CDN", "提供されたCDN"),
+    "mode_llhls": ("부분 조각", "partial segments", "部分片段", "部分片段", "部分セグメント"),
+    "mode_hls": ("전체 조각", "complete segments", "完整片段", "完整片段", "完全なセグメント"),
+    "history_start": ("{channel_name}: 제공된 과거 {seconds}초부터 녹화를 시작합니다.", "{channel_name}: starting with {seconds} seconds of available history.", "{channel_name}：从可用的过去 {seconds} 秒开始录制。", "{channel_name}：從可用的過去 {seconds} 秒開始錄製。", "{channel_name}: 利用可能な過去{seconds}秒から録画します。"),
+    "history_short": ("{channel_name}: 과거 1시간을 모두 사용할 수 없습니다. 제공된 {seconds}초부터 녹화하며, 과거 조각이 없으면 현재 방송부터 시작합니다.", "{channel_name}: a full previous hour is unavailable. Starting with {seconds} available seconds, or live if no past segments are accessible.", "{channel_name}：无法使用完整的过去一小时。从可用的 {seconds} 秒开始；没有历史片段时从当前直播开始。", "{channel_name}：無法使用完整的過去一小時。從可用的 {seconds} 秒開始；沒有歷史片段時從目前直播開始。", "{channel_name}: 過去1時間すべては利用できません。利用可能な{seconds}秒から開始し、過去のセグメントがなければ現在位置から開始します。"),
+    "recovery_started": ("{channel_name}: {at} 위치의 누락 또는 지연된 조각을 복구하는 중입니다.", "{channel_name}: recovering missing or delayed media at {at}.", "{channel_name}：正在恢复 {at} 处缺失或延迟的片段。", "{channel_name}：正在復原 {at} 處缺失或延遲的片段。", "{channel_name}: {at}の欠落または遅延したセグメントを復旧中です。"),
+    "recovery_completed": ("{channel_name}: 조각 복구 후 {at} 위치까지 이어서 녹화했습니다.", "{channel_name}: recovered media and continued through {at}.", "{channel_name}：片段已恢复，录制已继续至 {at}。", "{channel_name}：片段已復原，錄製已繼續至 {at}。", "{channel_name}: 復旧し、{at}まで録画を継続しました。"),
+    "continuity_gap": ("{channel_name}: 이 구간의 조각을 복구하지 못했습니다. 원인: {reason}. 확인된 공백 범위: {start} ~ {end}. 다음 조각부터 새 파일에서 녹화를 이어갑니다.", "{channel_name}: media in this interval could not be recovered. Reason: {reason}. Confirmed gap: {start} to {end}. Recording is continuing from the next segment in a new file.", "{channel_name}：未能恢复此区间的片段。原因：{reason}。已确认的空白范围：{start} 至 {end}。正在新文件中从下一片段继续录制。", "{channel_name}：未能復原此區間的片段。原因：{reason}。已確認的空白範圍：{start} 至 {end}。正在新檔案中從下一片段繼續錄製。", "{channel_name}: この区間のセグメントを復旧できませんでした。理由: {reason}。確認された欠落範囲: {start} ～ {end}。新しいファイルで次のセグメントから録画を継続しています。"),
+    "continuity_boundary": ("{channel_name}: 기존 파일을 정리하고 새 파일로 녹화를 이어갑니다.", "{channel_name}: finalizing the current file and continuing in a new file.", "{channel_name}：正在完成当前文件，并在新文件中继续录制。", "{channel_name}：正在完成目前檔案，並在新檔案中繼續錄製。", "{channel_name}: 現在のファイルを確定し、新しいファイルで録画を継続します。"),
+    "continuity_diagnostic": ("{channel_name}: 수신 진단 {details}", "{channel_name}: reception diagnostic {details}", "{channel_name}：接收诊断 {details}", "{channel_name}：接收診斷 {details}", "{channel_name}: 受信診断 {details}"),
+    "buffer_unavailable": ("{channel_name}: 조각 임시 보관을 사용할 수 없어 직접 수신으로 계속 녹화합니다.", "{channel_name}: temporary media storage is unavailable; continuing with direct downloads.", "{channel_name}：片段临时存储不可用，将继续直接下载录制。", "{channel_name}：片段暫存無法使用，將繼續直接下載錄製。", "{channel_name}: セグメントの一時保存を利用できないため、直接取得して録画を続行します。"),
+    "buffer_cleanup_failed": ("{channel_name}: 조각 임시 보관 폴더를 모두 정리하지 못했습니다.", "{channel_name}: the temporary media directory could not be fully removed.", "{channel_name}：未能完全清理片段临时存储文件夹。", "{channel_name}：未能完全清理片段暫存資料夾。", "{channel_name}: セグメントの一時保存フォルダーを完全に削除できませんでした。"),
+    "source_ready_same_cdn": ("{channel_name}: 같은 {cdn}의 대체 경로가 준비됐습니다({mode}).", "{channel_name}: an alternate path on the same {cdn} is ready ({mode}).", "{channel_name}：同一 {cdn} 的备用路径已就绪（{mode}）。", "{channel_name}：同一 {cdn} 的備用路徑已就緒（{mode}）。", "{channel_name}: 同じ{cdn}の代替経路が準備できました（{mode}）。"),
+    "source_ready_other_cdn": ("{channel_name}: 다른 CDN인 {cdn}의 예비 경로가 준비됐습니다({mode}).", "{channel_name}: a standby path on a different CDN, {cdn}, is ready ({mode}).", "{channel_name}：其他 CDN {cdn} 的备用路径已就绪（{mode}）。", "{channel_name}：其他 CDN {cdn} 的備用路徑已就緒（{mode}）。", "{channel_name}: 別のCDNである{cdn}の予備経路が準備できました（{mode}）。"),
+    "continuity_reason_resume_unavailable": ("재개 위치가 제공 목록에 없음", "resume position absent from available playlists", "可用列表中没有恢复位置", "可用清單中沒有續錄位置", "再開位置が利用可能な一覧にない"),
+    "continuity_reason_playlist_stalled": ("미디어 목록의 장시간 무진행", "playlist stopped advancing", "媒体列表长时间没有更新", "媒體清單長時間沒有更新", "プレイリストの更新停止"),
+    "continuity_reason_playlist_unavailable": ("미디어 목록을 가져오지 못함", "playlist could not be retrieved", "无法获取媒体列表", "無法取得媒體清單", "プレイリスト取得失敗"),
+    "continuity_reason_broadcast_changed": ("방송 변경", "broadcast changed", "直播已变更", "直播已變更", "配信の変更"),
+    "continuity_reason_initialization_changed": ("미디어 초기화 정보 변경", "media initialization changed", "媒体初始化信息已变更", "媒體初始化資訊已變更", "メディア初期化情報の変更"),
+    "continuity_reason_discontinuity": ("미디어 연속성 변경", "media discontinuity", "媒体不连续", "媒體不連續", "メディアの不連続"),
+    "continuity_reason_position_unknown": ("조각 위치를 대응할 수 없음", "segment positions could not be matched", "无法匹配片段位置", "無法對應片段位置", "セグメント位置の照合失敗"),
+    "continuity_reason_interval_unavailable": ("필요한 구간을 복구하지 못함", "required interval could not be recovered", "无法恢复所需区间", "無法復原所需區間", "必要な区間の復旧失敗"),
+    "continuity_reason_segment_unavailable": ("필요한 조각을 복구하지 못함", "required segment could not be recovered", "无法恢复所需片段", "無法復原所需片段", "必要なセグメントの復旧失敗"),
+    "continuity_reason_output_stalled": ("미디어 출력의 장시간 무진행", "media output stopped advancing", "媒体输出长时间没有进展", "媒體輸出長時間沒有進展", "メディア出力の停止"),
+    "continuity_reason_broadcast_ended": ("방송 종료", "broadcast ended", "直播已结束", "直播已結束", "配信終了"),
+}
+for _key, _texts in _CONTINUITY_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["record." + _key] = _text
+
+
+_CI_TEXT = {
+    "description": (
+        "GitHub Actions 녹화 테스트 실행기", "GitHub Actions recording test runner",
+        "GitHub Actions 录制测试运行器", "GitHub Actions 錄製測試執行器", "GitHub Actions 録画テスト実行ツール"),
+    "invalid_channel": (
+        "채널 UUID는 32자리 16진수여야 합니다.", "Channel UUID must contain 32 hexadecimal characters.",
+        "频道 UUID 必须是 32 位十六进制字符。", "頻道 UUID 必須是 32 位十六進位字元。", "チャンネル UUID は32桁の16進数で指定してください。"),
+    "positive_integer": (
+        "녹화 시간과 무출력 제한은 양의 정수여야 합니다.", "Recording duration and stall timeout must be positive integers.",
+        "录制时长和无输出超时必须是正整数。", "錄製時間和無輸出逾時必須是正整數。", "録画時間と無出力の制限時間は正の整数で指定してください。"),
+    "duration_range": (
+        "녹화 시간은 {minimum}~{maximum}분이어야 합니다.", "Recording duration must be between {minimum} and {maximum} minutes.",
+        "录制时长必须在 {minimum} 到 {maximum} 分钟之间。", "錄製時間必須介於 {minimum} 到 {maximum} 分鐘。", "録画時間は{minimum}～{maximum}分で指定してください。"),
+    "shutdown_timeout": (
+        "{seconds}초 안에 녹화기가 종료되지 않아 강제로 정리합니다.", "Recorder did not exit within {seconds} seconds; forcing cleanup.",
+        "录制器未在 {seconds} 秒内退出，将强制清理。", "錄製器未在 {seconds} 秒內結束，將強制清理。", "録画プロセスが{seconds}秒以内に終了しないため、強制終了します。"),
+    "cleanup_failed": (
+        "녹화기의 하위 프로세스 정리에 실패했습니다.", "Cleaning up the recorder's child processes failed.",
+        "清理录制器的子进程失败。", "清理錄製器的子程序失敗。", "録画プロセスの子プロセスの終了処理に失敗しました。"),
+    "stalled": (
+        "{seconds}초 동안 녹화 파일에 새 데이터가 기록되지 않았습니다.", "No recording output was written for {seconds} seconds.",
+        "录制文件已有 {seconds} 秒未写入新数据。", "錄製檔案已有 {seconds} 秒未寫入新資料。", "{seconds}秒間、録画ファイルに新しいデータが書き込まれていません。"),
+    "recorder_exit": (
+        "녹화기가 상태 코드 {status}로 종료됐습니다.", "Recorder exited with status {status}.",
+        "录制器以状态码 {status} 退出。", "錄製器以狀態碼 {status} 結束。", "録画プロセスが終了コード{status}で終了しました。"),
+    "early_exit": (
+        "요청한 녹화 시간보다 일찍 녹화기가 종료됐습니다.", "Recorder exited before the requested duration.",
+        "录制器在请求的录制时长结束前退出。", "錄製器在要求的錄製時間結束前退出。", "指定した録画時間より早く録画プロセスが終了しました。"),
+    "never_started": (
+        "테스트 채널의 녹화가 시작되지 않았습니다.", "The recorder never started writing the test channel.",
+        "测试频道的录制未开始。", "測試頻道的錄製未開始。", "テストチャンネルの録画が開始されませんでした。"),
+    "ffmpeg_failure": (
+        "FFmpeg에서 손상된 입력 또는 치명적인 오류를 보고했습니다.", "FFmpeg reported corrupt input or a fatal failure.",
+        "FFmpeg 报告了损坏的输入或致命错误。", "FFmpeg 回報了損壞的輸入或嚴重錯誤。", "FFmpeg が入力の破損または致命的なエラーを報告しました。"),
+    "empty_output": (
+        "데이터가 있는 녹화 파일이 남아 있지 않습니다.", "No non-empty recording segment remained after recording.",
+        "录制后没有非空的录制文件。", "錄製後沒有非空的錄製檔案。", "録画後にデータのある録画ファイルが残っていません。"),
+    "completed": (
+        "녹화 테스트가 {seconds}초 후 완료됐으며 중단이 감지되지 않았습니다.", "Recording test completed after {seconds} seconds without a detected stall.",
+        "录制测试在 {seconds} 秒后完成，未检测到停滞。", "錄製測試在 {seconds} 秒後完成，未偵測到停滯。", "録画テストが{seconds}秒後に完了し、停止は検出されませんでした。"),
+    "live_failed": (
+        "테스트 채널 {channel}의 방송 중 여부를 확인할 수 없습니다.", "Could not verify that test channel {channel} is live.",
+        "无法确认测试频道 {channel} 正在直播。", "無法確認測試頻道 {channel} 正在直播。", "テストチャンネル{channel}が配信中であることを確認できません。"),
+    "encoder_failed": (
+        "{encoder} 인코더의 최소 실행 검증에 실패했습니다.", "The minimal encoding probe failed for {encoder}.",
+        "{encoder} 编码器的最小运行验证失败。", "{encoder} 編碼器的最小執行驗證失敗。", "{encoder}エンコーダーの最小実行テストに失敗しました。"),
+    "missing_video": (
+        "{codec} 녹화 파일에 영상 코덱 정보가 없습니다.", "The {codec} recording has no video codec metadata.",
+        "{codec} 录制文件没有视频编码信息。", "{codec} 錄製檔案沒有影像編碼資訊。", "{codec}録画ファイルに映像コーデック情報がありません。"),
+    "codec_mismatch": (
+        "{codec} 녹화 결과의 코덱이 {actual}입니다.", "The {codec} recording produced {actual} instead of {codec}.",
+        "{codec} 录制结果的编码是 {actual}，与预期不符。", "{codec} 錄製結果的編碼是 {actual}，與預期不符。", "{codec}録画の出力コーデックは{actual}で、期待した{codec}と異なります。"),
+    "codec_verified": (
+        "{codec} 녹화 코덱 확인 완료: {path}", "Verified {codec} output: {path}",
+        "已验证 {codec} 录制编码：{path}", "已驗證 {codec} 錄製編碼：{path}", "{codec}出力を確認しました: {path}"),
+    "test_failed": (
+        "녹화 테스트 실행에 실패했습니다: {category}", "Recording test execution failed: {category}",
+        "录制测试执行失败：{category}", "錄製測試執行失敗：{category}", "録画テストの実行に失敗しました: {category}"),
+    "windows_install_failed": (
+        "Windows FFmpeg 설치 검증에 실패했습니다: {stage}", "Windows FFmpeg installation verification failed: {stage}",
+        "Windows FFmpeg 安装验证失败：{stage}", "Windows FFmpeg 安裝驗證失敗：{stage}", "Windows FFmpeg のインストール検証に失敗しました: {stage}"),
+}
+
+for _key, _texts in _CI_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["ci." + _key] = _text
+
+
+_RECORDING_STOP_TEXT = {
+    "stream_stop_request_failed": ("{channel_name}: 정상 종료 요청을 전달하지 못했습니다. 마지막 입력이 완전한지 확인이 필요합니다.", "{channel_name}: could not send the graceful stop request. The final input needs verification.", "{channel_name}：无法发送正常停止请求，需要检查最后的输入是否完整。", "{channel_name}：無法傳送正常停止要求，需要檢查最後的輸入是否完整。", "{channel_name}: 正常終了の要求を送れませんでした。最後の入力の確認が必要です。"),
+    "stream_stop_timeout": ("{channel_name}: 정상 종료 대기 시간이 지나 녹화 수신을 강제로 종료합니다.", "{channel_name}: the graceful stop wait expired; forcing the receiver to exit.", "{channel_name}：正常停止等待超时，正在强制结束录制接收。", "{channel_name}：正常停止等待逾時，正在強制結束錄製接收。", "{channel_name}: 正常終了の待機時間を超えたため、受信処理を強制終了します。"),
+    "stop_cleanup_failed": ("{channel_name}: 종료 요청용 임시 폴더를 정리하지 못했습니다.", "{channel_name}: could not remove the temporary stop control directory.", "{channel_name}：无法清理停止请求的临时目录。", "{channel_name}：無法清理停止要求的暫存目錄。", "{channel_name}: 終了要求の一時フォルダーを削除できませんでした。"),
+    "output_error": ("{channel_name}: 녹화 출력에서 문제가 확인됐습니다 ({category}). 연속성 검사를 실패로 기록합니다.", "{channel_name}: a recording output problem was detected ({category}). Continuity validation is marked as failed.", "{channel_name}：发现录制输出问题（{category}），连续性检查记录为失败。", "{channel_name}：發現錄製輸出問題（{category}），連續性檢查記錄為失敗。", "{channel_name}: 録画出力の問題を検出しました（{category}）。連続性検査を失敗として記録します。"),
+    "output_error_corrupt_packet": ("손상된 미디어 패킷", "corrupt media packet", "损坏的媒体数据包", "損壞的媒體封包", "破損したメディアパケット"),
+    "output_error_partial_input": ("불완전한 마지막 입력", "incomplete final input", "不完整的最后输入", "不完整的最後輸入", "不完全な最後の入力"),
+    "output_error_forced_stop": ("강제 종료", "forced termination", "强制结束", "強制結束", "強制終了"),
+}
+
+for _key, _texts in _RECORDING_STOP_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["record." + _key] = _text

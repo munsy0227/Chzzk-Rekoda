@@ -45,10 +45,9 @@ jobs:
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
 
     steps:
-      - name: Check out dev test code
+      - name: Check out repository
         uses: actions/checkout@v6
         with:
-          ref: dev
           persist-credentials: false
 
       - name: Set up uv

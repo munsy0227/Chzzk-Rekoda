@@ -85,6 +85,7 @@ default_config = {
     "stream_segment_threads": 2,
     "output_format": DEFAULT_OUTPUT_FORMAT,
     "recording_split_minutes": DEFAULT_RECORDING_SPLIT_MINUTES,
+    "record_previous_hour": False,
     "quality_settings": deepcopy(QUALITY_DEFAULTS),
     "h264_settings": deepcopy(H264_DEFAULTS),
     "gui_settings": {"close_to_tray": True, "onboarding_completed": False},
@@ -411,6 +412,7 @@ def normalize_config(config, notify=None):
         config.get("stream_segment_threads"), 2, 1, 16
     )
     config["output_format"] = normalize_output_format(config.get("output_format"))
+    config["record_previous_hour"] = config.get("record_previous_hour") is True
     legacy_split_hours = config.pop("recording_split_hours", None)
     split_minutes = config.get("recording_split_minutes")
     if legacy_split_hours is not None and split_minutes in (

@@ -17,6 +17,8 @@
 
 **Languages:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
+[Update history](CHANGELOG.en.md)
+
 Chzzk-Rekoda is an automatic CHZZK recording program for Windows, macOS, and Linux, built with Streamlink and FFmpeg.
 
 It is also a **CHZZK automatic recording program** designed to be easy to use even for people who are not familiar with computers.  
@@ -74,6 +76,8 @@ Select **Save settings** to apply your changes. Hover over an option or use its 
 
 The GUI requires a desktop environment and FFmpeg. **Open login window** starts the CLI browser-login procedure directly. Log in using the browser, then press Enter in the separate CLI window to return cookies to the GUI. Use **Save settings** to apply them. The GUI has no CMD window; a separate console opens only for login.
 
+For Fcitx 5 on KDE Wayland, select **System Settings → Virtual Keyboard → Fcitx 5**. The GUI prefers KDE's Wayland input path even when `QT_IM_MODULE=fcitx` is set. Restart the GUI after changing this setting.
+
 <details>
 <summary>More about quality, codecs, previews and tray behavior</summary>
 
@@ -85,12 +89,20 @@ The GUI requires a desktop environment and FFmpeg. **Open login window** starts 
 
 - The original broadcast title appears between channel name and status. Right-click a channel for settings, removal, storage folder and automatic recording activation.
 - Split intervals and quality can inherit global defaults or be set per channel. Turning splitting off for one channel saves it in one file.
+- Recording starts live on the existing Korean CDN. Even if the API does not advertise Akamai, its hostname is substituted into known Korean CDN addresses while retaining the path and signature, then tested for access. Standby playlists, matching rendition, time, initialization and media are checked alongside startup; only validated media is used for recovery. If no Korean address is available, recording continues on an advertised or verified Akamai path.
+- LL-HLS partial segments are preferred, assembled and validated as a complete original segment before being saved once. Missing, damaged or unsupported partial groups fall back to complete segments. Normal server waits for new parts are not treated as failures.
+- Recovery tries the Korean current path, the same interval in Korean history, then Akamai. A primary request delayed by two seconds or failing triggers Korean alternatives; if the first history check takes over two seconds, Akamai is also tried. History searches cover up to the last hour actually available and do not restart the recording from the past. Retries and file switches for the same interruption share a 90-second recovery deadline and may temporarily increase downloads. Even when the next segment is unknown, the last delivered position is preserved and rechecked after switching files. Once the deadline expires, recording continues from the earliest validated following media. Gaps are reported only after following media is delivered; if no following media is available, recording waits with its resume position intact.
+- Use `uv run chzzk_record.py --continuity-report continuity.jsonl` to save optional continuity evidence without URLs or cookies. GitHub Actions overseas recording tests check gaps, unresolved interruptions and duplicates after recording, fail on detected problems, and retain both the event report and summary JSON. Five-minute splitting and old test-video cleanup do not delete these reports. Long recordings in Korea are verified separately from their logs.
+- In GitHub Actions, open **Long recording test** or **Codec smoke test → Run workflow** and enter the recording channel UUID in `channel_uuid`. Leaving it blank uses the original test channel `64a90ba95d1f9feb0a798a20bbf0f40c`. Choose `linux` (default), `windows`, `macos`, or `all` in `test_os`; each uses GitHub's latest stable runner image. `all` runs the three OS tests in parallel and continues the other tests if one OS fails. Long recording takes 270–330 minutes (default 300); each codec takes 5–20 minutes (default 10). Logs, continuity evidence, summary JSON, and actual OS and Python/FFmpeg versions are retained in separate OS artifacts for seven days.
+- **Recording settings → Basic recording → Record the previous hour** is off by default. Enable it to start with up to one hour actually available; channel editing offers inheritance, on and off. It applies to the next recording start and does not replay history on automatic reconnects. The time-machine button and CDN retention can differ: only ten minutes, or no history, may be available. Unavailable history is reported and recording falls back to live.
+- In the CLI, use **Recording and quality → option 6** for the global setting and **Channels → option 4** for channel overrides.
 - Available `144p`, `360p`, `480p`, `720p60` and `1080p60` streams are downloaded directly. Other resolutions require encoding; FPS-only changes use a stream with the same resolution. Conversion uses the selected codec, or H.264 by default (VP9 for WebM). Missing qualities use the nearest higher rendition or best available and convert it.
 - H.264 supports libx264/NVENC/QSV/AMF/VAAPI/VideoToolbox, mutually exclusive with HEVC and AV1. Hardware failures try libx264. H.264 with WebM saves as MKV.
 - A UTF-8 `.txt` sidecar preserves the original title only when a long filename is shortened and hashed. This applies to individual videos and split segments. Short titles do not produce TXT files.
 - The GUI uses `font/02_NotoSansCJK-TTF-VF/Variable/OTC/NotoSansCJK-VF.ttf.ttc`, selecting KR/JP/SC/TC families by language. Windows uses DirectWrite and per-monitor DPI. The distribution includes its `LICENSE`.
 - **Recording settings → Quit application** finishes recording files and exits the tray as well. Split recording size is the sum of the actual sizes of all segments in the current recording attempt.
 - When GUI recording stops, the log distinguishes a stop command, application exit and communication failures. With file logging enabled, these details also appear in `log.log` next to the configuration file.
+- Segment times in recovery and gap messages use the same system timezone as the log prefix. Korean Standard Time displays the `+09:00` offset.
 - The window, taskbar and tray share the application icon. On Windows, running `chzzk_gui.vbs` creates an icon-bearing **`Chzzk Rekoda.lnk`** shortcut in the installation folder. On Linux, launching the GUI registers its icon and launcher in the user's application menu.
 
 </details>

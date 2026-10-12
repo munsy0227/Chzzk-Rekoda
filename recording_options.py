@@ -57,7 +57,21 @@ def effective_split(channel, global_minutes):
         return 0
 
 
+def normalize_previous_hour(value, default=False):
+    # JSON booleans only: a string such as "false" must not enable backfill.
+    return value if type(value) is bool else default
+
+
+def effective_previous_hour(channel, global_value):
+    return normalize_previous_hour(
+        channel.get("record_previous_hour"), normalize_previous_hour(global_value)
+    )
+
+
 def normalize_channel_options(channel):
+    channel["record_previous_hour"] = normalize_previous_hour(
+        channel.get("record_previous_hour"), None
+    )
     if channel.get("recording_split_minutes") is not None:
         channel["recording_split_minutes"] = effective_split(channel, 0)
     if channel.get("quality_settings") is not None:

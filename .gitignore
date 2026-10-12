@@ -210,6 +210,7 @@ __marimo__/
 config.json
 config.json.lock
 .recorder.lock
+.chzzk-buffer-*/
 /.gui-validation/
 
 # Original font download; only the runtime TTC under font/ is distributed.

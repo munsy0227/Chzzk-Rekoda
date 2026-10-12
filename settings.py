@@ -427,6 +427,10 @@ def edit_channel_recording():
             )
         else:
             raise ValueError(t("settings.invalid_number"))
+        previous_hour = input(t("gui.cli_previous_hour_channel")).strip()
+        if previous_hour not in {"1", "2", "3"}:
+            raise ValueError(t("settings.invalid_number"))
+        channel["record_previous_hour"] = {"1": None, "2": True, "3": False}[previous_hour]
         config["channels"][index] = channel
         save_config(config)
     except ValueError:
@@ -637,6 +641,14 @@ def edit_recording():
 
         elif choice2 == "5":
             edit_global_quality()
+        elif choice2 == "6":
+            print(t("gui.previous_hour_help"))
+            value = input(t("gui.cli_previous_hour_global")).strip()
+            if value not in {"1", "2"}:
+                try_again()
+                continue
+            config["record_previous_hour"] = value == "1"
+            save_config(config)
         elif choice2 == "0":
             break
         else:

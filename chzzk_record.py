@@ -10,6 +10,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -24,8 +25,10 @@ from process_utils import console_python, hidden_process_kwargs, terminal_displa
 from encoding_h264 import build_h264_encoding_args, probe_h264_encoder
 from recording_options import (
     H264_ENCODERS, add_video_filters, effective_split,
+    effective_previous_hour,
     normalize_channel_options, normalize_quality, quality_plan,
 )
+from recording_continuity import EVENT_PREFIX, RecordingContinuity, parse_event
 from dns_over_https import install_doh_dns
 from i18n import (
     DEFAULT_LANGUAGE,
@@ -66,6 +69,8 @@ STREAMLINK_RECONNECT_BASE_DELAY_SECONDS = 2
 STREAMLINK_RECONNECT_MAX_DELAY_SECONDS = 30
 STREAMLINK_STABLE_RECORDING_SECONDS = 60
 STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
+STREAMLINK_COOPERATIVE_STOP_SECONDS = 15
+PIPE_DRAIN_TIMEOUT_SECONDS = 10
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 MAX_UI_LOG_MESSAGES = 1000
 UI_LOG_HISTORY_SIZE = 15
@@ -239,6 +244,7 @@ def setup_logger() -> logging.Logger:
 
 
 logger = logging.getLogger("Recorder")
+continuity_report = None
 
 
 def install_internal_dns_resolver() -> None:
@@ -720,6 +726,45 @@ class RecordingProcessSandbox:
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self._tasks: List[asyncio.Task] = []
         self._cancel_on_cleanup: List[asyncio.Task] = []
+        self.output_errors = set()
+        self.stop_directory = None
+        self.stop_file = None
+        try:
+            self.stop_directory = tempfile.TemporaryDirectory(prefix='chzzk-stop-')
+            self.stop_file = Path(self.stop_directory.name) / 'stop'
+        except OSError:
+            logger.warning(tr('record.stream_stop_request_failed', channel_name=channel_name))
+
+    def stop_arguments(self) -> List[str]:
+        return ['--chzzk-stop-file', str(self.stop_file)] if self.stop_file is not None else []
+
+    def record_output_error(self, category: str) -> None:
+        if category in self.output_errors:
+            return
+        self.output_errors.add(category)
+        if continuity_report is not None:
+            continuity_report.output_error(self.channel_id, category)
+        logger.warning(tr('record.output_error', channel_name=self.channel_name,
+                          category=tr('record.output_error_' + category)))
+
+    async def stop_streamlink(self) -> None:
+        process = self.stream_process
+        if process is None or process.returncode is not None:
+            return
+        try:
+            if self.stop_file is None:
+                raise OSError('Stop control unavailable')
+            self.stop_file.touch(mode=0o600, exist_ok=True)
+            await asyncio.wait_for(asyncio.shield(process.wait()),
+                                   timeout=STREAMLINK_COOPERATIVE_STOP_SECONDS)
+            return
+        except OSError:
+            logger.warning(tr('record.stream_stop_request_failed', channel_name=self.channel_name))
+        except asyncio.TimeoutError:
+            logger.warning(tr('record.stream_stop_timeout', channel_name=self.channel_name))
+        self.record_output_error('forced_stop')
+        await terminate_process(process, f'streamlink [{self.channel_name}/{self.channel_id}]',
+                                timeout=STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS - STREAMLINK_COOPERATIVE_STOP_SECONDS)
 
     async def start_streamlink(
         self, command: List[str]
@@ -753,12 +798,16 @@ class RecordingProcessSandbox:
         return task
 
     async def cleanup(self) -> None:
-        await terminate_process(
-            self.ffmpeg_process, f"ffmpeg [{self.channel_name}/{self.channel_id}]"
-        )
-        await terminate_process(
-            self.stream_process, f"streamlink [{self.channel_name}/{self.channel_id}]"
-        )
+        await self.stop_streamlink()
+        if self.ffmpeg_process is not None and self.ffmpeg_process.returncode is None:
+            try:
+                await asyncio.wait_for(asyncio.shield(self.ffmpeg_process.wait()),
+                                       timeout=FFMPEG_FINALIZE_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                self.record_output_error('forced_stop')
+                await terminate_process(
+                    self.ffmpeg_process, f"ffmpeg [{self.channel_name}/{self.channel_id}]"
+                )
         for task in self._cancel_on_cleanup:
             if not task.done():
                 task.cancel()
@@ -769,6 +818,11 @@ class RecordingProcessSandbox:
             await drain_task(task)
         self._tasks.clear()
         self._cancel_on_cleanup.clear()
+        if self.stop_directory is not None:
+            try:
+                self.stop_directory.cleanup()
+            except OSError:
+                logger.warning(tr('record.stop_cleanup_failed', channel_name=self.channel_name))
 
 
 async def pipe_stream_to_stdin(
@@ -796,7 +850,8 @@ async def pipe_stream_to_stdin(
 
 
 async def read_log_stream(
-    stream: Optional[asyncio.StreamReader], process_name: str, channel_id: str
+    stream: Optional[asyncio.StreamReader], process_name: str, channel_id: str,
+    continuity: Optional[RecordingContinuity] = None, channel_name: str = "",
 ) -> None:
     if stream is None:
         return
@@ -810,6 +865,30 @@ async def read_log_stream(
             continue
 
         if process_name == "streamlink":
+            if line_str.startswith(EVENT_PREFIX):
+                event = parse_event(line_str)
+                if continuity_report is not None:
+                    continuity_report.record(channel_id, event if event is not None else {})
+                if event is not None and continuity is not None:
+                    message = continuity.accept(event)
+                    if message:
+                        key, fields, warning = message
+                        fields = {k: v if v is not None else tr("common.unknown")
+                                  for k, v in fields.items()}
+                        if "reason" in fields:
+                            fields["reason"] = tr("record.continuity_reason_" + fields["reason"])
+                        if event["kind"] == "source":
+                            fields["cdn"] = tr("record.cdn_" + fields["cdn"])
+                            fields["mode"] = tr("record.mode_" + fields["mode"])
+                        log_message = (logger.debug if event["kind"] in {"diagnostic", 'recovery_snapshot'} else
+                                       logger.warning if warning else logger.info)
+                        log_message(tr(key, channel_name=channel_name, **fields))
+                continue
+            line_str = re.sub(
+                r"https?://[^\s\"']+",
+                lambda match: "[URL " + (urlparse(match[0]).hostname or "") + "]",
+                line_str,
+            )
             logger.info(f"{process_name} stderr [{channel_id}]: {line_str}")
         else:
             logger.debug(f"{process_name} stderr [{channel_id}]: {line_str}")
@@ -899,6 +978,18 @@ async def load_config_async() -> Dict[str, Any]:
         return config_cache_value
 
 
+async def previous_hour_for_start(channel: Dict[str, Any], global_value: bool) -> bool:
+    # A channel task can wait through several broadcasts. Read this preference
+    # again at a new start, without restarting the recording already in progress.
+    config = await load_config_async()
+    current = next((item for item in config.get("channels", [])
+                    if isinstance(item, dict)
+                    and str(item.get("id")) == str(channel.get("id"))), None)
+    if current is None:
+        return effective_previous_hour(channel, global_value)
+    return effective_previous_hour(current, config.get("record_previous_hour"))
+
+
 async def load_settings() -> (
     Tuple[
         int,
@@ -911,6 +1002,7 @@ async def load_settings() -> (
         int,
         Dict[str, Any],
         Dict[str, Any],
+        bool,
     ]
 ):
     config = await load_config_async()
@@ -955,6 +1047,7 @@ async def load_settings() -> (
         recording_split_minutes,
         h264_settings,
         quality_settings,
+        config.get("record_previous_hour") is True,
     )
 
 
@@ -1418,7 +1511,8 @@ def parse_time(time_str):
 
 
 async def read_stream(
-    stream: asyncio.StreamReader, channel_id: str, stream_type: str
+    stream: asyncio.StreamReader, channel_id: str, stream_type: str,
+    output_error=None,
 ) -> str:
     summary: Dict[str, str] = {}
     speed_samples = collections.deque(maxlen=5)
@@ -1435,6 +1529,12 @@ async def read_stream(
             line_str = line.decode(errors="replace").strip()
             if line_str:
                 diagnostics.append(line_str[:1000])
+                if output_error is not None:
+                    lowered = line_str.lower()
+                    if 'packet corrupt' in lowered:
+                        output_error('corrupt_packet')
+                    if 'partial file' in lowered:
+                        output_error('partial_input')
 
             # Add log
             logger.debug(f"ffmpeg {stream_type} [{channel_id}]: {line_str}")
@@ -2143,11 +2243,13 @@ async def record_stream(
     recording_split_minutes: int,
     h264_settings: Optional[Dict[str, Any]] = None,
     quality_settings: Optional[Dict[str, Any]] = None,
+    record_previous_hour: bool = False,
 ) -> None:
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
     recording_split_minutes = effective_split(channel, recording_split_minutes)
+    continuity = RecordingContinuity()
     h264_settings = normalize_h264_settings(h264_settings)
     quality_settings = normalize_quality(channel.get("quality_settings") or quality_settings)
     if h264_settings["enable"]:
@@ -2177,6 +2279,8 @@ async def record_stream(
     runtime_hevc_failures: Dict[str, str] = {}
     runtime_h264_failures: Dict[str, str] = {}
     consecutive_streamlink_failures = 0
+    media_buffer_directory = None
+    media_buffer_live_id = None
 
     try:
         while not shutdown_event.is_set():
@@ -2217,6 +2321,12 @@ async def record_stream(
                                     return
                                 break
                         if status == "CLOSE":
+                            if media_buffer_directory is not None:
+                                try:
+                                    await asyncio.to_thread(media_buffer_directory.cleanup)
+                                except OSError:
+                                    logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
+                                media_buffer_directory = None
                             runtime_av1_failures.clear()
                             runtime_hevc_failures.clear()
                             runtime_h264_failures.clear()
@@ -2234,6 +2344,12 @@ async def record_stream(
 
                     if shutdown_event.is_set():
                         break
+
+                    continuity.begin(live_info.get("liveId"))
+                    if not continuity.initial_handled:
+                        record_previous_hour = await previous_hour_for_start(
+                            channel, record_previous_hour
+                        )
 
                     active_av1_settings = (
                         await resolve_av1_settings_for_recording(
@@ -2301,6 +2417,20 @@ async def record_stream(
                         f"[{safe_current_time}] {channel_name} {live_title}"
                     )
                     output_dir.mkdir(parents=True, exist_ok=True)
+                    current_live_id = live_info.get('liveId')
+                    if media_buffer_directory is not None and media_buffer_live_id != current_live_id:
+                        try:
+                            await asyncio.to_thread(media_buffer_directory.cleanup)
+                        except OSError:
+                            logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
+                        media_buffer_directory = None
+                    if media_buffer_directory is None:
+                        try:
+                            media_buffer_directory = tempfile.TemporaryDirectory(
+                                prefix='.chzzk-buffer-', dir=output_dir)
+                            media_buffer_live_id = current_live_id
+                        except OSError:
+                            logger.warning(tr('record.buffer_unavailable', channel_name=channel_name))
                     segment_output_template = None
                     reserved_output_path: Optional[Path] = None
                     if split_seconds > 0:
@@ -2343,7 +2473,10 @@ async def record_stream(
                             "--stdout",
                             stream_url,
                             plan["stream"],
-                            "--hls-live-restart",
+                            *continuity.arguments(record_previous_hour),
+                            '--chzzk-buffer-dir',
+                            media_buffer_directory.name if media_buffer_directory is not None else '-',
+                            *active_attempt.stop_arguments(),
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
                             "--stream-segment-timeout",
@@ -2355,7 +2488,7 @@ async def record_stream(
                             "--plugin-dirs",
                             str(PLUGIN_DIR_PATH),
                             "--stream-segment-threads",
-                            str(stream_segment_threads),
+                            str(min(10, stream_segment_threads)),
                             *streamlink_http_header_args(cookies),
                             "--ffmpeg-ffmpeg",
                             str(ffmpeg_path),
@@ -2667,11 +2800,13 @@ async def record_stream(
                                 stream_process.stdout, ffmpeg_process.stdin, channel_name
                             )
                         )
-                        active_attempt.create_task(
-                            read_log_stream(stream_process.stderr, "streamlink", channel_id)
+                        stream_stderr_task = active_attempt.create_task(
+                            read_log_stream(stream_process.stderr, "streamlink", channel_id,
+                                            continuity, channel_name)
                         )
                         ffmpeg_stderr_task = active_attempt.create_task(
-                            read_stream(ffmpeg_process.stderr, channel_id, "stderr")
+                            read_stream(ffmpeg_process.stderr, channel_id, "stderr",
+                                        active_attempt.record_output_error)
                         )
                         ffmpeg_wait_task = active_attempt.create_task(ffmpeg_process.wait())
                         stream_wait_task = active_attempt.create_task(stream_process.wait())
@@ -2707,22 +2842,21 @@ async def record_stream(
                                 "cancelled" if task_cancelled else "shutdown"
                             )
                             stop_after_attempt = True
-                            await terminate_process(
-                                stream_process,
-                                "streamlink",
-                                timeout=STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS,
-                            )
-                            await drain_task(pipe_task, timeout=10)
+                            await active_attempt.stop_streamlink()
+                            await drain_task(pipe_task, timeout=PIPE_DRAIN_TIMEOUT_SECONDS)
+                            if pipe_task.cancelled():
+                                active_attempt.record_output_error('forced_stop')
                             if not await wait_for_task_completion(
                                 ffmpeg_wait_task,
                                 f"ffmpeg finalize for {channel_name}",
                                 FFMPEG_FINALIZE_TIMEOUT_SECONDS,
                             ):
+                                active_attempt.record_output_error('forced_stop')
                                 await terminate_process(ffmpeg_process, "ffmpeg")
 
                         elif ffmpeg_wait_task in done:
                             completed_by = "ffmpeg"
-                            await terminate_process(stream_process, "streamlink")
+                            await active_attempt.stop_streamlink()
                         elif stream_wait_task in done:
                             completed_by = "streamlink"
                             if not await wait_for_task_completion(
@@ -2730,15 +2864,19 @@ async def record_stream(
                                 f"ffmpeg after streamlink ended for {channel_name}",
                                 FFMPEG_FINALIZE_TIMEOUT_SECONDS,
                             ):
+                                active_attempt.record_output_error('forced_stop')
                                 await terminate_process(ffmpeg_process, "ffmpeg")
 
                         if stream_wait_task and not stream_wait_task.done():
-                            await terminate_process(stream_process, "streamlink")
+                            await active_attempt.stop_streamlink()
                             await drain_task(stream_wait_task)
                         if ffmpeg_wait_task and not ffmpeg_wait_task.done():
+                            active_attempt.record_output_error('forced_stop')
                             await terminate_process(ffmpeg_process, "ffmpeg")
                             await drain_task(ffmpeg_wait_task)
 
+                        await drain_task(pipe_task)
+                        await drain_task(stream_stderr_task)
                         await drain_task(ffmpeg_stderr_task)
                         ffmpeg_diagnostics = ""
                         if (
@@ -2900,6 +3038,7 @@ async def record_stream(
                         if stop_after_attempt:
                             break
                         if retry_with_software:
+                            continuity.resume = None
                             try:
                                 await asyncio.wait_for(
                                     shutdown_event.wait(), timeout=1
@@ -2919,6 +3058,14 @@ async def record_stream(
                                     if reserved_output_path.stat().st_size == 0:
                                         reserved_output_path.unlink()
 
+                    if continuity.boundary and not shutdown_event.is_set():
+                        if not continuity.attempt_output:
+                            try:
+                                await asyncio.wait_for(shutdown_event.wait(), timeout=timeout)
+                                break
+                            except asyncio.TimeoutError:
+                                pass
+                        continue
                     if streamlink_retry_delay is not None:
                         logger.info(
                             tr(
@@ -2968,6 +3115,11 @@ async def record_stream(
     finally:
         if active_attempt is not None:
             await active_attempt.cleanup()
+        if media_buffer_directory is not None:
+            try:
+                await asyncio.to_thread(media_buffer_directory.cleanup)
+            except OSError:
+                logger.warning(tr('record.buffer_cleanup_failed', channel_name=channel_name))
         if recording_started and temp_output_path and temp_output_path.exists():
             logger.warning(
                 tr("record.unfinished_file_left", path=temp_output_path)
@@ -3002,6 +3154,7 @@ async def manage_recording_tasks():
                     new_recording_split_minutes,
                     new_h264_settings,
                     new_quality_settings,
+                    new_record_previous_hour,
                 ) = await load_settings()
                 active_channels = 0
                 stopping_tasks: List[asyncio.Task] = []
@@ -3050,6 +3203,7 @@ async def manage_recording_tasks():
                                     new_recording_split_minutes,
                                     new_h264_settings,
                                     new_quality_settings,
+                                    new_record_previous_hour,
                                 )
                             )
                             active_tasks[channel_id] = task
@@ -3263,10 +3417,11 @@ def run():
 
     from process_lock import FileLock
 
-    global CONFIG_FILE_PATH, LOG_FILE_PATH, console
+    global CONFIG_FILE_PATH, LOG_FILE_PATH, console, continuity_report
     parser = argparse.ArgumentParser()
     parser.add_argument("--gui-events", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--config", type=Path, default=CONFIG_FILE_PATH)
+    parser.add_argument("--continuity-report", type=Path, help=tr("record.continuity_report_help"))
     args = parser.parse_args()
     CONFIG_FILE_PATH = args.config.resolve()
     LOG_FILE_PATH = CONFIG_FILE_PATH.parent / "log.log"
@@ -3286,12 +3441,31 @@ def run():
         else:
             print(message, file=sys.stderr)
         return 1
+    result = 1
     try:
+        if args.continuity_report is not None:
+            from continuity_report import ContinuityReport
+
+            try:
+                report_path = args.continuity_report.resolve()
+                if report_path in {CONFIG_FILE_PATH, LOG_FILE_PATH}:
+                    raise OSError(tr("record.continuity_report_collision"))
+                continuity_report = ContinuityReport(report_path)
+            except OSError as error:
+                print(tr("record.continuity_report_failed", error=error), file=sys.stderr)
+                return 1
         with terminal_display_mode() as vt_enabled:
             console = Console(legacy_windows=False if vt_enabled else None)
-            return asyncio.run(main(args.gui_events))
+            result = asyncio.run(main(args.gui_events))
     finally:
+        if continuity_report is not None:
+            continuity_report.finish(result == 0)
+            if continuity_report.failed:
+                print(tr("record.continuity_report_write_failed"), file=sys.stderr)
+                result = 1
+            continuity_report = None
         lock.__exit__(None, None, None)
+    return result
 
 
 if __name__ == "__main__":
