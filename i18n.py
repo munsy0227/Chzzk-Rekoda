@@ -1871,7 +1871,7 @@ _CONTINUITY_TEXT = {
     "continuity_report_collision": ("보고서 경로는 설정 파일이나 로그 파일과 달라야 합니다.", "The report path must differ from the config and log paths.", "报告路径必须与配置和日志路径不同。", "報告路徑必須與設定和日誌路徑不同。", "レポートのパスは設定やログのパスと異なる必要があります。"),
     "continuity_report_failed": ("연속성 보고서를 열 수 없습니다: {error}", "Cannot open continuity report: {error}", "无法打开连续性报告：{error}", "無法開啟連續性報告：{error}", "連続性レポートを開けません: {error}"),
     "continuity_report_write_failed": ("연속성 보고서를 끝까지 저장하지 못했습니다.", "The continuity report could not be fully saved.", "未能完整保存连续性报告。", "未能完整儲存連續性報告。", "連続性レポートを最後まで保存できませんでした。"),
-    "continuity_summary": ("녹화 연속성 검사: 공백 {gaps}개 · {seconds}초, 미확인 중단 {unresolved}개, 중복 {duplicates}개, 보고서 오류 {errors}개.", "Recording continuity: {gaps} gaps / {seconds} seconds, {unresolved} unresolved interruptions, {duplicates} duplicates, {errors} report errors.", "录制连续性：{gaps} 处空白 / {seconds} 秒，{unresolved} 处未确认中断，{duplicates} 处重复，{errors} 个报告错误。", "錄製連續性：{gaps} 處空白 / {seconds} 秒，{unresolved} 處未確認中斷，{duplicates} 處重複，{errors} 個報告錯誤。", "録画の連続性: 欠落 {gaps} 件 / {seconds} 秒、未確認の中断 {unresolved} 件、重複 {duplicates} 件、レポートエラー {errors} 件。"),
+    "continuity_summary": ("녹화 연속성 검사: 공백 {gaps}개 · {seconds}초, 미확인 중단 {unresolved}개, 중복 {duplicates}개, 보고서·출력 오류 {errors}개.", "Recording continuity: {gaps} gaps / {seconds} seconds, {unresolved} unresolved interruptions, {duplicates} duplicates, {errors} report/output errors.", "录制连续性：{gaps} 处空白 / {seconds} 秒，{unresolved} 处未确认中断，{duplicates} 处重复，{errors} 个报告或输出错误。", "錄製連續性：{gaps} 處空白 / {seconds} 秒，{unresolved} 處未確認中斷，{duplicates} 處重複，{errors} 個報告或輸出錯誤。", "録画の連続性: 欠落 {gaps} 件 / {seconds} 秒、未確認の中断 {unresolved} 件、重複 {duplicates} 件、レポート・出力エラー {errors} 件。"),
     "source_selected": ("{channel_name}: {cdn}에서 {mode}으로 수신합니다.", "{channel_name}: receiving from {cdn} using {mode}.", "{channel_name}：通过 {cdn} 使用{mode}接收。", "{channel_name}：透過 {cdn} 使用{mode}接收。", "{channel_name}: {cdn}から{mode}で受信します。"),
     "source_ready": ("{channel_name}: {cdn} 예비 경로가 준비되었습니다 ({mode}).", "{channel_name}: {cdn} standby is ready ({mode}).", "{channel_name}：{cdn} 备用路径已就绪（{mode}）。", "{channel_name}：{cdn} 備用路徑已就緒（{mode}）。", "{channel_name}: {cdn}の予備経路を準備しました（{mode}）。"),
     "source_absent": ("{channel_name}: 확인할 Akamai 예비 주소가 없습니다.", "{channel_name}: no Akamai standby address is available to check.", "{channel_name}：没有可检查的 Akamai 备用地址。", "{channel_name}：沒有可檢查的 Akamai 備用位址。", "{channel_name}: 確認できるAkamaiの予備アドレスがありません。"),
@@ -1975,3 +1975,18 @@ _CI_TEXT = {
 for _key, _texts in _CI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["ci." + _key] = _text
+
+
+_RECORDING_STOP_TEXT = {
+    "stream_stop_request_failed": ("{channel_name}: 정상 종료 요청을 전달하지 못했습니다. 마지막 입력이 완전한지 확인이 필요합니다.", "{channel_name}: could not send the graceful stop request. The final input needs verification.", "{channel_name}：无法发送正常停止请求，需要检查最后的输入是否完整。", "{channel_name}：無法傳送正常停止要求，需要檢查最後的輸入是否完整。", "{channel_name}: 正常終了の要求を送れませんでした。最後の入力の確認が必要です。"),
+    "stream_stop_timeout": ("{channel_name}: 정상 종료 대기 시간이 지나 녹화 수신을 강제로 종료합니다.", "{channel_name}: the graceful stop wait expired; forcing the receiver to exit.", "{channel_name}：正常停止等待超时，正在强制结束录制接收。", "{channel_name}：正常停止等待逾時，正在強制結束錄製接收。", "{channel_name}: 正常終了の待機時間を超えたため、受信処理を強制終了します。"),
+    "stop_cleanup_failed": ("{channel_name}: 종료 요청용 임시 폴더를 정리하지 못했습니다.", "{channel_name}: could not remove the temporary stop control directory.", "{channel_name}：无法清理停止请求的临时目录。", "{channel_name}：無法清理停止要求的暫存目錄。", "{channel_name}: 終了要求の一時フォルダーを削除できませんでした。"),
+    "output_error": ("{channel_name}: 녹화 출력에서 문제가 확인됐습니다 ({category}). 연속성 검사를 실패로 기록합니다.", "{channel_name}: a recording output problem was detected ({category}). Continuity validation is marked as failed.", "{channel_name}：发现录制输出问题（{category}），连续性检查记录为失败。", "{channel_name}：發現錄製輸出問題（{category}），連續性檢查記錄為失敗。", "{channel_name}: 録画出力の問題を検出しました（{category}）。連続性検査を失敗として記録します。"),
+    "output_error_corrupt_packet": ("손상된 미디어 패킷", "corrupt media packet", "损坏的媒体数据包", "損壞的媒體封包", "破損したメディアパケット"),
+    "output_error_partial_input": ("불완전한 마지막 입력", "incomplete final input", "不完整的最后输入", "不完整的最後輸入", "不完全な最後の入力"),
+    "output_error_forced_stop": ("강제 종료", "forced termination", "强制结束", "強制結束", "強制終了"),
+}
+
+for _key, _texts in _RECORDING_STOP_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["record." + _key] = _text

@@ -16,7 +16,9 @@ OWNED_NAME = re.compile(r"[0-9a-f]{64}\.(?:json|bin)|[0-9a-f]{32}\.part")
 
 
 class BufferFull(Exception):
-    pass
+    def __init__(self, reason='byte_limit'):
+        super().__init__(reason)
+        self.reason = reason
 
 
 class MediaBuffer:
@@ -102,15 +104,22 @@ class MediaBuffer:
             return sorted(self.rows.values(), key=lambda row: datetime.fromisoformat(row['at']))
 
     def can_store(self, at, duration):
+        return self.rejection_reason(at, duration) is None
+
+    def rejection_reason(self, at, duration):
         with self.lock:
             if at is None or (self.cutoff and at + timedelta(seconds=duration) <= self.cutoff):
-                return False
+                return 'already_output'
             first = min((datetime.fromisoformat(row['at']) for row in self.rows.values()), default=at)
             if self.pending_from is not None:
                 first = min(first, self.pending_from)
-            return ((at + timedelta(seconds=duration) - min(first, at)).total_seconds()
-                    <= self.max_seconds and self.used < self.max_bytes and not self.byte_full
-                    and len(self.rows) < 2048)
+            if (at + timedelta(seconds=duration) - min(first, at)).total_seconds() > self.max_seconds:
+                return 'time_limit'
+            if self.used >= self.max_bytes or self.byte_full:
+                return 'byte_limit'
+            if len(self.rows) >= 2048:
+                return 'count_limit'
+            return None
 
     def note_pending(self, at):
         with self.lock:
@@ -120,8 +129,9 @@ class MediaBuffer:
     def store(self, metadata, initialization, media):
         with self.lock:
             at = datetime.fromisoformat(metadata['at'])
-            if not self.can_store(at, metadata['duration']):
-                raise BufferFull()
+            reason = self.rejection_reason(at, metadata['duration'])
+            if reason is not None:
+                raise BufferFull(reason)
             digest = hashlib.sha256(initialization + media).hexdigest()
             key = hashlib.sha256(json.dumps([self.live_id, self.rendition, metadata['at'],
                                             metadata['duration'], metadata['discontinuity_id'],
@@ -136,7 +146,7 @@ class MediaBuffer:
             reservation = row['size'] + len(encoded)
             if self.used + reservation > self.max_bytes:
                 self.byte_full = True
-                raise BufferFull()
+                raise BufferFull('byte_limit')
             self.used += reservation  # Includes files being written.
             part = self.root / (uuid.uuid4().hex + '.part')
             meta_part = self.root / (uuid.uuid4().hex + '.part')

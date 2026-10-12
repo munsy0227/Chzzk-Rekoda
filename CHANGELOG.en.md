@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-10-12
 
+### Improve recording shutdown boundaries and output diagnostics
+
+Finish the last segment and checkpoint before closing FFmpeg input on normal stop, app exit, or task cancellation. Distinguish already-output segments from actual buffer limits, and fail reports and CI on corrupt packets, incomplete input, or forced termination. All 126 tests and real video/audio/PTS checks passed. Native Windows shutdown and overseas live recording remain follow-up validation.
+
 ### Update history and recording analysis
 
 Added five-language histories, README links, and a rule to update them with every commit. The domestic VPS video passed decoding and PTS checks. Overseas continuity logs also passed, but Windows shutdown corruption warnings and unavailable overseas media remain follow-up checks.

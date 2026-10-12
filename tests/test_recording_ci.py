@@ -41,6 +41,10 @@ with args.continuity_report.open('w', encoding='utf-8') as report:
                 'from': f'2026-10-11T00:00:{first:02d}+00:00',
                 'to': f'2026-10-11T00:00:{last:02d}+00:00'})) + '\n')
     report.flush()
+    if mode in {'corrupt_packet', 'partial_input', 'forced_stop'}:
+        report.write(json.dumps(dict(version=1, kind='output_error', channel_id='test',
+            observed_at='2026-10-11T00:00:09+00:00', category=mode)) + '\n')
+        report.flush()
     if mode == 'force':
         child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'],
                                  start_new_session=os.name != 'nt')
@@ -78,7 +82,8 @@ class RecordingCITests(unittest.TestCase):
 
     def test_normal_stop_and_failure_paths_preserve_evidence(self):
         scenarios = {'normal': 0, 'gap': 1, 'incomplete': 1, 'early': 1,
-                     'no-output': 1, 'empty': 1, 'ffmpeg-error': 1, 'startup-failure': 7}
+                     'no-output': 1, 'empty': 1, 'ffmpeg-error': 1, 'startup-failure': 7,
+                     'corrupt_packet': 1, 'partial_input': 1, 'forced_stop': 1}
         for mode, expected in scenarios.items():
             with self.subTest(mode=mode), tempfile.TemporaryDirectory(prefix='한글 CI ') as temporary:
                 project = Path(temporary)

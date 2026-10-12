@@ -4,10 +4,13 @@ import argparse
 import hashlib
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
-from recording_continuity import EVENT_PREFIX, parse_event
+from recording_continuity import EVENT_PREFIX, parse_event, valid_time
+
+
+OUTPUT_ERRORS = {'corrupt_packet', 'partial_input', 'forced_stop'}
 
 
 class ContinuityReport:
@@ -44,6 +47,14 @@ class ContinuityReport:
             self.file.close()
         except OSError:
             self.failed = True
+
+    def output_error(self, channel_id, category):
+        if (not isinstance(channel_id, str) or len(channel_id) > 128
+                or not isinstance(category, str) or category not in OUTPUT_ERRORS):
+            self.write({'version': 1, 'kind': 'report_error'})
+            return
+        self.write(dict(version=1, kind='output_error', channel_id=channel_id,
+                        observed_at=datetime.now(timezone.utc).isoformat(), category=category))
 
 
 def summarize(lines):
@@ -86,6 +97,12 @@ def summarize(lines):
             channel_id = row.get("channel_id")
             if not isinstance(channel_id, str) or len(channel_id) > 128:
                 raise ValueError("Invalid channel")
+            if kind == 'output_error':
+                if (not isinstance(row.get('category'), str) or row['category'] not in OUTPUT_ERRORS
+                        or row.get('observed_at') is None or not valid_time(row['observed_at'])):
+                    raise ValueError('Invalid output error')
+                errors += 1
+                continue
             event = parse_event(EVENT_PREFIX + json.dumps(row))
             if event is None:
                 raise ValueError("Invalid event")

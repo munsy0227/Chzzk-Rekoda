@@ -68,7 +68,7 @@ def parse_event(line):
                 or event.get('cdn') not in {'korean', 'akamai', 'unknown'}
                 or event.get('mode') not in {'hls', 'llhls'}
                 or event.get('role') not in {'current', 'history'}
-                or event.get('result') not in {'started', 'waiting', 'completed', 'boundary', 'buffer_full'}
+                or event.get('result') not in {'started', 'waiting', 'completed', 'boundary', 'buffer_full', 'buffer_skipped'}
                 or event.get('lookup_result') not in {'available', 'unavailable', 'http', 'network', 'timeout',
                                                      'truncated', 'invalid_media', 'initialization', 'dns', 'tls', 'connect', 'parse'}
                 or event.get('observed_at') is None
@@ -76,6 +76,10 @@ def parse_event(line):
                 or not math.isfinite(event['elapsed_ms']) or not 0 <= event['elapsed_ms'] <= 86400000
                 or type(event.get('buffered_count')) is not int or not 0 <= event['buffered_count'] <= 2048
                 or type(event.get('buffered_bytes')) is not int or not 0 <= event['buffered_bytes'] <= 256 * 1024 * 1024):
+            return None
+        if 'buffer_reason' in event and (
+                not isinstance(event['buffer_reason'], str)
+                or event['buffer_reason'] not in {'already_output', 'time_limit', 'byte_limit', 'count_limit'}):
             return None
         start, end = event.get('window_from'), event.get('window_to')
         if ((start is None) != (end is None)
@@ -119,7 +123,8 @@ def parse_event(line):
         "boundary": {"reason", "resume_from", "after_gap", "recovery_deadline"},
         "diagnostic": {"stage", "role", "category", "status", "sequence", "at"},
         'recovery_snapshot': {'observed_at', 'lookup_at', 'cdn', 'mode', 'role', 'result', 'lookup_result', 'elapsed_ms',
-                              'window_from', 'window_to', 'target', 'recovery_deadline', 'buffered_count', 'buffered_bytes'},
+                              'window_from', 'window_to', 'target', 'recovery_deadline', 'buffered_count', 'buffered_bytes',
+                              'buffer_reason'},
     }
     allowed = {"version", "kind", "live_id", "rendition"} | fields[event["kind"]]
     return {key: value for key, value in event.items() if key in allowed}

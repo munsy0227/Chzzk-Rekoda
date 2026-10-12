@@ -19,6 +19,7 @@ from collections import OrderedDict
 from concurrent.futures import CancelledError, ThreadPoolExecutor, TimeoutError
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import urlparse, urlunparse
 
@@ -373,7 +374,7 @@ class ContinuitySource:
             sys.stderr.write(EVENT_PREFIX + json.dumps(event) + "\n")
             sys.stderr.flush()
 
-    def recovery_snapshot(self, result, target=None, force=False, manifest=None):
+    def recovery_snapshot(self, result, target=None, force=False, manifest=None, buffer_reason=None):
         target = target or (timestamp(self.writer.previous.end)
                             if self.writer and self.writer.previous else self.recovery_target)
         manifest = manifest or self.primary
@@ -395,7 +396,8 @@ class ContinuitySource:
                   window_to=timestamp(dated[-1].date + timedelta(seconds=dated[-1].duration)) if dated else None,
                   target=target, recovery_deadline=timestamp(self.recovery_wall),
                   buffered_count=len(buffer.entries()) if buffer else 0,
-                  buffered_bytes=buffer.used if buffer else 0)
+                  buffered_bytes=buffer.used if buffer else 0,
+                  **({'buffer_reason': buffer_reason} if buffer_reason is not None else {}))
 
     def report_failure(self, stage, role, error, located=None):
         """Bounded, URL-free diagnostics; never serialize request exceptions."""
@@ -860,6 +862,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         self.standby_future = None
         self.selected_source = None
         self.delivery_lock = threading.RLock()
+        self.stop_requested = threading.Event()
         self.buffer_warning = False
         self.buffer_writable = True
         self.owned_buffer = None
@@ -933,9 +936,11 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         try:
             row = self.media_buffer.store(metadata, result.initialization, result.media)
             return BufferedDownload(item, self.media_buffer, row, result.mode)
-        except BufferFull:
+        except BufferFull as error:
             if self.source.recovering:
-                self.source.recovery_snapshot('buffer_full', timestamp(item.date))
+                self.source.recovery_snapshot(
+                    'buffer_skipped' if error.reason == 'already_output' else 'buffer_full',
+                    timestamp(item.date), buffer_reason=error.reason)
         except (OSError, ValueError):
             self.buffer_failed(disable=True)
         return result
@@ -1252,6 +1257,14 @@ class ChzzkContinuityWriter(HLSStreamWriter):
         if item is not None:
             self.output_target = item[0]
         return item
+
+    def request_stop(self):
+        # Block new deliveries immediately; the in-flight delivery owns this
+        # lock until its complete initialization/media and checkpoint are sent.
+        self.stop_requested.set()
+        self.reader.worker.close()
+        with self.delivery_lock:
+            self.close()
 
     def close(self):
         if self.closed:
@@ -1630,7 +1643,17 @@ class ChzzkContinuityWriter(HLSStreamWriter):
 
     def deliver(self, target, result):
         with self.delivery_lock:
-            if self.failed or self.source.stop.is_set():
+            # A fast next delivery can precede the 100ms stop watcher. Check the
+            # control file at every boundary before forwarding any new bytes.
+            stop_file = getattr(self.stream, 'stop_file', None)
+            if stop_file:
+                try:
+                    if Path(stop_file).is_file():
+                        self.request_stop()
+                        return False
+                except OSError:
+                    pass
+            if self.failed or self.source.stop.is_set() or self.stop_requested.is_set():
                 return False
             return self._deliver(target, result)
 
@@ -1768,6 +1791,26 @@ class ChzzkContinuityWriter(HLSStreamWriter):
 class ChzzkContinuityReader(HLSStreamReader):
     __worker__ = ChzzkContinuityWorker
     __writer__ = ChzzkContinuityWriter
+
+    def open(self):
+        if self._opened:
+            return
+        super().open()
+        stop_file = getattr(self.stream, 'stop_file', None)
+        if stop_file:
+            threading.Thread(target=self.watch_stop, args=(Path(stop_file),),
+                             name='chzzk-stop', daemon=True).start()
+
+    def watch_stop(self, path):
+        while not self.stream.continuity.stop.is_set():
+            try:
+                if path.is_file():
+                    self.writer.request_stop()
+                    return
+            except OSError:
+                # The parent enforces a bounded wait and records fallback.
+                pass
+            self.stream.continuity.stop.wait(0.1)
 
     def read(self, size):
         source = self.stream.continuity

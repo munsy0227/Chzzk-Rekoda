@@ -59,12 +59,13 @@ class ChzzkHLSStream(HLSStream):
     def __init__(self, session, url: str, channel_id: str, *args,
                  live_id=0, source_paths=(), start_lookback=0, resume=None,
                  time_machine_active=None,
-                 source_mode="hls", source_cdn=None, buffer_dir=None,
+                 source_mode="hls", source_cdn=None, buffer_dir=None, stop_file=None,
                  **kwargs) -> None:
         super().__init__(session, url, *args, **kwargs)
         self._url = url
         self._channel_id = channel_id
         self.buffer_dir = buffer_dir
+        self.stop_file = stop_file
         self._api = ChzzkAPI(session)
         self.continuity = ContinuitySource(
             self, self._source_snapshot, live_id, source_paths,
@@ -264,6 +265,7 @@ class ChzzkAPI:
 @pluginargument("start-lookback", type=int, choices=[0, 3600], default=0)
 @pluginargument("resume", type=resume_option, default=None)
 @pluginargument("buffer-dir", type=str, default=None)
+@pluginargument("stop-file", type=str, default=None)
 class Chzzk(Plugin):
     """
     Plugin for Chzzk live streams.
@@ -343,6 +345,7 @@ class Chzzk(Plugin):
                         start_lookback=self.get_option("start-lookback"),
                         resume=self.get_option("resume"),
                         buffer_dir=self.get_option("buffer-dir"),
+                        stop_file=self.get_option("stop-file"),
                         time_machine_active=data[8],
                     )
                 except (StreamError, ValueError):

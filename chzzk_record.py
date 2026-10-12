@@ -69,6 +69,7 @@ STREAMLINK_RECONNECT_BASE_DELAY_SECONDS = 2
 STREAMLINK_RECONNECT_MAX_DELAY_SECONDS = 30
 STREAMLINK_STABLE_RECORDING_SECONDS = 60
 STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
+STREAMLINK_COOPERATIVE_STOP_SECONDS = 15
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 MAX_UI_LOG_MESSAGES = 1000
 UI_LOG_HISTORY_SIZE = 15
@@ -724,6 +725,45 @@ class RecordingProcessSandbox:
         self.ffmpeg_process: Optional[asyncio.subprocess.Process] = None
         self._tasks: List[asyncio.Task] = []
         self._cancel_on_cleanup: List[asyncio.Task] = []
+        self.output_errors = set()
+        self.stop_directory = None
+        self.stop_file = None
+        try:
+            self.stop_directory = tempfile.TemporaryDirectory(prefix='chzzk-stop-')
+            self.stop_file = Path(self.stop_directory.name) / 'stop'
+        except OSError:
+            logger.warning(tr('record.stream_stop_request_failed', channel_name=channel_name))
+
+    def stop_arguments(self) -> List[str]:
+        return ['--chzzk-stop-file', str(self.stop_file)] if self.stop_file is not None else []
+
+    def record_output_error(self, category: str) -> None:
+        if category in self.output_errors:
+            return
+        self.output_errors.add(category)
+        if continuity_report is not None:
+            continuity_report.output_error(self.channel_id, category)
+        logger.warning(tr('record.output_error', channel_name=self.channel_name,
+                          category=tr('record.output_error_' + category)))
+
+    async def stop_streamlink(self) -> None:
+        process = self.stream_process
+        if process is None or process.returncode is not None:
+            return
+        try:
+            if self.stop_file is None:
+                raise OSError('Stop control unavailable')
+            self.stop_file.touch(mode=0o600, exist_ok=True)
+            await asyncio.wait_for(asyncio.shield(process.wait()),
+                                   timeout=STREAMLINK_COOPERATIVE_STOP_SECONDS)
+            return
+        except OSError:
+            logger.warning(tr('record.stream_stop_request_failed', channel_name=self.channel_name))
+        except asyncio.TimeoutError:
+            logger.warning(tr('record.stream_stop_timeout', channel_name=self.channel_name))
+        self.record_output_error('forced_stop')
+        await terminate_process(process, f'streamlink [{self.channel_name}/{self.channel_id}]',
+                                timeout=STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS - STREAMLINK_COOPERATIVE_STOP_SECONDS)
 
     async def start_streamlink(
         self, command: List[str]
@@ -757,12 +797,16 @@ class RecordingProcessSandbox:
         return task
 
     async def cleanup(self) -> None:
-        await terminate_process(
-            self.ffmpeg_process, f"ffmpeg [{self.channel_name}/{self.channel_id}]"
-        )
-        await terminate_process(
-            self.stream_process, f"streamlink [{self.channel_name}/{self.channel_id}]"
-        )
+        await self.stop_streamlink()
+        if self.ffmpeg_process is not None and self.ffmpeg_process.returncode is None:
+            try:
+                await asyncio.wait_for(asyncio.shield(self.ffmpeg_process.wait()),
+                                       timeout=FFMPEG_FINALIZE_TIMEOUT_SECONDS)
+            except asyncio.TimeoutError:
+                self.record_output_error('forced_stop')
+                await terminate_process(
+                    self.ffmpeg_process, f"ffmpeg [{self.channel_name}/{self.channel_id}]"
+                )
         for task in self._cancel_on_cleanup:
             if not task.done():
                 task.cancel()
@@ -773,6 +817,11 @@ class RecordingProcessSandbox:
             await drain_task(task)
         self._tasks.clear()
         self._cancel_on_cleanup.clear()
+        if self.stop_directory is not None:
+            try:
+                self.stop_directory.cleanup()
+            except OSError:
+                logger.warning(tr('record.stop_cleanup_failed', channel_name=self.channel_name))
 
 
 async def pipe_stream_to_stdin(
@@ -1461,7 +1510,8 @@ def parse_time(time_str):
 
 
 async def read_stream(
-    stream: asyncio.StreamReader, channel_id: str, stream_type: str
+    stream: asyncio.StreamReader, channel_id: str, stream_type: str,
+    output_error=None,
 ) -> str:
     summary: Dict[str, str] = {}
     speed_samples = collections.deque(maxlen=5)
@@ -1478,6 +1528,12 @@ async def read_stream(
             line_str = line.decode(errors="replace").strip()
             if line_str:
                 diagnostics.append(line_str[:1000])
+                if output_error is not None:
+                    lowered = line_str.lower()
+                    if 'packet corrupt' in lowered:
+                        output_error('corrupt_packet')
+                    if 'partial file' in lowered:
+                        output_error('partial_input')
 
             # Add log
             logger.debug(f"ffmpeg {stream_type} [{channel_id}]: {line_str}")
@@ -2419,6 +2475,7 @@ async def record_stream(
                             *continuity.arguments(record_previous_hour),
                             '--chzzk-buffer-dir',
                             media_buffer_directory.name if media_buffer_directory is not None else '-',
+                            *active_attempt.stop_arguments(),
                             "--stream-segment-attempts",
                             str(STREAMLINK_SEGMENT_ATTEMPTS),
                             "--stream-segment-timeout",
@@ -2747,7 +2804,8 @@ async def record_stream(
                                             continuity, channel_name)
                         )
                         ffmpeg_stderr_task = active_attempt.create_task(
-                            read_stream(ffmpeg_process.stderr, channel_id, "stderr")
+                            read_stream(ffmpeg_process.stderr, channel_id, "stderr",
+                                        active_attempt.record_output_error)
                         )
                         ffmpeg_wait_task = active_attempt.create_task(ffmpeg_process.wait())
                         stream_wait_task = active_attempt.create_task(stream_process.wait())
@@ -2783,22 +2841,19 @@ async def record_stream(
                                 "cancelled" if task_cancelled else "shutdown"
                             )
                             stop_after_attempt = True
-                            await terminate_process(
-                                stream_process,
-                                "streamlink",
-                                timeout=STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS,
-                            )
+                            await active_attempt.stop_streamlink()
                             await drain_task(pipe_task, timeout=10)
                             if not await wait_for_task_completion(
                                 ffmpeg_wait_task,
                                 f"ffmpeg finalize for {channel_name}",
                                 FFMPEG_FINALIZE_TIMEOUT_SECONDS,
                             ):
+                                active_attempt.record_output_error('forced_stop')
                                 await terminate_process(ffmpeg_process, "ffmpeg")
 
                         elif ffmpeg_wait_task in done:
                             completed_by = "ffmpeg"
-                            await terminate_process(stream_process, "streamlink")
+                            await active_attempt.stop_streamlink()
                         elif stream_wait_task in done:
                             completed_by = "streamlink"
                             if not await wait_for_task_completion(
@@ -2806,12 +2861,14 @@ async def record_stream(
                                 f"ffmpeg after streamlink ended for {channel_name}",
                                 FFMPEG_FINALIZE_TIMEOUT_SECONDS,
                             ):
+                                active_attempt.record_output_error('forced_stop')
                                 await terminate_process(ffmpeg_process, "ffmpeg")
 
                         if stream_wait_task and not stream_wait_task.done():
-                            await terminate_process(stream_process, "streamlink")
+                            await active_attempt.stop_streamlink()
                             await drain_task(stream_wait_task)
                         if ffmpeg_wait_task and not ffmpeg_wait_task.done():
+                            active_attempt.record_output_error('forced_stop')
                             await terminate_process(ffmpeg_process, "ffmpeg")
                             await drain_task(ffmpeg_wait_task)
 
