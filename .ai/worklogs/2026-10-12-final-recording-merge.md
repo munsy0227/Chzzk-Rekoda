@@ -22,6 +22,8 @@
 
 ## 로컬 검증
 
+- 코드 커밋 `f3c9212` 이후 main 병합 미리보기에서도 126개 전체 테스트가 통과했다(67.599초). 최종 경로 검토에서 기존 10초 pipe 배출 제한이 작업을 취소하면 정상 종료로 오판할 수 있음을 확인해, 미커밋 병합만 취소하고 dev에서 보완했다. main 쪽 워크플로 수정은 별도 stash로 보존했다. 이전 커밋과 분석 문서는 유지했다.
+- 배출 task가 실제로 취소됐으면 `forced_stop`을 추가한다. 배출을 완료했지만 작업이 지연되는 실제 FFmpeg fixture를 시간 초과로 취소하여, 완전한 250 영상 프레임·음성이 있어도 report 오류 1·passed=false로 확인했다. 최종 종료 검사 **12개 통과**, 5.339초(`/tmp/chzzk-stop-final.log`), 문법 및 whitespace 통과. 전체 main 재병합 검사는 보완 커밋 후 다시 수행한다.
 - `.venv/bin/python -m unittest discover -s tests -q`: **126개 통과**, 실패·오류·건너뜀 0, 68.250초. 최초 제한 환경에서 소켓을 만들 수 없던 검사는 로컬 HTTP 서버가 허용된 실행에서 재검사했다. 최종 로그 `/tmp/chzzk-dev-all-tests.log`.
 - 실제 fMP4→Streamlink reader→Recorder→FFmpeg 검사 4개: 조각 중간 중지, 출력 지연, 복구 대기, task 취소. 수신 바이트는 init+첫 전체 조각과 정확히 일치하고 checkpoint 1개, gap/duplicate/output error 0. 250 영상 프레임 및 음성 프레임 수가 원본 전체 조각과 같으며 모든 패킷 상대 PTS를 MKV 반올림 2ms 이내로 대조했다. 전체 영상·음성 디코딩 오류·경고 0.
 - 검사 장치의 RingBuffer.write 반환값은 None이므로 테스트에서 정수로 가정했던 부분을 정정했다. AAC priming에 따른 원본 첫 영상 PTS 38ms 간격을 누락으로 오판하지 않도록 모든 원본/출력 PTS를 직접 대조했다. 정상 코드의 다음 조각 경계 경쟁 조건도 실제 검사에서 찾아 수정했다.

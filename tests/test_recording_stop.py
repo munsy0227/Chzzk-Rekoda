@@ -244,6 +244,9 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
     async def test_task_cancellation_uses_same_complete_fragment_shutdown(self):
         await self.record('cancel')
 
+    async def test_abandoned_pipe_drain_fails_even_when_media_is_intact(self):
+        await self.record('pipe_timeout')
+
     async def record(self, mode):
         with tempfile.TemporaryDirectory() as directory, CDN() as cdn:
             root = Path(directory)
@@ -299,7 +302,10 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
                         received.extend(chunk)
                         return chunk
 
-                return await original_pipe(Tee(), writer, name)
+                transferred = await original_pipe(Tee(), writer, name)
+                if mode == 'pipe_timeout':
+                    await asyncio.sleep(60)
+                return transferred
 
             logger = Mock()
             config = normalize_config({})
@@ -316,6 +322,8 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
                     return_value={'stream': 'best', 'filters': []})))
                 stack.enter_context(patch.object(recorder.RecordingProcessSandbox, 'start_streamlink', start))
                 stack.enter_context(patch.object(recorder, 'pipe_stream_to_stdin', pipe))
+                if mode == 'pipe_timeout':
+                    stack.enter_context(patch.object(recorder, 'PIPE_DRAIN_TIMEOUT_SECONDS', 0.02))
                 task = asyncio.create_task(recorder.record_stream(
                     dict(id='test', name='fixture', output_dir=directory, active='on'), {}, None,
                     0, 1, Path(shutil.which('ffmpeg')), 2, config['hevc_settings'],
@@ -344,9 +352,9 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(bytes(received), expected)
             self.assertEqual(len(commands), 1)
             summary = summarize(report_path.read_text().splitlines())
-            self.assertTrue(summary['passed'], (summary, logger.mock_calls))
+            self.assertEqual(summary['passed'], mode != 'pipe_timeout', (summary, logger.mock_calls))
             self.assertEqual(summary['checkpoint_count'], 1)
-            self.assertEqual(summary['error_count'], 0)
+            self.assertEqual(summary['error_count'], int(mode == 'pipe_timeout'))
             self.assertFalse(Path(commands[0][commands[0].index('--chzzk-stop-file') + 1]).parent.exists())
             self.assertFalse(list(root.glob('.chzzk-buffer-*')))
             outputs = list(root.glob('*.mkv'))

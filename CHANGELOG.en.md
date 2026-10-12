@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-10-12
 
+### Fail validation when shutdown draining is cancelled
+
+Record forced-termination evidence if draining the remaining pipe data is cancelled after a timeout. All 12 shutdown checks, including real FFmpeg, passed; even an intact-media fixture fails validation when its drain task is abandoned. The existing ten-second drain limit is retained.
+
 ### Improve recording shutdown boundaries and output diagnostics
 
 Finish the last segment and checkpoint before closing FFmpeg input on normal stop, app exit, or task cancellation. Distinguish already-output segments from actual buffer limits, and fail reports and CI on corrupt packets, incomplete input, or forced termination. All 126 tests and real video/audio/PTS checks passed. Native Windows shutdown and overseas live recording remain follow-up validation.

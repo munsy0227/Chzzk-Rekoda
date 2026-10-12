@@ -70,6 +70,7 @@ STREAMLINK_RECONNECT_MAX_DELAY_SECONDS = 30
 STREAMLINK_STABLE_RECORDING_SECONDS = 60
 STREAMLINK_SHUTDOWN_TIMEOUT_SECONDS = 20
 STREAMLINK_COOPERATIVE_STOP_SECONDS = 15
+PIPE_DRAIN_TIMEOUT_SECONDS = 10
 ENCODER_PROBE_TESTSRC = "testsrc2=size=640x480:rate=1"
 MAX_UI_LOG_MESSAGES = 1000
 UI_LOG_HISTORY_SIZE = 15
@@ -2842,7 +2843,9 @@ async def record_stream(
                             )
                             stop_after_attempt = True
                             await active_attempt.stop_streamlink()
-                            await drain_task(pipe_task, timeout=10)
+                            await drain_task(pipe_task, timeout=PIPE_DRAIN_TIMEOUT_SECONDS)
+                            if pipe_task.cancelled():
+                                active_attempt.record_output_error('forced_stop')
                             if not await wait_for_task_completion(
                                 ffmpeg_wait_task,
                                 f"ffmpeg finalize for {channel_name}",
