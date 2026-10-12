@@ -17,6 +17,8 @@
 
 **언어:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
+[업데이트 기록](CHANGELOG.md)
+
 Streamlink와 ffmpeg를 활용하여 만들어진 Windows, macOS, Linux를 지원하는 치지직 자동 녹화 프로그램입니다.
 
 또한 컴퓨터를 잘 모르는 분들도 쉽게 사용할 수 있는 **치지직 자동 녹화 프로그램**입니다.  

@@ -1,6 +1,6 @@
 # 프로젝트 작업 지식
 
-최종 확인: 2026-10-11. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
+최종 확인: 2026-10-12. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
 
 ## 지침과 메모 위치
 
@@ -9,9 +9,13 @@
 - 사용자는 매 작업마다 `.ai/`에 후속 작업을 위한 메모를 남기도록 요청했다. 세부 기록은 `worklogs/`, 제안 단계 설계는 `plans/`에 저장한다.
 - 5개 언어 README는 상단 GUI/CLI 화면 → 기존 소개와 Android 튜토리얼 링크 → GUI 첫 설정·리본 설정 → 설치 → CLI → FAQ 순서다. 사용자가 원래 소개 문구와 두 튜토리얼 링크를 유지하도록 요청했으므로 이후 구성 변경에서도 보존한다. 사용자 제공 화면은 `assets/screenshots/gui-recording.jpg`, `cli-recording.jpg`를 공용으로 사용한다. 사용자의 `gui` → `main` 병합 계획에 맞춰 ZIP은 `main.zip`, 저장소 링크는 루트 URL, clone은 기본 브랜치를 사용하도록 안내한다. 실제 병합 완료를 의미하지 않는다. [README 구성 및 검증](worklogs/2026-09-12-readme-gui-first.md)을 참고한다.
 
+- 날짜별 업데이트 기록은 루트 `CHANGELOG.md` 및 4개 언어 대응 문서에서 관리한다. 한국 시간 날짜별로 모든 커밋과 함께 갱신하며 세부 근거는 `worklogs/`에 남긴다. [관리 및 최종 개선 기록](worklogs/2026-10-12-final-recording-merge.md)을 참고한다.
+
 ## 현재 코드 구조
 
 - GitHub 수동 `Long recording test`/`Codec smoke test`는 `channel_uuid`(빈 입력이면 기존 `64a90ba95d1f9feb0a798a20bbf0f40c`)와 `test_os=linux/windows/macos/all`을 받는다. Linux 기본값, `*-latest` 안정 이미지, 전체 선택의 병렬 실행과 `fail-fast: false`를 사용한다. `scripts/run_recording_test.py`는 임시 폴더 설정·녹화 감시·정리·연속성/코덱 판정을 공용화하고 기존 Bash helper는 세 인수 래퍼다. GUI 제어 파이프로 정상 중지하며 120초 초과 시 하위 프로세스까지 정리해 실패한다. Windows CI는 SHA-256 확인한 Gyan full FFmpeg를 사용한다. OS/run ID/run attempt별 아티팩트에 실패 로그·보고서·요약·실제 환경 버전을 7일 보관하며 설정 원문은 업로드하지 않는다. 승인 범위는 [계획](plans/recording-test-platforms.md), 검증과 미검증 범위는 [작업 기록](worklogs/2026-10-11-recording-test-platforms.md)에 있다.
+- 수동 `Long recording test`/`Codec smoke test`의 main 워크플로는 실행 입력을 등록하고 `actions/checkout`의 `ref: dev`로 dev 녹화 코드를 검사한다(2026-10-11). `channel_uuid`는 빈 입력이면 기존 채널, `test_os=linux/windows/macos/all`은 Linux 기본값과 GitHub `*-latest` matrix를 사용한다. Python 실행기·연속성 보고·Windows FFmpeg 설치기는 체크아웃한 dev에서 사용한다. main의 수동 실행도 dev 코드를 검사하므로 실제 녹화 버전은 checkout 단계의 SHA로 확인한다. 적용 범위와 검증은 [등록 작업 기록](worklogs/2026-10-11-recording-workflow-registration.md)을 참고한다.
+- dev 복구 코드의 실방송 자료 분석(2026-10-12): 국내 VPS MKV 약 1시간 41분의 영상·음성 전체 디코딩은 경고·오류 0이고 패킷 PTS 공백·중복도 없었으며, 해외 Ubuntu/Windows/macOS 약 5시간씩의 조각 출력 보고서는 모두 누락·중복·미해결 0이었다. 해외 복구 파일 해시는 `a32e59a`와 일치하며 Windows의 차이는 CRLF 변환이다. Windows 중지 직후 음성 `Packet corrupt`/`partial file`이 있어 최종 영상까지 무손실로 확정하지 않는다. 해외 `buffer_full` 36건은 보관량 0에서 이미 출력한 조각을 거절한 경우여서 실제 용량 부족과 구분해야 한다. 현재 main의 녹화 코드에 dev 변경이 이식됐다는 뜻은 아니다. 근거와 검증 범위는 [국내·해외 녹화 분석](worklogs/2026-10-12-domestic-overseas-recording-analysis.md)을 참고한다.
 
 - `chzzk_record.py`: `asyncio` 기반 녹화 관리, Streamlink/FFmpeg 자식 프로세스 실행, 인코더 probe/fallback, Rich 진행 화면을 포함한다. `manage_recording_tasks()`, `record_stream()`, `display_progress()`, `main()`이 주요 연결 지점이다.
 - `chzzk_record.py`의 uvloop 설정, 로거 생성, DNS 설치는 `run()`/`main()`에서 수행한다. import 시 파일/UI 부수 효과를 없앴다. CLI 실행은 그대로이며 GUI는 `--gui-events --config` 인자를 사용한다.

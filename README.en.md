@@ -17,6 +17,8 @@
 
 **Languages:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
+[Update history](CHANGELOG.en.md)
+
 Chzzk-Rekoda is an automatic CHZZK recording program for Windows, macOS, and Linux, built with Streamlink and FFmpeg.
 
 It is also a **CHZZK automatic recording program** designed to be easy to use even for people who are not familiar with computers.  

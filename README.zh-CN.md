@@ -17,6 +17,8 @@
 
 **语言：** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
+[更新记录](CHANGELOG.zh-CN.md)
+
 这是一个使用 Streamlink 和 FFmpeg 制作的 CHZZK 自动录制程序，支持 Windows、macOS 和 Linux。
 
 它也是一个即使不熟悉电脑的人也能轻松使用的 **CHZZK 自动录制程序**。  

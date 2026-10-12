@@ -17,6 +17,8 @@
 
 **言語:** [한국어](README.md) | [English](README.en.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md) | [日本語](README.ja.md)
 
+[更新履歴](CHANGELOG.ja.md)
+
 Streamlink と FFmpeg を使用して作られた、Windows、macOS、Linux 対応の CHZZK 自動録画プログラムです。
 
 また、パソコンに詳しくない方でも簡単に使える **CHZZK 自動録画プログラム**です。  
