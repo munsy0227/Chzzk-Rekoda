@@ -26,3 +26,10 @@
 ## 미검증 범위
 
 실제 CHZZK 장시간·해외 녹화, NAVER 계정 로그인, Windows/macOS 네이티브 실행, GPU 인코더는 검증하지 않았다. GUI 안내 문자열 변경의 화면 배치는 이번에 다시 렌더링하지 않았다. 실제 복구·정상 중지의 증거와 모의 DNS·설정 검사 결과를 실방송 검증으로 일반화하지 않는다.
+
+## 자동 회귀 검사와 커밋 분리
+
+- 녹화기 수정·회귀 검사·최초 검토 기록을 `013d320`에 커밋했다. 5개 언어 CHANGELOG를 같은 커밋에 포함했고 CI 워크플로는 분리했다.
+- `.github/workflows/tests.yml`은 push·pull_request에 Ubuntu, 읽기 전용 contents 권한, 10분 제한으로 실행한다. 기존 checkout 및 setup-uv 버전을 재사용하고 `.python-version`의 3.12, `uv sync --locked`, 시스템 FFmpeg를 준비한 뒤 전체 unittest를 실행한다. 실제 방송용 수동 워크플로는 변경하지 않는다.
+- YAML 파싱, 두 트리거, 읽기 전용 권한과 테스트 명령을 확인했다. 실제로 같은 Python 3.12 잠금 환경에서 전체 134개가 통과했다. actionlint와 GitHub 호스팅 실행 결과는 이 기록 작성 시점에는 검증하지 않았다.
+- 자동 검사 커밋에도 5개 언어 CHANGELOG의 같은 날짜에 별도 항목을 추가했다. 사용자가 승인한 원격 대상은 `origin`의 새 `codex/review-improvements` 브랜치이며 main 병합이나 PR 생성은 요청 범위가 아니다.

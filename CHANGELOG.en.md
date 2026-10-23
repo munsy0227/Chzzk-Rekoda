@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-10-23
 
+### Run regression tests on pull requests and pushes
+
+Add a Linux workflow that runs the full unittest suite on every pull request and push without broadcast accounts or external live streams. It uses the project's Python 3.12, locked dependencies, and FFmpeg; existing manual long-recording and codec tests remain available. All 134 local tests passed, and workflow YAML triggers, read-only permissions, and commands were validated. Execution on GitHub-hosted runners requires separate confirmation.
+
 ### Refresh recording settings and improve DoH reliability
 
 Apply DoH to broadcast API requests under uvloop while preserving system DNS fallback. Limit DNS response sizes during reception. Load current global and channel recording options for the next broadcast, while preserving settings and resume positions during recovery and file transitions within the same broadcast. Remove unused direct configuration writes and select boundary test events by kind. All 134 tests passed on Python 3.12. Long live recordings, native Windows/macOS behavior, and GPU encoding remain unverified.
