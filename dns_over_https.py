@@ -225,7 +225,7 @@ class DnsOverHttpsResolver:
             content_length = int(headers["content-length"])
             body = _read_content_length_body(sock, body, content_length)
         else:
-            body += _read_until_close(sock)
+            body = _read_until_close(sock, body)
 
         return status_code, headers, body
 
@@ -322,23 +322,23 @@ def install_doh_dns(
         )
 
         def getaddrinfo(
-            host_arg,
-            port_arg,
+            host,
+            port,
             family=socket.AF_UNSPEC,
-            socktype=0,
+            type=0,
             proto=0,
             flags=0,
         ):
-            if _should_use_original_resolver(host_arg, family, flags):
+            if _should_use_original_resolver(host, family, flags):
                 return _ORIGINAL_GETADDRINFO(
-                    host_arg, port_arg, family, socktype, proto, flags
+                    host, port, family, type, proto, flags
                 )
 
-            hostname = _normalize_hostname(host_arg)
+            hostname = _normalize_hostname(host)
             try:
                 addresses = resolver.resolve(hostname, family)
                 results = _getaddrinfo_from_addresses(
-                    addresses, port_arg, family, socktype, proto, flags
+                    addresses, port, family, type, proto, flags
                 )
                 if results:
                     return results
@@ -346,7 +346,7 @@ def install_doh_dns(
             except socket.gaierror as doh_error:
                 try:
                     return _ORIGINAL_GETADDRINFO(
-                        host_arg, port_arg, family, socktype, proto, flags
+                        host, port, family, type, proto, flags
                     )
                 except socket.gaierror as system_error:
                     message = (
@@ -362,7 +362,9 @@ def install_doh_dns(
 def _read_content_length_body(
     sock: ssl.SSLSocket, body: bytes, content_length: int
 ) -> bytes:
-    chunks = bytearray(body)
+    if not 0 <= content_length <= MAX_DNS_MESSAGE_BYTES:
+        raise OSError("DNS response is too large or has an invalid length")
+    chunks = bytearray(body[:content_length])
     while len(chunks) < content_length:
         chunk = sock.recv(content_length - len(chunks))
         if not chunk:
@@ -378,6 +380,8 @@ def _read_chunked_body(sock: ssl.SSLSocket, initial_body: bytes) -> bytes:
         line = _read_http_line(sock, buffer)
         size_text = line.split(b";", 1)[0].strip()
         chunk_size = int(size_text, 16)
+        if not 0 <= chunk_size <= MAX_DNS_MESSAGE_BYTES - len(body):
+            raise OSError("DNS response is too large or has an invalid chunk size")
         if chunk_size == 0:
             _read_exact_from_buffer(sock, buffer, 2)
             break
@@ -388,11 +392,15 @@ def _read_chunked_body(sock: ssl.SSLSocket, initial_body: bytes) -> bytes:
 
 def _read_http_line(sock: ssl.SSLSocket, buffer: bytearray) -> bytes:
     while b"\r\n" not in buffer:
+        if len(buffer) > MAX_DNS_MESSAGE_BYTES:
+            raise OSError("HTTP chunk header is too large")
         chunk = sock.recv(4096)
         if not chunk:
             raise OSError("connection closed before HTTP line completed")
         buffer.extend(chunk)
     line, rest = bytes(buffer).split(b"\r\n", 1)
+    if len(line) > MAX_DNS_MESSAGE_BYTES:
+        raise OSError("HTTP chunk header is too large")
     buffer[:] = rest
     return line
 
@@ -410,12 +418,16 @@ def _read_exact_from_buffer(
     return result
 
 
-def _read_until_close(sock: ssl.SSLSocket) -> bytes:
-    chunks = bytearray()
+def _read_until_close(sock: ssl.SSLSocket, initial_body: bytes = b"") -> bytes:
+    chunks = bytearray(initial_body)
+    if len(chunks) > MAX_DNS_MESSAGE_BYTES:
+        raise OSError("DNS response is too large")
     while True:
-        chunk = sock.recv(4096)
+        chunk = sock.recv(min(4096, MAX_DNS_MESSAGE_BYTES - len(chunks) + 1))
         if not chunk:
             break
+        if len(chunks) + len(chunk) > MAX_DNS_MESSAGE_BYTES:
+            raise OSError("DNS response is too large")
         chunks.extend(chunk)
     return bytes(chunks)
 

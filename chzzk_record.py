@@ -8,6 +8,7 @@ import platform
 import re
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -162,30 +163,6 @@ def get_dns_settings_sync() -> Dict[str, Any]:
     return normalize_dns_settings(load_config_sync().get("dns_settings"))
 
 
-# Function to toggle log_enabled
-def toggle_log_enabled():
-    try:
-        current_config = {}
-        if os.path.exists(CONFIG_FILE_PATH):
-            with open(CONFIG_FILE_PATH, "rb") as f:
-                current_config = orjson.loads(f.read())
-
-        current_state = current_config.get("log_enabled", True)
-        new_state = not current_state
-        current_config["log_enabled"] = new_state
-
-        save_json_secure(CONFIG_FILE_PATH, current_config)
-
-        print(
-            tr(
-                "record.logging_toggled",
-                state=tr("common.enabled" if new_state else "common.disabled"),
-            )
-        )
-    except Exception as e:
-        print(tr("record.logging_toggle_error", error=e))
-
-
 # Custom logging handler to put log messages into the queue
 class QueueHandler(logging.Handler):
     def __init__(self, queue: asyncio.Queue):
@@ -247,7 +224,31 @@ logger = logging.getLogger("Recorder")
 continuity_report = None
 
 
-def install_internal_dns_resolver() -> None:
+class DohResolver(aiohttp.abc.AbstractResolver):
+    async def resolve(self, host, port=0, family=socket.AF_INET):
+        # uvloop's resolver bypasses the patched Python socket resolver.
+        infos = await asyncio.to_thread(
+            socket.getaddrinfo, host, port, family, socket.SOCK_STREAM
+        )
+        return [
+            {
+                "hostname": host,
+                "host": socket.getnameinfo(
+                    address, socket.NI_NUMERICHOST | socket.NI_NUMERICSERV
+                )[0],
+                "port": address[1],
+                "family": address_family,
+                "proto": proto,
+                "flags": socket.AI_NUMERICHOST | socket.AI_NUMERICSERV,
+            }
+            for address_family, _, proto, _, address in infos
+        ]
+
+    async def close(self):
+        pass
+
+
+def install_internal_dns_resolver() -> Optional[DohResolver]:
     dns_settings = get_dns_settings_sync()
     if not dns_settings["enable"]:
         return
@@ -256,6 +257,7 @@ def install_internal_dns_resolver() -> None:
     try:
         install_doh_dns(url=doh_url)
         logger.info(tr("record.doh_using", url=doh_url))
+        return DohResolver()
     except Exception as e:
         logger.warning(tr("record.doh_install_failed", error=e))
 
@@ -404,15 +406,6 @@ def normalize_encoder_preset(encoder: str, value: Any) -> str:
     if encoder == "hevc_amf" and "fast" in preset:
         return "speed"
     return preset if preset in options else default
-
-
-# Helper functions
-def save_json_secure(file_path: Path, data: Dict[str, Any]) -> None:
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    file_path.write_bytes(orjson.dumps(data, option=orjson.OPT_INDENT_2))
-    if os.name != "nt":
-        with contextlib.suppress(OSError):
-            os.chmod(file_path, 0o600)
 
 
 def sanitize_cookie_value(value: Any) -> str:
@@ -2289,6 +2282,15 @@ async def record_stream(
                 logger.debug(f"Found stream URL for channel: {channel_name}")
                 try:
                     while not shutdown_event.is_set():
+                        latest = await load_settings()
+                        current = next(
+                            (item for item in latest[2] if item["id"] == channel_id),
+                            None,
+                        )
+                        if current is not None:
+                            if current.get("active") == "off":
+                                return
+                            timeout = latest[0]
                         cookies = await get_session_cookies()
                         headers = get_auth_headers(cookies)
                         status, live_info = await get_live_info(
@@ -2297,6 +2299,24 @@ async def record_stream(
                         if shutdown_event.is_set():
                             break
                         if status == "OPEN":
+                            # Keep the rendition and resume cursor stable during recovery.
+                            if (current is not None
+                                    and live_info.get("liveId") != continuity.live_id):
+                                (
+                                    timeout, stream_segment_threads, _, _,
+                                    hevc_settings, av1_settings, output_format,
+                                    recording_split_minutes, h264_settings,
+                                    quality_settings, record_previous_hour,
+                                ) = latest
+                                channel = current
+                                channel_name = channel["name"]
+                                recording_split_minutes = effective_split(
+                                    channel, recording_split_minutes
+                                )
+                                split_seconds = recording_split_minutes * 60
+                                quality_settings = normalize_quality(
+                                    channel.get("quality_settings") or quality_settings
+                                )
                             try:
                                 plan = await prepare_recording_quality(
                                     stream_url, cookies, ffmpeg_path, quality_settings
@@ -3129,7 +3149,7 @@ async def record_stream(
             channel_progress.pop(channel_id, None)
 
 
-async def manage_recording_tasks():
+async def manage_recording_tasks(resolver=None):
     active_tasks: Dict[str, asyncio.Task] = {}
     cookies = await get_session_cookies()
     headers = get_auth_headers(cookies)
@@ -3140,7 +3160,12 @@ async def manage_recording_tasks():
         return
 
     request_timeout = aiohttp.ClientTimeout(total=30)
-    async with aiohttp.ClientSession(timeout=request_timeout) as session:
+    connector = (
+        aiohttp.TCPConnector(resolver=resolver) if resolver is not None else None
+    )
+    async with aiohttp.ClientSession(
+        timeout=request_timeout, connector=connector
+    ) as session:
         try:
             while not shutdown_event.is_set():
                 (
@@ -3367,7 +3392,7 @@ async def display_progress(stop_event: asyncio.Event):
 
 async def main(gui_events: bool = False) -> int:
     setup_logger()
-    install_internal_dns_resolver()
+    resolver = install_internal_dns_resolver()
     if not gui_events:
         print(tr("record.startup_banner"))
     # Register signal handlers for graceful shutdown
@@ -3391,7 +3416,7 @@ async def main(gui_events: bool = False) -> int:
     exit_code = 0
 
     try:
-        await manage_recording_tasks()
+        await manage_recording_tasks(resolver)
     except KeyboardInterrupt:
         logger.info(tr("record.keyboard_interrupt"))
         handle_shutdown()
