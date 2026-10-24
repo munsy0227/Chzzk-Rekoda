@@ -1,6 +1,6 @@
 # 프로젝트 작업 지식
 
-최종 확인: 2026-10-12. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
+최종 확인: 2026-10-23. 아래 구조는 확인 당시의 코드 기준이며, 작업 전에 현재 코드와 git 상태를 다시 확인한다.
 
 ## 지침과 메모 위치
 
@@ -13,6 +13,9 @@
 
 ## 현재 코드 구조
 
+- `.github/workflows/tests.yml`은 PR·push에서 Python 3.12·잠금 의존성·FFmpeg로 로컬 합성 기반 전체 unittest를 실행한다. 외부 실방송과 인증 정보는 필요 없다. 장시간·코덱 실방송 워크플로는 기존 수동 실행을 유지한다.
+- `chzzk_record.py:DohResolver`는 설치된 Python socket DoH 해석기를 `asyncio.to_thread()`로 호출하고 aiohttp connector에 연결한다. uvloop의 기본 DNS 경로가 Python socket 패치를 우회하는 문제를 해결하며 시스템 DNS 대체 경로는 유지한다. `dns_over_https.py`는 표준 `getaddrinfo` 키워드 인수를 보존하고 길이 지정·chunked·연결 종료 방식의 응답 본문을 수신 중 65,535바이트로 제한한다. 근거와 검증은 [전체 검토 후 개선 기록](worklogs/2026-10-23-review-improvements.md)을 참고한다.
+- `record_stream()`은 대기 중 최신 채널·전역 옵션을 읽고 새 방송 ID의 녹화를 시작할 때 반영한다. 같은 방송의 복구·파일 전환에서는 화질과 재개 커서의 일관성을 위해 기존 옵션을 유지한다. 과거 1시간 옵션의 방송별 한 번 적용과 기존 정상 중지·보관 정리는 유지한다. GUI 적용 시점 안내는 5개 언어에서 같은 의미다.
 - 녹화 종료는 실행 시도별 비공개 임시 stop 파일을 `--chzzk-stop-file`로 전달한다. `ChzzkContinuityReader`의 100ms 감시 및 각 `deliver()` 경계 검사로 새 출력은 막고 현재 delivery 잠금 안의 init·전체 미디어·checkpoint는 끝낸 뒤 RingBuffer를 닫는다. 남은 파이프는 EOF까지 FFmpeg에 배출한다. Streamlink 정상 종료 15초+강제 정리 5초, FFmpeg 60초, 전체 90초 예산은 유지한다. 보관 거절은 `buffer_skipped/already_output`과 `buffer_full/time_limit|byte_limit|count_limit`로 구분하며 기존 버전 1 snapshot도 읽는다. 녹화기 전용 보고서 `output_error`는 `corrupt_packet|partial_input|forced_stop`과 실행 시각만 기록하고 실행별 종류 중복을 막아 `error_count`/CI 실패에 반영한다. [종료·진단 검증 및 병합 기록](worklogs/2026-10-12-final-recording-merge.md)을 참고한다.
 - GitHub 수동 `Long recording test`/`Codec smoke test`는 `channel_uuid`(빈 입력이면 기존 `64a90ba95d1f9feb0a798a20bbf0f40c`)와 `test_os=linux/windows/macos/all`을 받는다. Linux 기본값, `*-latest` 안정 이미지, 전체 선택의 병렬 실행과 `fail-fast: false`를 사용한다. `scripts/run_recording_test.py`는 임시 폴더 설정·녹화 감시·정리·연속성/코덱 판정을 공용화하고 기존 Bash helper는 세 인수 래퍼다. GUI 제어 파이프로 정상 중지하며 120초 초과 시 하위 프로세스까지 정리해 실패한다. Windows CI는 SHA-256 확인한 Gyan full FFmpeg를 사용한다. OS/run ID/run attempt별 아티팩트에 실패 로그·보고서·요약·실제 환경 버전을 7일 보관하며 설정 원문은 업로드하지 않는다. 승인 범위는 [계획](plans/recording-test-platforms.md), 검증과 미검증 범위는 [작업 기록](worklogs/2026-10-11-recording-test-platforms.md)에 있다.
 - 수동 녹화 워크플로는 2026-10-12 dev → main 병합 후 실행 대상으로 선택한 브랜치를 체크아웃한다. `ref: dev` 고정은 제거했으며 실제 검사 버전은 checkout SHA로 확인한다. 2026-10-11 main에 입력만 먼저 등록해 dev 코드를 검사했던 이력은 [등록 작업 기록](worklogs/2026-10-11-recording-workflow-registration.md)에 보존한다. 채널·OS 선택, 5분 분할, 영상 정리, 아티팩트 보존 정책은 유지한다.

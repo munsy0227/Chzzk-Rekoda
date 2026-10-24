@@ -560,9 +560,10 @@ class DeliveryTests(unittest.TestCase):
         result = self.read(self.stream())
         self.assertEqual(result, INITIALIZATION + MEDIA[0])
         self.assertNotIn("gap", [e["kind"] for e in self.events()])
-        self.assertEqual(self.events()[-1]["resume_from"],
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["resume_from"],
                          (START + timedelta(seconds=4)).isoformat())
-        self.assertTrue(self.events()[-1]["after_gap"])
+        self.assertTrue(boundary["after_gap"])
 
     def test_partial_repair_preserves_prefix_without_duplicate_on_retry(self):
         self.cdn.playlist("primary", indices=(0, 3))
@@ -605,14 +606,15 @@ class DeliveryTests(unittest.TestCase):
         self.cdn.playlist("primary", changed_map=2)
         result = self.read(self.stream())
         self.assertEqual(result, INITIALIZATION + MEDIA[0] + MEDIA[1])
-        boundary = self.events()[-1]
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
         self.assertEqual(boundary["reason"], "initialization_changed")
         self.assertEqual(boundary["resume_from"], (START + timedelta(seconds=8)).isoformat())
 
     def test_discontinuity_is_a_file_boundary(self):
         self.cdn.playlist("primary", discontinuity=2)
         self.assertEqual(self.read(self.stream()), INITIALIZATION + MEDIA[0] + MEDIA[1])
-        self.assertEqual(self.events()[-1]["reason"], "discontinuity")
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["reason"], "discontinuity")
 
     def test_token_error_refreshes_api_and_segment_url(self):
         self.cdn.playlist("primary")
@@ -1825,6 +1827,75 @@ finally:
 
 
 class RecorderPreferenceTests(unittest.IsolatedAsyncioTestCase):
+    async def test_next_broadcast_reloads_options_but_recovery_keeps_cursor_settings(self):
+        import chzzk_record as recorder
+        from unittest.mock import Mock
+
+        for recovering in (False, True):
+            with self.subTest(recovering=recovering), tempfile.TemporaryDirectory() as directory:
+                channel = dict(id="test", name="old", output_dir=directory, identifier="ch1")
+                config = normalize_config({"channels": [channel], "timeout": 1})
+                initial = normalize_config(config)
+                updated = normalize_config({
+                    **config,
+                    "channels": [{**channel, "name": "new", "output_dir": str(Path(directory) / "new"),
+                                  "recording_split_minutes": 2,
+                                  "quality_settings": {"mode": "720p60"}}],
+                    "output_format": "mkv", "recording_split_minutes": 5,
+                    "h264_settings": {"enable": True}, "stream_segment_threads": 4,
+                })
+                stop = asyncio.Event()
+                state = RecordingContinuity()
+                state.begin(1)
+                if recovering:
+                    state.initial_handled = True
+                    state.resume = dict(live_id=1, rendition="1080p", **{"from": START.isoformat()})
+                lookups = 0
+
+                async def live_info(*_):
+                    nonlocal lookups
+                    lookups += 1
+                    if lookups == 1:
+                        config.clear()
+                        config.update(updated)
+                        return "CLOSE", {}
+                    return "OPEN", {"liveId": 1 if recovering else 2, "liveTitle": "fixture"}
+
+                def stop_before_output(*_):
+                    stop.set()
+                    raise asyncio.CancelledError
+
+                with contextlib.ExitStack() as stack:
+                    for name, value in (
+                        ("shutdown_event", stop), ("logger", Mock()),
+                        ("RecordingContinuity", Mock(return_value=state)),
+                        ("load_config_async", AsyncMock(return_value=config)),
+                        ("get_session_cookies", AsyncMock(return_value={})),
+                        ("get_live_info", live_info),
+                        ("channel_progress", {}), ("channel_progress_lock", asyncio.Lock()),
+                    ):
+                        stack.enter_context(patch.object(recorder, name, value))
+                    quality = stack.enter_context(patch.object(recorder, "prepare_recording_quality", AsyncMock(
+                        return_value={"stream": "best", "filters": []})))
+                    for name in ("resolve_av1_settings_for_recording", "resolve_hevc_settings_for_recording",
+                                 "resolve_h264_settings"):
+                        stack.enter_context(patch.object(recorder, name, AsyncMock(side_effect=lambda settings, *_: settings)))
+                    split = stack.enter_context(patch.object(recorder, "unique_segment_template", side_effect=stop_before_output))
+                    single = stack.enter_context(patch.object(recorder, "unique_recording_paths", side_effect=stop_before_output))
+                    await asyncio.wait_for(recorder.record_stream(
+                        channel, {}, None, 0, 1, Path("ffmpeg"), 2,
+                        initial["hevc_settings"], initial["av1_settings"], "ts", 0,
+                        initial["h264_settings"], initial["quality_settings"],
+                    ), timeout=5)
+                self.assertEqual(lookups, 2)
+                selected = single if recovering else split
+                other = split if recovering else single
+                other.assert_not_called()
+                self.assertEqual(selected.call_args.args[0], Path(directory) if recovering else Path(directory) / "new")
+                self.assertEqual(selected.call_args.args[2], "ts" if recovering else "mkv")
+                self.assertEqual(quality.call_args.args[3]["mode"], "best" if recovering else "720p60")
+                self.assertEqual(state.resume is not None, recovering)
+
     async def test_waiting_channel_uses_updated_preference_at_next_start(self):
         import chzzk_record as recorder
 
