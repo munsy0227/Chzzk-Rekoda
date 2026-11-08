@@ -754,7 +754,10 @@ class MainWindow(QMainWindow):
             identifier=f"ch{number}",
             active="on",
             output_dir=str(
-                BASE_DIR / safe_channel_folder_name(channel["name"], channel["id"])
+                Path(
+                    self.config["gui_settings"]["default_output_dir"] or BASE_DIR
+                ).expanduser()
+                / safe_channel_folder_name(channel["name"], channel["id"])
             ),
         )
         editor = ChannelDialog(channel, 0, self.language, self)
