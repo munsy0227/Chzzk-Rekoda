@@ -66,7 +66,9 @@ class SetupWizard(QWizard):
         self.language_combo.currentIndexChanged.connect(self.change_language)
 
         self.folder_label = QLabel()
-        self.folder = QLineEdit(str(BASE_DIR))
+        self.folder = QLineEdit(
+            config["gui_settings"]["default_output_dir"] or str(BASE_DIR)
+        )
         self.browse_button = QPushButton()
         self.browse_button.clicked.connect(self.browse)
         folder_row = QHBoxLayout()
@@ -237,6 +239,7 @@ class SetupWizard(QWizard):
             return
         candidate = deepcopy(self.draft)
         candidate["gui_settings"]["onboarding_completed"] = True
+        candidate["gui_settings"]["default_output_dir"] = self.folder.text().strip()
         try:
             self.store.save(candidate)
         except (ConfigError, OSError) as error:

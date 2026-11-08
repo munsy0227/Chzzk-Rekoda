@@ -88,7 +88,11 @@ default_config = {
     "record_previous_hour": False,
     "quality_settings": deepcopy(QUALITY_DEFAULTS),
     "h264_settings": deepcopy(H264_DEFAULTS),
-    "gui_settings": {"close_to_tray": True, "onboarding_completed": False},
+    "gui_settings": {
+        "close_to_tray": True,
+        "onboarding_completed": False,
+        "default_output_dir": "",
+    },
     "hevc_settings": {
         "enable": False,
         "encoder": "libx265",
@@ -543,6 +547,9 @@ def normalize_config(config, notify=None):
         "onboarding_completed": bool(gui.get("onboarding_completed", False))
         if isinstance(gui, dict)
         else False,
+        "default_output_dir": str(gui.get("default_output_dir") or "").strip()
+        if isinstance(gui, dict)
+        else "",
     }
 
     cookies = config.get("cookies", {})
