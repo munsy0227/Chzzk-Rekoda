@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-11
 
+### Reject whitespace at the edges of output folder names
+
+In the wizard and channel editor, show a warning in all five languages and block adding, finishing, or saving when any folder name in a selected or typed path starts or ends with whitespace. Do not trim the path into a different location or rename or delete folders already created. Preserve spaces inside names, Korean names, `~`, and relative paths. Offscreen Qt checks validated warnings, blocked saves, and preservation of configuration and folders; all 137 tests also passed. Folder creation inside OS file dialogs and native Windows/macOS UI remain unverified.
+
 ### Preserve segments at broadcast end
 
 Continue in-flight media requests and recovery from already observed or buffered segments after the API reports that the broadcast has ended. Stop discovering new paths, retry known segments within the existing recovery deadline, and preserve an unresolved state and resume position if they remain unavailable. User stop and broadcast ID change handling are preserved. All 137 tests passed on Python 3.12, along with a real Streamlink and local HTTP server check that delivers a segment after the two-second delay. Long live recordings, native Windows/macOS behavior, and GPU encoding remain unverified.

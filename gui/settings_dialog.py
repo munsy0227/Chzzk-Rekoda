@@ -1,5 +1,6 @@
 import json
 from copy import deepcopy
+from pathlib import Path
 from urllib.parse import urlparse
 
 from PySide6.QtCore import QProcess, QProcessEnvironment
@@ -42,6 +43,13 @@ from process_utils import console_python
 from recording_options import H264_ENCODERS
 
 CATEGORIES = ("basic", "quality", "h264", "hevc", "av1", "auth", "network", "app")
+
+
+def validate_output_directory(parent, path):
+    if any(part != part.strip() for part in Path(path).parts):
+        show_error(parent, parent.t("error"), parent.t("folder_whitespace"))
+        return False
+    return True
 
 
 class SettingsDialog(QDialog):
@@ -636,16 +644,18 @@ class ChannelDialog(QDialog):
         path = QFileDialog.getExistingDirectory(
             self, self.t("browse"), self.path.text()
         )
-        if path:
+        if path and validate_output_directory(self, path):
             self.path.setText(path)
 
     def save(self):
         if not self.name.text().strip() or not self.path.text().strip():
             show_error(self, self.t("error"), self.t("required"))
             return
+        if not validate_output_directory(self, self.path.text()):
+            return
         self.channel.update(
             name=self.name.text().strip(),
-            output_dir=self.path.text().strip(),
+            output_dir=self.path.text(),
             active="on" if self.active.isChecked() else "off",
         )
         self.delay_value = self.delay.value()

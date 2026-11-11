@@ -1685,6 +1685,13 @@ _GUI_TEXT = {
     "recorder_failed": ("녹화기가 오류로 종료되었습니다. 활동 로그를 확인하세요.", "The recorder exited with an error. Check the activity log.", "录制器因错误退出，请检查活动日志。", "錄製器因錯誤結束，請檢查活動記錄。", "録画プロセスがエラーで終了しました。ログを確認してください。"),
     "remove_confirm": ("{name} 채널의 등록을 해제할까요? 녹화 파일은 유지됩니다. 진행 중인 녹화는 안전하게 종료됩니다.", "Unregister {name}? Recorded files are kept. Any current recording will stop safely.", "取消注册 {name} 吗？已录制文件会保留，当前录制将安全停止。", "取消註冊 {name} 嗎？已錄製檔案會保留，目前錄製將安全停止。", "{name} の登録を解除しますか？録画ファイルは残り、録画中の場合は安全に終了します。"),
     "required": ("이름과 저장 폴더를 입력하세요.", "Enter a name and storage folder.", "请输入名称和保存文件夹。", "請輸入名稱和儲存資料夾。", "名前と保存フォルダーを入力してください。"),
+    "folder_whitespace": (
+        "폴더 이름의 앞뒤에 공백이 있는 경로는 사용할 수 없습니다. 이름 앞뒤에 공백이 없는 폴더를 다시 선택하거나 입력하세요.",
+        "Folder names cannot start or end with whitespace. Choose or enter a folder without leading or trailing whitespace.",
+        "文件夹名称的开头和结尾不能有空白字符。请重新选择或输入名称首尾无空白字符的文件夹。",
+        "資料夾名稱的開頭和結尾不能有空白字元。請重新選擇或輸入名稱首尾無空白字元的資料夾。",
+        "フォルダー名の先頭や末尾に空白は使用できません。先頭や末尾に空白のないフォルダーを選び直すか入力してください。",
+    ),
     "select_channel": ("채널을 선택하세요.", "Select a channel.", "请选择频道。", "請選擇頻道。", "チャンネルを選択してください。"),
     "basic": ("기본 녹화", "Basic recording", "基本录制", "基本錄製", "基本録画"),
     "hevc": ("HEVC (H.265)", "HEVC (H.265)", "HEVC (H.265)", "HEVC (H.265)", "HEVC (H.265)"),

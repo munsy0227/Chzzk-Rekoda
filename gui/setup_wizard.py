@@ -26,7 +26,7 @@ from config_store import ConfigError
 from gui.appearance import apply_application_font
 from gui.common import show_error
 from gui.services import BASE_DIR
-from gui.settings_dialog import ChannelDialog
+from gui.settings_dialog import ChannelDialog, validate_output_directory
 from i18n import SUPPORTED_LANGUAGES, translate
 
 
@@ -161,7 +161,7 @@ class SetupWizard(QWizard):
         folder = QFileDialog.getExistingDirectory(
             self, self.t("browse"), self.folder.text()
         )
-        if folder:
+        if folder and validate_output_directory(self, folder):
             self.folder.setText(folder)
 
     def add_channel(self):
@@ -169,6 +169,8 @@ class SetupWizard(QWizard):
 
         if not self.folder.text().strip():
             show_error(self, self.t("error"), self.t("required"))
+            return
+        if not validate_output_directory(self, self.folder.text()):
             return
         search = SearchDialog(
             self.language,
@@ -237,9 +239,16 @@ class SetupWizard(QWizard):
     def accept(self):
         if not self.pages[1].isComplete():
             return
+        if not validate_output_directory(self, self.folder.text()):
+            return
+        if not all(
+            validate_output_directory(self, channel["output_dir"])
+            for channel in self.draft["channels"]
+        ):
+            return
         candidate = deepcopy(self.draft)
         candidate["gui_settings"]["onboarding_completed"] = True
-        candidate["gui_settings"]["default_output_dir"] = self.folder.text().strip()
+        candidate["gui_settings"]["default_output_dir"] = self.folder.text()
         try:
             self.store.save(candidate)
         except (ConfigError, OSError) as error:
