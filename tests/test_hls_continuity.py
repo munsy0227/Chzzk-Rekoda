@@ -528,6 +528,65 @@ class DeliveryTests(unittest.TestCase):
                           side_effect=continuity.Unavailable("API unavailable")):
             self.assertEqual(reader.writer.fetch(target).media, MEDIA[0])
 
+    def test_broadcast_end_keeps_inflight_tail(self):
+        self.cdn.playlist("primary")
+        self.cdn.delays['/primary/1080p/3.m4v'] = 0.15
+        for already_ended in (False, True):
+            with self.subTest(already_ended=already_ended):
+                stream = self.stream()
+                source = stream.continuity
+                manifest, playlist = source.candidates()[0]
+                target = source.locate(playlist.segments[-1], manifest)
+                source.ended = already_ended
+                source.last_refresh = 0
+                reader = continuity.ChzzkContinuityReader(stream)
+                self.addCleanup(reader.writer.close)
+                with patch.object(source, "provider", return_value=None) as provider:
+                    result = reader.writer.fetch(target)
+                self.assertTrue(source.ended)
+                if already_ended:
+                    provider.assert_not_called()
+                else:
+                    provider.assert_called_once()
+                self.assertEqual(result.media, MEDIA[-1])
+                self.assertTrue(reader.writer.deliver(target, result))
+                self.assertEqual(reader.buffer.read(65536, block=False),
+                                 INITIALIZATION + MEDIA[-1])
+                checkpoint = [e for e in self.events() if e["kind"] == "checkpoint"][-1]
+                self.assertEqual(checkpoint["to"], target.end.isoformat())
+
+    def test_broadcast_end_keeps_retained_repair_chain(self):
+        self.cdn.playlist("primary")
+        stream = self.stream()
+        source = stream.continuity
+        manifest, playlist = source.candidates()[0]
+        previous = source.locate(playlist.segments[0], manifest)
+        target = source.locate(playlist.segments[2], manifest)
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        reader.writer.deliver(previous, reader.writer.download(previous, previous))
+        source.ended = True
+        with patch.object(source, "provider") as provider:
+            reader.writer.write(target, reader.writer.download(target, target))
+        provider.assert_not_called()
+        self.assertEqual(reader.buffer.read(65536, block=False),
+                         INITIALIZATION + b"".join(MEDIA[:3]))
+        self.assertFalse(any(e["kind"] == "boundary" for e in self.events()))
+
+    def test_broadcast_change_still_rejects_inflight_tail(self):
+        self.cdn.playlist("primary")
+        stream = self.stream()
+        source = stream.continuity
+        manifest, playlist = source.candidates()[0]
+        target = source.locate(playlist.segments[-1], manifest)
+        self.cdn.delays['/primary/1080p/3.m4v'] = 0.15
+        source.last_refresh = 0
+        reader = continuity.ChzzkContinuityReader(stream)
+        self.addCleanup(reader.writer.close)
+        with patch.object(source, "provider", return_value=(2, [], None)):
+            with self.assertRaises(continuity.BroadcastChanged):
+                reader.writer.fetch(target)
+
     def test_truncated_response_is_replaced_before_output(self):
         self.cdn.playlist("primary")
         self.cdn.playlist("backup")
@@ -669,15 +728,27 @@ class DeliveryTests(unittest.TestCase):
         with patch.object(continuity, "RECOVERY_TIMEOUT", 1.5):
             self.assertEqual(self.read(stream), INITIALIZATION + b"".join(MEDIA))
 
-    def test_broadcast_end_interrupts_recovery_before_deadline(self):
+    def test_broadcast_end_reports_missing_tail_after_recovery_deadline(self):
         self.cdn.playlist("primary")
         self.cdn.statuses['/primary/1080p/1.m4v'] = 403
         stream = self.stream()
         stream.continuity.provider = lambda: None
         before = time.monotonic()
         self.assertEqual(self.read(stream), INITIALIZATION + MEDIA[0])
-        self.assertLess(time.monotonic() - before, 0.5)
+        self.assertGreaterEqual(time.monotonic() - before, 0.5)
+        self.assertLess(time.monotonic() - before, 1.2)
         self.assertTrue(stream.continuity.ended)
+        boundary = next(e for e in self.events() if e["kind"] == "boundary")
+        self.assertEqual(boundary["reason"], "segment_unavailable")
+        self.assertEqual(
+            boundary["resume_from"], (START + timedelta(seconds=4)).isoformat()
+        )
+        rows = [{"version": 1, "kind": "report_started"}]
+        rows.extend(dict(event, channel_id="fixture") for event in self.events())
+        rows.append({"version": 1, "kind": "report_finished", "complete": True})
+        report = summarize(json.dumps(row) for row in rows)
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["unresolved_count"], 1)
 
     def test_short_history_even_when_time_machine_flag_is_false(self):
         self.cdn.playlist("primary", indices=(3,))

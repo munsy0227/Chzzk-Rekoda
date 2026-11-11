@@ -4,6 +4,12 @@
 
 Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under its date. This history starts with the changes included in the current dev → main merge. Detailed evidence is in `.ai/worklogs/`.
 
+## 2026-11-11
+
+### Preserve segments at broadcast end
+
+Continue in-flight media requests and recovery from already observed or buffered segments after the API reports that the broadcast has ended. Stop discovering new paths, retry known segments within the existing recovery deadline, and preserve an unresolved state and resume position if they remain unavailable. User stop and broadcast ID change handling are preserved. All 137 tests passed on Python 3.12, along with a real Streamlink and local HTTP server check that delivers a segment after the two-second delay. Long live recordings, native Windows/macOS behavior, and GPU encoding remain unverified.
+
 ## 2026-10-23
 
 ### Run regression tests on pull requests and pushes

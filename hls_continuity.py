@@ -659,7 +659,7 @@ class ContinuitySource:
 
     def between(self, previous, following, refresh=False, candidates=None):
         """Yield the surviving prefix before a hole, preserving valid media."""
-        if self.ended:
+        if self.ended and candidates is None:
             raise BroadcastEnded("Broadcast ended")
         if self.changed:
             raise BroadcastChanged("Broadcast changed")
@@ -1433,6 +1433,8 @@ class ChzzkContinuityWriter(HLSStreamWriter):
             yield first
             yield from chain
             return
+        if self.source.ended:
+            raise Unavailable("Required interval unavailable")
         futures = {}
         started = time.monotonic()
 
@@ -1461,7 +1463,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                         candidates = future.result()
                         chain = iter(self.source.between(previous, following, candidates=candidates))
                         first = next(chain, None)
-                    except (BroadcastEnded, BroadcastChanged):
+                    except BroadcastChanged:
                         raise
                     except (StreamError, ValueError, CancelledError):
                         continue
@@ -1469,7 +1471,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                         yield first
                         yield from chain
                         return
-                if has_akamai and not akamai_started and (
+                if has_akamai and not akamai_started and not self.source.ended and (
                         not futures or time.monotonic() - started >= HISTORY_BUDGET):
                     akamai_started = submit("akamai")
                 if not futures:
@@ -1523,7 +1525,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 except Unavailable as error:
                     futures.remove(primary)
                     refresh_candidates = True
-                    if error.status in (401, 403):
+                    if error.status in (401, 403) and not self.source.ended:
                         self.refresh_token()
                         refresh_needed = True
                 except ValueError:
@@ -1548,7 +1550,8 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                     lookups[group] = future
                     return True
 
-                lookup_group("korean")
+                if not self.source.ended:
+                    lookup_group("korean")
                 history_started = time.monotonic()
                 akamai_started = False
                 has_akamai = any(p.cdn == "akamai" for p in self.source.paths)
@@ -1560,11 +1563,10 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                         try:
                             return future.result()
                         except (Unavailable, ValueError, CancelledError) as error:
-                            if getattr(error, "status", None) in (401, 403):
+                            if (getattr(error, "status", None) in (401, 403)
+                                    and not self.source.ended):
                                 self.refresh_token()
                                 refresh_needed = True
-                    if self.source.ended:
-                        raise BroadcastEnded("Broadcast ended")
                     if self.source.changed:
                         raise BroadcastChanged("Broadcast changed")
                     for group, lookup in list(lookups.items()):
@@ -1572,11 +1574,14 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                             continue
                         try:
                             pending.extend(lookup.result())
-                        except (BroadcastEnded, BroadcastChanged):
+                        except BroadcastChanged:
                             raise
                         except (StreamError, ValueError, CancelledError):
                             pass
                         del lookups[group]
+                    if self.source.ended:
+                        # API closure must not discard media already being fetched.
+                        akamai_started = True
                     # Let domestic current/history attempts finish first. A
                     # slow history lookup gets two seconds before Akamai is
                     # considered too, under the same recovery deadline.
@@ -1594,7 +1599,7 @@ class ChzzkContinuityWriter(HLSStreamWriter):
                 # Retry the known media URL until the recovery deadline. A
                 # fragment absent from fresh playlists can still be fetchable.
                 self.source.stop.wait(max(0, min(1, deadline - time.monotonic())))
-            except (BroadcastEnded, BroadcastChanged):
+            except BroadcastChanged:
                 raise
             except (StreamError, ValueError, TimeoutError, CancelledError):
                 # A transient API/manifest failure is not proof of a gap.
