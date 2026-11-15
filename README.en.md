@@ -228,6 +228,17 @@ If a black window is open and text is appearing, it is working normally.
 
 ---
 
+## 🦀 Optional Rust helper
+
+The Rust helper is optional; the program runs with Python alone when it is absent. With stable Rust and Cargo, build and check it from the repository root:
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+The program looks for `native/target/release/chzzk-native` (`chzzk-native.exe` on Windows) or a binary in `native/bin`. When the helper starts and handles broadcast-status lookups, the log says `Rust is checking broadcast status.` If it is missing at startup, Python is used without that message. If it becomes unavailable after starting, the log says `Rust status checking is unavailable; switching to Python.` and Python takes over. Enabling DoH also routes live-status lookups through the existing Python path. Rust handles only live-info HTTP lookups and supported continuity-report summaries for reports at least 256 KiB. Python continues to handle polling, authentication, recording, Streamlink/FFmpeg, and the DoH implementation. Report summaries fall back to Python when the helper is missing, times out, fails, or encounters unsupported data. A 3xx redirect disables the Rust helper and is handled by Python's existing request path; ordinary HTTP 4xx/5xx and network errors are not retried through Python in the same poll. See the [native helper guide](native/README.md) for the manual Actions soak test.
+
 <a id="faq"></a>
 
 ## FAQ

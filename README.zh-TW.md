@@ -228,6 +228,17 @@ GUI 需要桌面環境和 FFmpeg。**開啟登入視窗**直接啟動 CLI 的瀏
 
 ---
 
+## 🦀 可選 Rust 加速元件
+
+Rust 輔助程式為選用功能；缺少時，程式仍可僅使用 Python 執行。安裝 stable Rust 和 Cargo 後，在儲存庫根目錄建置並檢查：
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+程式會尋找 `native/target/release/chzzk-native`（Windows 上為 `chzzk-native.exe`）或 `native/bin` 中的執行檔。輔助程式啟動並查詢直播狀態時，日誌會顯示 `正在使用 Rust 查詢直播狀態。`；若啟動時沒有輔助程式，則不會顯示此日誌，程式會直接使用 Python。輔助程式啟動後變得無法使用時，日誌會顯示 `Rust 狀態查詢無法使用，正在切換至 Python。` 並切換至 Python。啟用 DoH 後，直播狀態查詢也會使用現有 Python 路徑。Rust 只處理直播資訊 HTTP 查詢，以及大小至少為 256 KiB 的連續性報告中受支援的摘要。輪詢、驗證、錄製、Streamlink/FFmpeg 和 DoH 實作仍由 Python 負責。報告摘要遇到輔助程式缺少、逾時、錯誤或不支援的資料時會退回 Python。3xx 重新導向會停用 Rust 輔助程式並交由 Python 既有請求路徑處理；一般 HTTP 4xx/5xx 或網路錯誤不會在同一次輪詢中透過 Python 重試。手動 Actions 長時間檢查請見 [native 使用說明](native/README.md)。
+
 <a id="faq"></a>
 
 ## 常見問題（FAQ）

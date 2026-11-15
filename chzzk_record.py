@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse
@@ -37,6 +38,7 @@ from i18n import (
     normalize_language,
     translate,
 )
+from native_backend import NativeLiveClient, NativeRequestError
 
 # Import Rich library components
 from rich.console import Console, Group
@@ -1104,57 +1106,63 @@ async def get_live_info(
     headers: Dict[str, str],
     cookies: Dict[str, str],
     session: aiohttp.ClientSession,
+    *,
+    native: Optional[NativeLiveClient] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     logger.debug(f"Fetching live info for channel: {channel.get('name', 'Unknown')}")
     try:
-        async with session.get(
-            LIVE_DETAIL_API.format(channel_id=channel["id"]), headers=headers
-        ) as response:
-            response.raise_for_status()
-            data = await response.json()
-            logger.debug(
-                f"Successfully fetched live info for channel: {channel.get('name', 'Unknown')}"
-            )
+        data = None
+        if native is not None:
+            was_available = native.available
+            data = await native.live(str(channel["id"]), headers)
+            if was_available and not native.available:
+                logger.warning(tr("record.native_fallback"))
+        if data is None:
+            async with session.get(
+                LIVE_DETAIL_API.format(channel_id=channel["id"]), headers=headers
+            ) as response:
+                response.raise_for_status()
+                data = await response.json()
+        logger.debug(
+            f"Successfully fetched live info for channel: {channel.get('name', 'Unknown')}"
+        )
 
-            content = data.get("content", {})
-            status = content.get("status", "")
-            is_member_only = (
-                content.get("membershipBenefitType") == "MEMBER_ONLY"
-            )
-            if (
-                status == "OPEN"
-                and is_member_only
-                and not has_auth_cookies(cookies)
-            ):
-                logger.warning(
-                    tr(
-                        "record.member_only_cookies_required",
-                        channel_name=channel.get("name", tr("common.unknown")),
-                    )
-                )
-                return "MEMBER_ONLY_AUTH_REQUIRED", {}
-            if (
-                status == "OPEN"
-                and is_member_only
-                and content.get("livePlaybackJson") is None
-            ):
-                logger.warning(
-                    tr(
-                        "record.member_only_access_required",
-                        channel_name=channel.get("name", tr("common.unknown")),
-                    )
-                )
-                return "MEMBER_ONLY_ACCESS_REQUIRED", {}
-            if status == "CLOSE":
-                logger.info(
-                    tr("record.channel_not_live", channel_name=channel.get("name", tr("common.unknown")))
-                )
-            if status == "BLOCK":
-                logger.info(
-                    tr("record.channel_blocked", channel_name=channel.get("name", tr("common.unknown")))
-                )
-                return status, {}
-            return status, content
+        content = data.get("content", {})
+        status = content.get("status", "")
+        is_member_only = content.get("membershipBenefitType") == "MEMBER_ONLY"
+        if status == "OPEN" and is_member_only and not has_auth_cookies(cookies):
+            logger.warning(tr(
+                "record.member_only_cookies_required",
+                channel_name=channel.get("name", tr("common.unknown")),
+            ))
+            return "MEMBER_ONLY_AUTH_REQUIRED", {}
+        if (status == "OPEN" and is_member_only
+                and content.get("livePlaybackJson") is None):
+            logger.warning(tr(
+                "record.member_only_access_required",
+                channel_name=channel.get("name", tr("common.unknown")),
+            ))
+            return "MEMBER_ONLY_ACCESS_REQUIRED", {}
+        if status == "CLOSE":
+            logger.info(tr(
+                "record.channel_not_live",
+                channel_name=channel.get("name", tr("common.unknown")),
+            ))
+        if status == "BLOCK":
+            logger.info(tr(
+                "record.channel_blocked",
+                channel_name=channel.get("name", tr("common.unknown")),
+            ))
+            return status, {}
+        return status, content
+    except NativeRequestError as error:
+        reason = (f"HTTP {error.status}" if error.status is not None
+                  else tr("record.native_request_error"))
+        logger.error(tr(
+            "record.http_live_info_error",
+            channel_name=channel.get("name", tr("common.unknown")),
+            error=reason,
+        ))
     except aiohttp.ClientError as e:
         logger.error(
             tr("record.http_live_info_error", channel_name=channel.get("name", tr("common.unknown")), error=e)
@@ -2237,7 +2245,10 @@ async def record_stream(
     h264_settings: Optional[Dict[str, Any]] = None,
     quality_settings: Optional[Dict[str, Any]] = None,
     record_previous_hour: bool = False,
+    native_live: Optional[NativeLiveClient] = None,
 ) -> None:
+    live_info_reader = (get_live_info if native_live is None
+                        else partial(get_live_info, native=native_live))
     channel_name = channel.get("name", "Unknown")
     channel_id = str(channel.get("id", "Unknown"))
     output_format = normalize_output_format(output_format)
@@ -2293,7 +2304,7 @@ async def record_stream(
                             timeout = latest[0]
                         cookies = await get_session_cookies()
                         headers = get_auth_headers(cookies)
-                        status, live_info = await get_live_info(
+                        status, live_info = await live_info_reader(
                             channel, headers, cookies, session
                         )
                         if shutdown_event.is_set():
@@ -2326,7 +2337,7 @@ async def record_stream(
                                     break
                                 # The broadcast may have ended between the live
                                 # check and Streamlink's separate quality lookup.
-                                status, live_info = await get_live_info(
+                                status, live_info = await live_info_reader(
                                     channel, headers, cookies, session
                                 )
                                 if shutdown_event.is_set():
@@ -3163,9 +3174,16 @@ async def manage_recording_tasks(resolver=None):
     connector = (
         aiohttp.TCPConnector(resolver=resolver) if resolver is not None else None
     )
-    async with aiohttp.ClientSession(
-        timeout=request_timeout, connector=connector
-    ) as session:
+    async with contextlib.AsyncExitStack() as stack:
+        session = await stack.enter_async_context(aiohttp.ClientSession(
+            timeout=request_timeout, connector=connector
+        ))
+        native_live = None
+        if resolver is None:
+            candidate = await stack.enter_async_context(NativeLiveClient())
+            if candidate.available:
+                native_live = candidate
+                logger.info(tr("record.native_active"))
         try:
             while not shutdown_event.is_set():
                 (
@@ -3229,6 +3247,7 @@ async def manage_recording_tasks(resolver=None):
                                     new_h264_settings,
                                     new_quality_settings,
                                     new_record_previous_hour,
+                                    native_live,
                                 )
                             )
                             active_tasks[channel_id] = task

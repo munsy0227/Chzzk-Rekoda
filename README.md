@@ -230,6 +230,17 @@ KDE Wayland에서 Fcitx 5를 사용하려면 **시스템 설정 → 가상 키�
 
 ---
 
+## 🦀 선택적 Rust 가속기
+
+Rust 도우미는 선택 기능이며, 없어도 Python만으로 실행됩니다. Rust stable과 Cargo로 저장소 루트에서 빌드하고 검사할 수 있습니다.
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+프로그램은 `native/target/release/chzzk-native` (Windows는 `chzzk-native.exe`) 또는 `native/bin`의 실행 파일을 찾습니다. 도우미가 시작되어 방송 상태 조회를 처리하면 로그에 `Rust에서 방송 상태를 조회합니다.`가 표시됩니다. 시작 시 도우미가 없으면 이 로그 없이 Python을 사용합니다. 시작 후 도우미가 사용할 수 없게 되면 `Rust 상태 조회를 사용할 수 없어 Python으로 전환합니다.` 로그가 표시되고 Python으로 전환합니다. DoH를 사용하도록 설정하면 라이브 상태 조회도 기존 Python 경로를 사용합니다. Rust는 라이브 정보 HTTP 조회와 256 KiB 이상 연속성 보고서의 지원되는 요약만 처리합니다. 폴링·인증·녹화와 Streamlink/FFmpeg는 Python이 계속 담당합니다. 보고서 요약은 도우미가 없거나 시간 초과·오류·미지원 데이터가 있으면 Python으로 대체합니다. 3xx 리디렉션은 Rust 도우미를 비활성화하고 Python의 기존 요청 경로로 처리하며, 일반 HTTP 4xx/5xx 또는 네트워크 오류는 같은 폴링에서 Python으로 재요청하지 않습니다. 수동 Actions 장시간 검사는 [native 사용 안내](native/README.md)를 참고하세요.
+
 <a id="faq"></a>
 
 ## ❓ 자주 묻는 질문 (FAQ)

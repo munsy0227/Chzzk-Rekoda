@@ -4,6 +4,12 @@
 
 日期採用韓國時間（Asia/Seoul），最新紀錄在前。每次提交在對應日期下新增一項。首次紀錄從本次 dev → main 合併涉及的變更開始。詳細依據見 `.ai/worklogs/`。
 
+## 2026-11-15
+
+### 可選 Rust 輔助程式與長時間檢查指南
+
+為直播資訊 HTTP 查詢和大小至少為 256 KiB 的支援連續性報告摘要接入可選 Rust 輔助程式；輔助程式無法使用或報告格式不受支援時會退回 Python。錄製、Streamlink/FFmpeg、DoH 和輪詢排程仍由 Python 負責。手動 Actions 檢查說明了 Python/Rust 選擇、Linux/Windows/macOS 執行環境、長時間錄製及獨立每分鐘一次的直播狀態查詢；artifact 包含 Rust 建置/測試日誌和摘要。各平台實際長時間執行結果請以對應 Actions 執行的 artifact 為準。
+
 ## 2026-11-11
 
 ### 檢查儲存資料夾名稱首尾的空白

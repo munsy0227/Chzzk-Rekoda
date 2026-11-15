@@ -1,0 +1,707 @@
+{
+  "python": "3.12.15 (main, Oct  1 2026, 20:59:04) [Clang 22.1.3 ]",
+  "scope": "existing Linux glue and Qt/FFmpeg",
+  "rows": [
+    {
+      "name": "config_normalize_1_channels",
+      "count_per_round": 100,
+      "samples": [
+        {
+          "wall_ns_per_call": 80008.81000043591,
+          "cpu_ns_per_call": 78904.50000000007,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 64348.68999349419,
+          "cpu_ns_per_call": 64184.39999999997,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 72410.29998112936,
+          "cpu_ns_per_call": 71870.29999999997,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 65070.87000500178,
+          "cpu_ns_per_call": 64844.80000000001,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 66445.26001764461,
+          "cpu_ns_per_call": 66255.4,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 66.44526001764461,
+      "median_cpu_us": 66.2554,
+      "median_total_cpu_us": 66.2554,
+      "one_call_python_traced_peak_bytes": 2949
+    },
+    {
+      "name": "config_normalize_16_channels",
+      "count_per_round": 100,
+      "samples": [
+        {
+          "wall_ns_per_call": 116460.04997601267,
+          "cpu_ns_per_call": 116119.19999999998,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 119911.34997515474,
+          "cpu_ns_per_call": 119382.2999999998,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 153757.1399967419,
+          "cpu_ns_per_call": 141670.8,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 117127.5300293928,
+          "cpu_ns_per_call": 116707.99999999981,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 118134.27998276893,
+          "cpu_ns_per_call": 117555.00000000001,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 118.13427998276893,
+      "median_cpu_us": 117.55500000000002,
+      "median_total_cpu_us": 117.55500000000002,
+      "one_call_python_traced_peak_bytes": 7797
+    },
+    {
+      "name": "config_normalize_64_channels",
+      "count_per_round": 100,
+      "samples": [
+        {
+          "wall_ns_per_call": 305867.0300015365,
+          "cpu_ns_per_call": 304024.7000000001,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 297943.94999044016,
+          "cpu_ns_per_call": 296092.7999999999,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 256912.88999951215,
+          "cpu_ns_per_call": 256105.60000000003,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 257554.8000095296,
+          "cpu_ns_per_call": 256553.1000000004,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 259714.55001126745,
+          "cpu_ns_per_call": 258936.6999999998,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 259.7145500112675,
+      "median_cpu_us": 258.9366999999998,
+      "median_total_cpu_us": 258.9366999999998,
+      "one_call_python_traced_peak_bytes": 23157
+    },
+    {
+      "name": "config_save_fsync_replace_64_channels",
+      "count_per_round": 20,
+      "samples": [
+        {
+          "wall_ns_per_call": 10826539.650042832,
+          "cpu_ns_per_call": 1263043.4999999995,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7338727.100068355,
+          "cpu_ns_per_call": 1282584.5000000002,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7475747.7001185175,
+          "cpu_ns_per_call": 1284859.000000002,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7446247.799998674,
+          "cpu_ns_per_call": 1373419.0000000007,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7391479.699981573,
+          "cpu_ns_per_call": 1339793.9999999995,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 7446.247799998674,
+      "median_cpu_us": 1284.8590000000022,
+      "median_total_cpu_us": 1284.8590000000022,
+      "one_call_python_traced_peak_bytes": 77837
+    },
+    {
+      "name": "config_load_64_channels",
+      "count_per_round": 100,
+      "samples": [
+        {
+          "wall_ns_per_call": 443834.69998138025,
+          "cpu_ns_per_call": 441556.9000000002,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 479297.67999448813,
+          "cpu_ns_per_call": 476000.1000000002,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 434333.2999997073,
+          "cpu_ns_per_call": 429570.8000000009,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 450116.510000953,
+          "cpu_ns_per_call": 436173.1000000002,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 435147.0399706159,
+          "cpu_ns_per_call": 424160.5999999998,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 443.83469998138025,
+      "median_cpu_us": 436.1731000000002,
+      "median_total_cpu_us": 436.1731000000002,
+      "one_call_python_traced_peak_bytes": 66116
+    },
+    {
+      "name": "os_file_lock_acquire_release",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 11985.820001427783,
+          "cpu_ns_per_call": 11671.670000000022,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 11660.575000860263,
+          "cpu_ns_per_call": 11374.63999999999,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 11758.970998926088,
+          "cpu_ns_per_call": 11435.909999999994,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 11603.740000282414,
+          "cpu_ns_per_call": 11296.040000000063,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 11323.283997626277,
+          "cpu_ns_per_call": 11105.079999999989,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 11.660575000860263,
+      "median_cpu_us": 11.37463999999999,
+      "median_total_cpu_us": 11.37463999999999,
+      "one_call_python_traced_peak_bytes": 5001
+    },
+    {
+      "name": "dns_cache_hit_no_network",
+      "count_per_round": 10000,
+      "samples": [
+        {
+          "wall_ns_per_call": 714.6395000745542,
+          "cpu_ns_per_call": 705.7679999999955,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 727.3496998095652,
+          "cpu_ns_per_call": 707.5940000000003,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 738.7738001852995,
+          "cpu_ns_per_call": 726.2589999999958,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 712.9531997634331,
+          "cpu_ns_per_call": 705.1809999999991,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 720.8076996903401,
+          "cpu_ns_per_call": 711.1299999999932,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 0.7208076996903401,
+      "median_cpu_us": 0.7075940000000003,
+      "median_total_cpu_us": 0.7075940000000003,
+      "one_call_python_traced_peak_bytes": 246
+    },
+    {
+      "name": "dns_wire_decode_and_validate_no_network",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 45931.11400026828,
+          "cpu_ns_per_call": 45409.929999999935,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 45305.360999918776,
+          "cpu_ns_per_call": 44619.13000000006,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 44969.53900161316,
+          "cpu_ns_per_call": 44500.109999999986,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 44985.53200028255,
+          "cpu_ns_per_call": 44544.58000000005,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 44933.36599989562,
+          "cpu_ns_per_call": 44430.39000000004,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 44.98553200028255,
+      "median_cpu_us": 44.54458000000005,
+      "median_total_cpu_us": 44.54458000000005,
+      "one_call_python_traced_peak_bytes": 2517
+    },
+    {
+      "name": "doh_http_length_512_bytes_no_network",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 1826.001000154065,
+          "cpu_ns_per_call": 1818.9699999999752,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1844.5730020175688,
+          "cpu_ns_per_call": 1806.6099999999308,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1806.209998903796,
+          "cpu_ns_per_call": 1804.3199999999704,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1809.2489990522154,
+          "cpu_ns_per_call": 1804.1900000000942,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1811.0170021827798,
+          "cpu_ns_per_call": 1805.8800000000374,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 1.8110170021827798,
+      "median_cpu_us": 1.8058800000000375,
+      "median_total_cpu_us": 1.8058800000000375,
+      "one_call_python_traced_peak_bytes": 3657
+    },
+    {
+      "name": "doh_http_chunked_512_bytes_no_network",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 3633.271000580862,
+          "cpu_ns_per_call": 3555.389999999825,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 3462.876000412507,
+          "cpu_ns_per_call": 3455.4899999998943,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 3478.459002508316,
+          "cpu_ns_per_call": 3435.520000000025,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 3428.511001402512,
+          "cpu_ns_per_call": 3421.6300000000642,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 3512.784001941327,
+          "cpu_ns_per_call": 3441.3899999998775,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 3.478459002508316,
+      "median_cpu_us": 3.4413899999998776,
+      "median_total_cpu_us": 3.4413899999998776,
+      "one_call_python_traced_peak_bytes": 3820
+    },
+    {
+      "name": "doh_http_length_32768_bytes_no_network",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 4232.254999806173,
+          "cpu_ns_per_call": 4220.620000000119,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4245.799998898292,
+          "cpu_ns_per_call": 4205.320000000068,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4295.925999031169,
+          "cpu_ns_per_call": 4223.929999999987,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4233.1949989602435,
+          "cpu_ns_per_call": 4213.930000000143,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4257.453998434357,
+          "cpu_ns_per_call": 4216.060000000078,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 4.245799998898292,
+      "median_cpu_us": 4.216060000000078,
+      "median_total_cpu_us": 4.216060000000078,
+      "one_call_python_traced_peak_bytes": 140395
+    },
+    {
+      "name": "doh_http_chunked_32768_bytes_no_network",
+      "count_per_round": 1000,
+      "samples": [
+        {
+          "wall_ns_per_call": 7641.445001354441,
+          "cpu_ns_per_call": 7557.819999999938,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7598.074000270572,
+          "cpu_ns_per_call": 7550.479999999915,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7635.257999936584,
+          "cpu_ns_per_call": 7547.239999999844,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7641.444997716462,
+          "cpu_ns_per_call": 7591.520000000073,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 7653.518998267828,
+          "cpu_ns_per_call": 7572.319999999965,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 7.641444997716462,
+      "median_cpu_us": 7.557819999999938,
+      "median_total_cpu_us": 7.557819999999938,
+      "one_call_python_traced_peak_bytes": 140514
+    },
+    {
+      "name": "recording_event_parse_validate",
+      "count_per_round": 5000,
+      "samples": [
+        {
+          "wall_ns_per_call": 4790.313999546925,
+          "cpu_ns_per_call": 4740.504000000012,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4732.095800136449,
+          "cpu_ns_per_call": 4687.317999999996,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4743.684799905168,
+          "cpu_ns_per_call": 4701.098000000004,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4759.209799522068,
+          "cpu_ns_per_call": 4717.55199999997,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 4763.90559997526,
+          "cpu_ns_per_call": 4714.790000000014,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 4.759209799522068,
+      "median_cpu_us": 4.714790000000014,
+      "median_total_cpu_us": 4.714790000000014,
+      "one_call_python_traced_peak_bytes": 4312
+    },
+    {
+      "name": "login_cookie_filter_synthetic_only",
+      "count_per_round": 10000,
+      "samples": [
+        {
+          "wall_ns_per_call": 853.9786998881027,
+          "cpu_ns_per_call": 841.3039999999983,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 835.9916999324923,
+          "cpu_ns_per_call": 818.8060000000164,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 835.4618999874219,
+          "cpu_ns_per_call": 825.2380000000059,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 836.9392999156844,
+          "cpu_ns_per_call": 828.7809999999896,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 829.4684997963486,
+          "cpu_ns_per_call": 818.7190000000122,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 0.8359916999324923,
+      "median_cpu_us": 0.8252380000000058,
+      "median_total_cpu_us": 0.8252380000000058,
+      "one_call_python_traced_peak_bytes": 198
+    },
+    {
+      "name": "encoder_argument_construction",
+      "count_per_round": 10000,
+      "samples": [
+        {
+          "wall_ns_per_call": 565.4525000863941,
+          "cpu_ns_per_call": 560.7330000000132,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 553.0970000108937,
+          "cpu_ns_per_call": 548.6169999999958,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 565.596500018728,
+          "cpu_ns_per_call": 561.5920000000107,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 554.3573999602813,
+          "cpu_ns_per_call": 546.6010000000132,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 563.1354997603921,
+          "cpu_ns_per_call": 559.0889999999904,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 0.5631354997603921,
+      "median_cpu_us": 0.5590889999999904,
+      "median_total_cpu_us": 0.5590889999999904,
+      "one_call_python_traced_peak_bytes": 331
+    },
+    {
+      "name": "encoder_actual_ffmpeg_probe_uncached",
+      "count_per_round": 1,
+      "samples": [
+        {
+          "wall_ns_per_call": 39478282.00034565,
+          "cpu_ns_per_call": 292889.9999998791,
+          "child_cpu_ns_per_call": 42111000.0
+        },
+        {
+          "wall_ns_per_call": 39537464.99973931,
+          "cpu_ns_per_call": 284589.999999918,
+          "child_cpu_ns_per_call": 42466999.99999999
+        },
+        {
+          "wall_ns_per_call": 40621116.00069329,
+          "cpu_ns_per_call": 270800.0000000155,
+          "child_cpu_ns_per_call": 41884000.00000001
+        }
+      ],
+      "median_wall_us": 39537.46499973931,
+      "median_cpu_us": 284.589999999918,
+      "median_total_cpu_us": 42403.88999999988,
+      "one_call_python_traced_peak_bytes": 61971
+    },
+    {
+      "name": "encoder_probe_cached",
+      "count_per_round": 10000,
+      "samples": [
+        {
+          "wall_ns_per_call": 475.4072000650922,
+          "cpu_ns_per_call": 467.2599999999915,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 433.2816999522038,
+          "cpu_ns_per_call": 430.9230000000053,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 436.10450011328794,
+          "cpu_ns_per_call": 431.165,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 436.20849974104203,
+          "cpu_ns_per_call": 431.7359999999937,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 435.7065998192411,
+          "cpu_ns_per_call": 431.95199999999096,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 0.43610450011328794,
+      "median_cpu_us": 0.4317359999999937,
+      "median_total_cpu_us": 0.4317359999999937,
+      "one_call_python_traced_peak_bytes": 552
+    },
+    {
+      "name": "preview_qt_jpeg_decode_only",
+      "count_per_round": 100,
+      "samples": [
+        {
+          "wall_ns_per_call": 1272892.5299961702,
+          "cpu_ns_per_call": 1258666.9000000006,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1264733.0199979478,
+          "cpu_ns_per_call": 1251671.1999999997,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1265858.8199701626,
+          "cpu_ns_per_call": 1252341.3999999987,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1265050.1799726044,
+          "cpu_ns_per_call": 1252138.1999999993,
+          "child_cpu_ns_per_call": 0.0
+        },
+        {
+          "wall_ns_per_call": 1265453.1100270106,
+          "cpu_ns_per_call": 1251942.399999999,
+          "child_cpu_ns_per_call": 0.0
+        }
+      ],
+      "median_wall_us": 1265.4531100270106,
+      "median_cpu_us": 1252.1381999999992,
+      "median_total_cpu_us": 1252.1381999999992,
+      "one_call_python_traced_peak_bytes": 1101
+    },
+    {
+      "name": "preview_existing_qt_ffmpeg_and_decode",
+      "count_per_round": 1,
+      "samples": [
+        {
+          "wall_ns_per_call": 128993270.99876246,
+          "cpu_ns_per_call": 2230320.000000008,
+          "child_cpu_ns_per_call": 133450000.00000007
+        },
+        {
+          "wall_ns_per_call": 127624551.99845135,
+          "cpu_ns_per_call": 2213569.999999887,
+          "child_cpu_ns_per_call": 131926999.99999991
+        },
+        {
+          "wall_ns_per_call": 130399171.99785122,
+          "cpu_ns_per_call": 2307829.9999999,
+          "child_cpu_ns_per_call": 134548000.0
+        },
+        {
+          "wall_ns_per_call": 127783531.99973935,
+          "cpu_ns_per_call": 2228470.000000149,
+          "child_cpu_ns_per_call": 132122999.99999988
+        },
+        {
+          "wall_ns_per_call": 136710635.00078163,
+          "cpu_ns_per_call": 1933799.9999999856,
+          "child_cpu_ns_per_call": 141010000.0000001
+        }
+      ],
+      "median_wall_us": 128993.27099876245,
+      "median_cpu_us": 2228.470000000149,
+      "median_total_cpu_us": 135680.3200000001,
+      "one_call_python_traced_peak_bytes": 77201
+    },
+    {
+      "name": "preview_rust_launcher_ffmpeg_and_qt_decode",
+      "count_per_round": 1,
+      "samples": [
+        {
+          "wall_ns_per_call": 135304122.99951422,
+          "cpu_ns_per_call": 2041870.0000000012,
+          "child_cpu_ns_per_call": 139828999.99999976
+        },
+        {
+          "wall_ns_per_call": 129800245.99892204,
+          "cpu_ns_per_call": 2089590.0000001965,
+          "child_cpu_ns_per_call": 134461000.00000015
+        },
+        {
+          "wall_ns_per_call": 130216074.0015097,
+          "cpu_ns_per_call": 2064220.0000002831,
+          "child_cpu_ns_per_call": 134757999.99999994
+        },
+        {
+          "wall_ns_per_call": 135297446.999175,
+          "cpu_ns_per_call": 1942639.9999997735,
+          "child_cpu_ns_per_call": 138501000.0
+        },
+        {
+          "wall_ns_per_call": 137010335.99863878,
+          "cpu_ns_per_call": 2017829.9999997762,
+          "child_cpu_ns_per_call": 139221000.00000027
+        }
+      ],
+      "median_wall_us": 135297.446999175,
+      "median_cpu_us": 2041.8700000000013,
+      "median_total_cpu_us": 140443.63999999975,
+      "one_call_python_traced_peak_bytes": 82042
+    }
+  ],
+  "python_run_wide_peak_rss_kib": 58460,
+  "notes": [
+    "tracemalloc excludes native allocations",
+    "CPU is Python-process CPU and excludes FFmpeg children",
+    "total CPU adds waited descendant CPU on Linux",
+    "RSS is Python run-wide high-water; children excluded",
+    "Rust preview launches the same FFmpeg, not a Rust decoder",
+    "DNS tests exclude transport/TLS latency",
+    "login uses synthetic cookies; no account/browser login",
+    "Windows overlapped pipe is not measured on Linux"
+  ]
+}

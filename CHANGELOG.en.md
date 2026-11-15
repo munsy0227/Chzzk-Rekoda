@@ -4,6 +4,12 @@
 
 Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under its date. This history starts with the changes included in the current dev → main merge. Detailed evidence is in `.ai/worklogs/`.
 
+## 2026-11-15
+
+### Optional Rust helper and long-run check guide
+
+Connect an optional Rust helper for live-info HTTP lookups and supported continuity-report summaries at 256 KiB or larger, with Python fallback when the helper is unavailable or the report format is unsupported. Python continues to handle recording, Streamlink/FFmpeg, DoH, and polling schedules. The manual Actions checks document Python/Rust selection, Linux/Windows/macOS runners, long recordings, and a separate once-per-minute live-status query; artifacts include Rust build/test logs and summaries. Check each Actions run's artifacts for actual platform soak results.
+
 ## 2026-11-11
 
 ### Reject whitespace at the edges of output folder names

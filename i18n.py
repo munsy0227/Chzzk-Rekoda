@@ -355,6 +355,9 @@ TRANSLATIONS = {
             "네이버플러스 멤버십 또는 치트키 구독 계정의 올바른 NID_AUT와 "
             "NID_SES 쿠키 값인지 확인하세요."
         ),
+        "record.native_active": "Rust에서 방송 상태를 조회합니다.",
+        "record.native_fallback": "Rust 상태 조회를 사용할 수 없어 Python으로 전환합니다.",
+        "record.native_request_error": "네트워크 또는 응답 오류",
         "record.http_live_info_error": (
             "{channel_name}의 라이브 정보를 가져오는 중 HTTP 오류가 발생했습니다: "
             "{error}"
@@ -819,6 +822,9 @@ TRANSLATIONS["en"].update({
         "Check that NID_AUT and NID_SES are valid for an account with a Naver "
         "Plus Membership or Cheat Key subscription."
     ),
+    "record.native_active": "Rust is checking broadcast status.",
+    "record.native_fallback": "Rust status checking is unavailable; switching to Python.",
+    "record.native_request_error": "Network or response error",
     "record.http_live_info_error": "HTTP error occurred while fetching live info for {channel_name}: {error}",
     "record.live_info_failed": "Failed to fetch live info for {channel_name}: {error}",
     "record.filename_too_long": "Filename '{filename}' is too long. Shortening to '{shortened}'.",
@@ -1289,6 +1295,9 @@ TRANSLATIONS["zh-CN"].update({
         "无法验证 '{channel_name}' 的会员播放权限。请确认 NID_AUT 和 NID_SES "
         "是已开通 Naver Plus 会员或 Cheat Key 订阅账号的有效 Cookie 值。"
     ),
+    "record.native_active": "正在使用 Rust 查询直播状态。",
+    "record.native_fallback": "Rust 状态查询不可用，正在切换至 Python。",
+    "record.native_request_error": "网络或响应错误",
     "record.http_live_info_error": "获取 {channel_name} 的直播信息时发生 HTTP 错误：{error}",
     "record.live_info_failed": "无法获取 {channel_name} 的直播信息：{error}",
     "record.filename_too_long": "文件名 '{filename}' 过长。将缩短为 '{shortened}'。",
@@ -1373,6 +1382,9 @@ TRANSLATIONS["zh-TW"].update({
         "無法驗證 '{channel_name}' 的會員播放權限。請確認 NID_AUT 和 NID_SES "
         "是已開通 Naver Plus 會員或 Cheat Key 訂閱帳號的有效 Cookie 值。"
     ),
+    "record.native_active": "正在使用 Rust 查詢直播狀態。",
+    "record.native_fallback": "Rust 狀態查詢無法使用，正在切換至 Python。",
+    "record.native_request_error": "網路或回應錯誤",
     "record.http_live_info_error": "取得 {channel_name} 的直播資訊時發生 HTTP 錯誤：{error}",
     "record.live_info_failed": "無法取得 {channel_name} 的直播資訊：{error}",
     "record.filename_too_long": "檔案名稱 '{filename}' 過長。將縮短為 '{shortened}'。",
@@ -1459,6 +1471,9 @@ TRANSLATIONS["ja"].update({
         "Naver Plus メンバーシップまたはチートキーを購読しているアカウントの "
         "有効な NID_AUT と NID_SES の Cookie 値か確認してください。"
     ),
+    "record.native_active": "Rustで配信状況を確認します。",
+    "record.native_fallback": "Rustでの状況確認を利用できないため、Pythonに切り替えます。",
+    "record.native_request_error": "ネットワークまたは応答のエラー",
     "record.http_live_info_error": "{channel_name} のライブ情報取得中に HTTP エラーが発生しました: {error}",
     "record.live_info_failed": "{channel_name} のライブ情報を取得できませんでした: {error}",
     "record.filename_too_long": "ファイル名 '{filename}' が長すぎます。'{shortened}' に短縮します。",
@@ -1974,6 +1989,12 @@ _CI_TEXT = {
     "test_failed": (
         "녹화 테스트 실행에 실패했습니다: {category}", "Recording test execution failed: {category}",
         "录制测试执行失败：{category}", "錄製測試執行失敗：{category}", "録画テストの実行に失敗しました: {category}"),
+    "native_failed": (
+        "Rust 필수 검사에 실패했습니다. native-watch-summary.json과 녹화 로그를 확인하세요.",
+        "Required Rust validation failed. Check native-watch-summary.json and the recorder log.",
+        "Rust 必需检查失败。请检查 native-watch-summary.json 和录制日志。",
+        "Rust 必要檢查失敗。請檢查 native-watch-summary.json 和錄製日誌。",
+        "Rustの必須検証に失敗しました。native-watch-summary.jsonと録画ログを確認してください。"),
     "windows_install_failed": (
         "Windows FFmpeg 설치 검증에 실패했습니다: {stage}", "Windows FFmpeg installation verification failed: {stage}",
         "Windows FFmpeg 安装验证失败：{stage}", "Windows FFmpeg 安裝驗證失敗：{stage}", "Windows FFmpeg のインストール検証に失敗しました: {stage}"),

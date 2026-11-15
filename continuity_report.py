@@ -166,6 +166,19 @@ def summarize(lines):
                 duplicate_count=duplicates, error_count=errors, gaps=merged)
 
 
+def summarize_file(path):
+    from native_backend import native_report_summary
+
+    result = native_report_summary(path)
+    if result is not None:
+        return result
+    try:
+        with Path(path).open(encoding="utf-8") as source:
+            return summarize(source)
+    except (OSError, UnicodeError):
+        return summarize([])
+
+
 def main():
     from i18n import SUPPORTED_LANGUAGES, translate
 
@@ -174,11 +187,7 @@ def main():
     parser.add_argument("--summary", type=Path, required=True)
     parser.add_argument("--language", choices=SUPPORTED_LANGUAGES, default="en")
     args = parser.parse_args()
-    try:
-        with args.report.open(encoding="utf-8") as source:
-            result = summarize(source)
-    except (OSError, UnicodeError):
-        result = summarize([])
+    result = summarize_file(args.report)
     args.summary.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(translate(args.language, "record.continuity_summary",
                     gaps=result["gap_count"], seconds=result["gap_seconds"],

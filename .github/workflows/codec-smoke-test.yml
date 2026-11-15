@@ -23,6 +23,14 @@ on:
         required: true
         default: "10"
         type: string
+      native_backend:
+        description: Recording backend
+        required: true
+        default: rust
+        type: choice
+        options:
+          - rust
+          - python
 
 permissions:
   contents: read
@@ -43,6 +51,7 @@ jobs:
     env:
       CHANNEL_ID: ${{ inputs.channel_uuid }}
       DURATION_MINUTES: ${{ inputs.duration_minutes }}
+      REQUIRE_NATIVE: ${{ inputs.native_backend == 'rust' && '1' || '0' }}
 
     steps:
       - name: Check out repository
@@ -57,6 +66,25 @@ jobs:
 
       - name: Install Python dependencies
         run: uv sync --locked
+
+      - name: Install Rust stable
+        if: inputs.native_backend == 'rust'
+        shell: bash
+        run: rustup toolchain install stable --profile minimal --no-self-update
+
+      - name: Test Rust helper
+        if: inputs.native_backend == 'rust'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo +stable test --locked --manifest-path native/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/chzzk-native-cargo-test.log"
+
+      - name: Build Rust helper
+        if: inputs.native_backend == 'rust'
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo +stable build --release --locked --manifest-path native/Cargo.toml 2>&1 | tee "$RUNNER_TEMP/chzzk-native-cargo-build.log"
 
       - name: Validate test input
         run: uv run --no-sync python scripts/run_recording_test.py validate codec
@@ -93,7 +121,10 @@ jobs:
             ${{ runner.temp }}/chzzk-codec-*/log.log
             ${{ runner.temp }}/chzzk-codec-*/continuity.jsonl
             ${{ runner.temp }}/chzzk-codec-*/continuity-summary.json
+            ${{ runner.temp }}/chzzk-codec-*/native-watch-summary.json
             ${{ runner.temp }}/chzzk-test-environment.json
+            ${{ runner.temp }}/chzzk-native-cargo-test.log
+            ${{ runner.temp }}/chzzk-native-cargo-build.log
           if-no-files-found: warn
           retention-days: 7
           compression-level: 9

@@ -13,7 +13,10 @@
 
 ## 현재 코드 구조
 
-- `.github/workflows/tests.yml`은 PR·push에서 Python 3.12·잠금 의존성·FFmpeg로 로컬 합성 기반 전체 unittest를 실행한다. 외부 실방송과 인증 정보는 필요 없다. 장시간·코덱 실방송 워크플로는 기존 수동 실행을 유지한다.
+- 선택형 Rust 기능은 `native/`의 `chzzk-native` 실행 파일과 `native_backend.py`로 연결한다. `cargo build --release --locked --manifest-path native/Cargo.toml` 후 `native/target/release` 또는 `native/bin`에서 자동 발견한다. `manage_recording_tasks()`는 DoH resolver가 없을 때만 자식 하나를 공유하고, Python이 만든 헤더를 비공개 stdin/stdout JSONL로 전달해 live-detail HTTP 조회를 수행한다. 스케줄·회원 권한 검사·Streamlink/FFmpeg 녹화와 복구는 기존 Python에 남는다. helper 부재·프로토콜 실패는 Python 대체, 정상 HTTP/네트워크 실패 응답은 같은 poll에서 중복 요청하지 않는다.
+- `continuity_report.py:summarize_file()`은 256KiB 이상 파일을 선택형 Rust streaming 분석기로 보내고 미지원 ISO·숫자·크기 경계나 실행 실패는 기존 `summarize()`로 대체한다. 원래 iterable API는 유지한다. 연결·경계·실방송 확인 범위는 [Rust 기능 구현 기록](worklogs/2026-11-15-rust-features.md), 빌드·프로토콜은 [native 안내](../native/README.md)를 따른다. Rust가 앱 전체 메모리나 녹화 처리량을 개선했다고 일반화하지 않는다.
+- `.github/workflows/tests.yml`은 PR·push에서 Python 3.12·잠금 의존성·FFmpeg로 로컬 합성 기반 전체 unittest를 실행한다. Rust helper 빌드/검사 포함 여부를 matrix로 나눠 Python 단독 경로도 유지한다. 외부 실방송과 인증 정보는 필요 없다. 장시간·코덱 실방송 워크플로는 기존 수동 실행을 유지한다.
+- 수동 장시간·코덱 Actions는 `native_backend=rust|python`(기본 rust)을 선택한다. Rust 모드에서는 잠금 Cargo 검사·release 빌드 후 `REQUIRE_NATIVE=1`로 실제 녹화기의 활성/대체 로그를 검사하고, `scripts/run_recording_test.py:NativeWatch`가 별도 빈 쿠키 클라이언트 하나로 분당 공개 상태 조회를 지속한다. 시작 실패·helper 손상·대체는 실패, 일반 HTTP/네트워크 오류 횟수는 별도 집계하고 최소 성공 조회를 요구한다. `native-watch-summary.json`, Cargo 로그와 Rust/Python/OS 환경 정보를 기존 artifact에 추가한다. 분할·보존·중지 정책은 유지한다. PR/push에는 Windows·macOS의 Rust 및 Python 연결 검사도 추가했다. 워크플로 설정과 실제 5시간 실방송 성공은 구분한다.
 - `chzzk_record.py:DohResolver`는 설치된 Python socket DoH 해석기를 `asyncio.to_thread()`로 호출하고 aiohttp connector에 연결한다. uvloop의 기본 DNS 경로가 Python socket 패치를 우회하는 문제를 해결하며 시스템 DNS 대체 경로는 유지한다. `dns_over_https.py`는 표준 `getaddrinfo` 키워드 인수를 보존하고 길이 지정·chunked·연결 종료 방식의 응답 본문을 수신 중 65,535바이트로 제한한다. 근거와 검증은 [전체 검토 후 개선 기록](worklogs/2026-10-23-review-improvements.md)을 참고한다.
 - `record_stream()`은 대기 중 최신 채널·전역 옵션을 읽고 새 방송 ID의 녹화를 시작할 때 반영한다. 같은 방송의 복구·파일 전환에서는 화질과 재개 커서의 일관성을 위해 기존 옵션을 유지한다. 과거 1시간 옵션의 방송별 한 번 적용과 기존 정상 중지·보관 정리는 유지한다. GUI 적용 시점 안내는 5개 언어에서 같은 의미다.
 - `hls_continuity.py`는 API가 방송 종료를 알린 뒤에도 진행 중인 미디어 요청과 이미 관측·보관한 복구 조각을 처리한다. 새 API/CDN 탐색은 멈추고 알려진 조각의 수신·재시도는 기존 복구 기한 안에서만 수행한다. 끝내 받지 못한 알려진 조각은 정상 종료로 숨기지 않고 재개 위치와 미해결 상태를 남긴다. 방송 ID 변경과 사용자 중지는 기존 보호를 유지한다. [PR #88 검토 및 두 오류 수정](worklogs/2026-11-11-pr88-review.md)을 참고한다.
@@ -66,6 +69,8 @@
 
 ## 현재 논의와 관련 기록
 
+- Rust 부분 도입 실험(2026-11-15): `experiments/rust-media-validator/`에 `validate_media()`의 PyO3 구현과 stdlib 비교·회귀 실행기가 있다. 제품 경로·루트 의존성에는 연결하지 않았다. 생성·경계·FFmpeg 조각 75,287개 판정이 일치하고 기존 137개 회귀 검사가 원본/Rust 각각 통과했다. 이후 사용자가 지정한 공개 방송을 빈 쿠키 설정으로 3분 테스트해 1080p60 영상 164초를 저장했다. 실제 조각 504회 Rust/Python 판정 일치, 연속성 보고 및 전체 디코딩·PTS 검사 통과를 확인했다. 함수의 절대 검사 시간은 여전히 작고, 실방송 계측은 Rust+Python 동시 검증이므로 Rust 단독 전체 CPU 개선을 뜻하지 않는다. 장시간·실방송 장애 주입·다채널·타 OS는 미검증이다. `regression.py`는 Unix 전용이다. 결과는 [실험 안내](../experiments/rust-media-validator/README.md), [작업 기록](worklogs/2026-11-15-rust-adoption-review.md)을 참고한다.
+- Rust 후보 전체 측정(2026-11-15): `experiments/rust-profile/`에 감시·보고서·I/O Rust 비교 도구와 기존 Qt/DNS/설정 연결 코드 측정기가 있다. 모두 실험용이며 제품 미통합이다. Linux release/local fixture/warm-cache에서 감시기 CPU/RSS와 대형 보고서 처리 시간은 줄었지만, Python 상주 여부·보고서 전체 읽기 전략 때문에 전체 앱 메모리 절감은 별도 판단이 필요하다. 파이프는 OS 직결의 CPU도 작고, 해시/파일 집계는 작은 Python 대안이 Rust에 근접했다. 계정 로그인·외부 DoH TLS·Windows 계층은 측정하지 않았다. 방법·수치·raw JSON 및 재실행은 [측정 결과](../experiments/rust-profile/README.md)를 따른다.
 - 사용자 확정 요구사항(2026-09-07): 깔끔하고 누구나 사용할 수 있는 리본 UI, 설정 위에 잠시 포인터를 두면 표시되는 설명, CLI와 GUI를 모두 사용할 수 있는 구조.
 - PySide6 + Qt Widgets, 별도 녹화 프로세스, 도움말 700ms 지연을 실제 구현에 사용했다. 사용자가 구체적인 지연 수치를 지정한 것은 아니다.
 - 초기에는 사용자가 `리본 시안의 모든 설정 완성`을 선택했고, 이후 실제 구현과 채널 아이콘/현재 녹화 영상 미리보기를 명시적으로 요청했다. 실제 GUI 연결 단계로 범위가 확대되어 구현했다.
