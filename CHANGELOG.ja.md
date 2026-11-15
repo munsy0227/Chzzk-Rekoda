@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### Windowsビルドツール検出の互換性
+
+Visual Studioのパスに含まれる空白をWindowsのコマンドライン引用規則に合わせて処理し、インストールテストのパス表現を各OSに対応させました。Microsoftインストーラーの署名は実行ポリシーを変更しない個別のPowerShellコマンドで確認し、ファイルパスをコードと分離して渡します。新しいSDKの管理者承認と完全なインストールには、別途実環境での検証が必要です。
+
 ### Rust の任意インストール
 
 初回インストール時に Rust ヘルパーを選択して導入できます。x86_64/aarch64 の Windows と macOS では Rustup インストーラーの SHA-256 を検証します。Ubuntu/Debian は `apt-get install rustc cargo`、Fedora は `dnf install rust cargo`、Arch Linux は `pacman -S rust`（Cargo を含む）を使用し、既存の Rust は再利用します。Linux のパッケージが古すぎる場合やビルドに失敗した場合は、ディストリビューションのツールで更新するか手動ガイドを使用します。Linux では Rustup に自動フォールバックしません。既定は Python で、導入を拒否または失敗した場合も Python で続行します。その他の OS とアーキテクチャでは手動セットアップガイドを使用します。各 OS での Rust 導入は実機検証していません。

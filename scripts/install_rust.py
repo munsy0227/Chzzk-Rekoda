@@ -331,20 +331,19 @@ def _windows_buildtools_path():
 
 
 def _verify_authenticode(path):
-    script = ("param([string]$Path)\n"
-              "$s = Get-AuthenticodeSignature -LiteralPath $Path\n"
+    script = ("$ErrorActionPreference = 'Stop'\n"
+              "$s = Get-AuthenticodeSignature -LiteralPath $env:CHZZK_RUST_VERIFY_PATH\n"
               "if ($s.Status -ne 'Valid' -or -not $s.SignerCertificate) { exit 1 }\n"
               "$n = $s.SignerCertificate.GetNameInfo("
               "[System.Security.Cryptography.X509Certificates.X509NameType]"
               "::SimpleName, $false)\n"
               "if ($n -ne 'Microsoft Corporation') { exit 1 }\n")
-    with tempfile.TemporaryDirectory(prefix="chzzk-signature-") as directory:
-        verifier = Path(directory) / "verify.ps1"
-        verifier.write_bytes(b"\xef\xbb\xbf" + script.encode("ascii"))
-        subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
-                        "-File", str(verifier), str(path)], check=True,
-                       timeout=30, stdout=subprocess.DEVNULL,
-                       stderr=subprocess.DEVNULL)
+    env = os.environ.copy()
+    env["CHZZK_RUST_VERIFY_PATH"] = str(path)
+    subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
+                    "-Command", script], check=True, env=env,
+                   timeout=30, stdout=subprocess.DEVNULL,
+                   stderr=subprocess.DEVNULL)
 
 
 def _install_windows_build_tools(language):
@@ -438,9 +437,11 @@ def _windows_build_environment(vs_path):
     machine = platform.machine().lower()
     arch = "arm64" if machine in {"arm64", "aarch64"} else "x64"
     devcmd = vs_path / "Common7" / "Tools" / "VsDevCmd.bat"
+    interpreter = subprocess.list2cmdline([os.environ.get("COMSPEC", "cmd.exe")])
+    # cmd.exe needs its own quoting, rather than the C-runtime list conversion.
+    command = f'{interpreter} /d /u /s /c "call "{devcmd}" -arch={arch} >nul && set"'
     result = subprocess.run(
-        ["cmd.exe", "/d", "/u", "/s", "/c",
-         f'call "{devcmd}" -arch={arch} >nul && set'],
+        command,
         check=True, capture_output=True, text=True, encoding="utf-16le",
         errors="replace", timeout=60,
     )

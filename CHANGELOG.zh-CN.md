@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### Windows 构建工具检测兼容性
+
+按照 Windows 命令行引用规则处理 Visual Studio 路径中的空格，并让安装测试适应不同系统的路径表示。Microsoft 安装文件的签名使用单独的 PowerShell 命令验证，不更改执行策略，并将文件路径与代码分开传递。新 SDK 的管理员授权和完整安装仍需单独进行实机验证。
+
 ### 可选安装 Rust
 
 首次安装时可以选择安装 Rust 辅助程序。在 x86_64/aarch64 架构的 Windows 和 macOS 上会通过 SHA-256 验证 Rustup 安装程序。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安装的 Rust 会重复使用。若 Linux 软件包版本过旧或构建失败，请使用发行版工具更新或参阅手动说明；Linux 不会自动改用 Rustup。默认使用 Python；拒绝或安装失败时会继续使用 Python。其他操作系统和架构请使用手动安装说明。尚未在各操作系统上实际验证 Rust 安装。

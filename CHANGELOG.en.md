@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-15
 
+### Windows build-tool detection compatibility
+
+Handle spaces in Visual Studio paths using Windows command-line quoting and make installer test paths portable. Verify Microsoft installer signatures with an individual PowerShell command without changing execution policy, passing the file path separately from code. Administrator approval and full installation of a new SDK still require separate environment testing.
+
 ### Opt-in Rust installation
 
 The first-time installer can optionally install the Rust helper. It verifies the Rustup installer SHA-256 on x86_64/aarch64 Windows and macOS. Ubuntu/Debian use `apt-get install rustc cargo`, Fedora uses `dnf install rust cargo`, and Arch Linux uses `pacman -S rust` (including Cargo); already installed Rust is reused. If a Linux package is too old or the build fails, update with distribution tools or use the manual guide; Linux does not automatically fall back to Rustup. Python is the default, and declining or failing the install continues with Python. Other operating systems and architectures use the manual setup guide. Rust installation has not been verified on each operating system.

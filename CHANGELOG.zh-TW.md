@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### Windows 建置工具偵測相容性
+
+依照 Windows 命令列引號規則處理 Visual Studio 路徑中的空格，並讓安裝測試適應不同系統的路徑表示。Microsoft 安裝檔的簽章使用獨立的 PowerShell 命令驗證，不變更執行原則，並將檔案路徑與程式碼分開傳遞。新 SDK 的管理員授權與完整安裝仍需另外進行實機驗證。
+
 ### 選擇性安裝 Rust
 
 首次安裝時可以選擇安裝 Rust 輔助程式。在 x86_64/aarch64 架構的 Windows 和 macOS 上會透過 SHA-256 驗證 Rustup 安裝程式。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安裝的 Rust 會重複使用。若 Linux 套件版本過舊或建置失敗，請使用發行版工具更新或參閱手動說明；Linux 不會自動改用 Rustup。預設使用 Python；拒絕或安裝失敗時會繼續使用 Python。其他作業系統和架構請使用手動安裝說明。尚未在各作業系統上實際驗證 Rust 安裝。

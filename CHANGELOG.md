@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### Windows 빌드 도구 탐지 호환성
+
+Visual Studio 경로의 공백을 Windows 명령줄 규칙에 맞게 처리하고, 운영체제별 경로 표현을 설치 테스트에 반영했습니다. Microsoft 설치 파일의 서명은 PowerShell 실행 정책을 바꾸지 않는 개별 명령으로 확인하며, 파일 경로를 코드와 분리해 전달합니다. 새 SDK의 관리자 승인·전체 설치는 여전히 별도 실환경 검증이 필요합니다.
+
 ### 선택형 Rust 설치
 
 처음 설치에서 Rust 도우미를 선택적으로 설치할 수 있습니다. x86_64/aarch64 Windows와 macOS에서는 Rustup 설치 파일의 SHA-256을 확인합니다. Ubuntu/Debian은 `apt-get install rustc cargo`, Fedora는 `dnf install rust cargo`, Arch Linux는 `pacman -S rust`(Cargo 포함)를 사용하고 이미 설치된 Rust는 재사용합니다. Linux 패키지 버전이 오래되었거나 빌드에 실패하면 배포판 도구로 업데이트하거나 수동 안내를 따릅니다. Linux에서 Rustup으로 자동 전환하지 않습니다. 기본 선택은 Python이며 설치를 거절하거나 실패해도 Python 설치를 계속합니다. 다른 OS·아키텍처는 수동 설치 안내를 사용합니다. 실제 각 OS에서의 Rust 설치는 검증하지 않았습니다.

@@ -58,6 +58,20 @@ class RustInstallTests(unittest.TestCase):
             install_rust._install_windows_build_tools("en")
         download.assert_not_called()
 
+    def test_signature_path_is_data_and_execution_policy_is_unchanged(self):
+        path = self.root / "한글 quote's $(not-code).exe"
+        with patch.object(install_rust.subprocess, "run") as run:
+            install_rust._verify_authenticode(path)
+        arguments = run.call_args.args[0]
+        self.assertIn("-Command", arguments)
+        self.assertNotIn("-File", arguments)
+        self.assertNotIn("-ExecutionPolicy", arguments)
+        self.assertNotIn("Set-ExecutionPolicy", arguments[-1])
+        self.assertNotIn(str(path), arguments[-1])
+        self.assertEqual(run.call_args.kwargs["env"]["CHZZK_RUST_VERIFY_PATH"], str(path))
+        self.assertIn("-LiteralPath", arguments[-1])
+        self.assertIn("Microsoft Corporation", arguments[-1])
+
     def test_supported_host_triplets(self):
         cases = (
             ("Windows", "AMD64", "x86_64-pc-windows-msvc"),
@@ -283,7 +297,7 @@ class RustInstallTests(unittest.TestCase):
         install_rustup.assert_not_called()
         self.assertEqual(calls, [False, True])
         self.assertEqual(len(commands), 1)
-        self.assertEqual(commands[0][:3], ["/usr/bin/cargo", "build", "--release"])
+        self.assertEqual(commands[0][:3], [str(Path("/usr/bin/cargo")), "build", "--release"])
         self.assertEqual(self.installed_binary.read_bytes(), b"new-helper")
 
     def test_linux_package_failure_keeps_python_only_marker_without_rustup(self):
@@ -329,7 +343,7 @@ class RustInstallTests(unittest.TestCase):
 
         rustup.assert_called_once_with("en", "aarch64-apple-darwin")
         linux_rust.assert_not_called()
-        self.assertEqual(commands[0][:3], ["/temporary/cargo", "+stable", "build"])
+        self.assertEqual(commands[0][:3], [str(Path("/temporary/cargo")), "+stable", "build"])
 
     def test_existing_rust_builds_without_redownloading_rustup(self):
         commands = []
