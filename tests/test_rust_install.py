@@ -60,8 +60,10 @@ class RustInstallTests(unittest.TestCase):
 
     def test_signature_path_is_data_and_execution_policy_is_unchanged(self):
         path = self.root / "한글 quote's $(not-code).exe"
-        with patch.object(install_rust.subprocess, "run") as run:
+        with patch.dict(os.environ, {"PSModulePath": "incompatible parent modules"}), \
+                patch.object(install_rust.subprocess, "run") as run:
             install_rust._verify_authenticode(path)
+            self.assertEqual(os.environ["PSModulePath"], "incompatible parent modules")
         arguments = run.call_args.args[0]
         self.assertIn("-Command", arguments)
         self.assertNotIn("-File", arguments)
@@ -69,6 +71,8 @@ class RustInstallTests(unittest.TestCase):
         self.assertNotIn("Set-ExecutionPolicy", arguments[-1])
         self.assertNotIn(str(path), arguments[-1])
         self.assertEqual(run.call_args.kwargs["env"]["CHZZK_RUST_VERIFY_PATH"], str(path))
+        self.assertNotIn("PSMODULEPATH", {key.upper() for key in run.call_args.kwargs["env"]})
+        self.assertIn("Import-Module (Join-Path $PSHOME", arguments[-1])
         self.assertIn("-FilePath", arguments[-1])
         self.assertIn("WildcardPattern]::Escape", arguments[-1])
         self.assertIn("Microsoft Corporation", arguments[-1])

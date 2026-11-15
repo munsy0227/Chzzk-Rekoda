@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-15
 
+### Isolated Windows signature-check module paths
+
+Fixed signature-command loading when PowerShell 7 launches Windows PowerShell through Python and passes incompatible module paths. Only the child process rebuilds its module path and explicitly loads its own built-in security module. The parent environment, execution policy, and signature/publisher requirements remain unchanged; actual Windows CI will verify the fix.
+
 ### Compatible Windows signature command and installer checks
 
 Use the compatible FilePath parameter with wildcard escaping for signature verification. Check Korean, Chinese, Japanese, space, bracket, and quote paths, and run Windows/macOS installer checks separately without product dependencies or a Rust build. Keep valid-signature and Microsoft-publisher requirements unchanged.

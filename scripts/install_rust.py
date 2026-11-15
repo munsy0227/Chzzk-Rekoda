@@ -332,6 +332,7 @@ def _windows_buildtools_path():
 
 def _verify_authenticode(path):
     script = ("$ErrorActionPreference = 'Stop'\n"
+              "Import-Module (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop\n"
               "$p = [System.Management.Automation.WildcardPattern]::Escape($env:CHZZK_RUST_VERIFY_PATH)\n"
               "$s = Get-AuthenticodeSignature -FilePath $p\n"
               "if ($s.Status -ne 'Valid' -or -not $s.SignerCertificate) { exit 1 }\n"
@@ -339,7 +340,8 @@ def _verify_authenticode(path):
               "[System.Security.Cryptography.X509Certificates.X509NameType]"
               "::SimpleName, $false)\n"
               "if ($n -ne 'Microsoft Corporation') { exit 1 }\n")
-    env = os.environ.copy()
+    # A PowerShell 7 parent can otherwise send incompatible modules to powershell.exe.
+    env = {key: value for key, value in os.environ.items() if key.upper() != "PSMODULEPATH"}
     env["CHZZK_RUST_VERIFY_PATH"] = str(path)
     subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
                     "-Command", script], check=True, env=env,

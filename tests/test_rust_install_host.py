@@ -31,11 +31,13 @@ class InstalledBuildToolsTests(unittest.TestCase):
                 try:
                     install_rust._verify_authenticode(binary)
                 except subprocess.CalledProcessError:
-                    environment = os.environ.copy()
+                    environment = {key: value for key, value in os.environ.items()
+                                   if key.upper() != "PSMODULEPATH"}
                     environment["CHZZK_RUST_VERIFY_PATH"] = str(binary)
                     diagnostic = subprocess.run(
                         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                         ("$p=[System.Management.Automation.WildcardPattern]::Escape($env:CHZZK_RUST_VERIFY_PATH); "
+                         ("Import-Module (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Security\\Microsoft.PowerShell.Security.psd1'); "
+                         "$p=[System.Management.Automation.WildcardPattern]::Escape($env:CHZZK_RUST_VERIFY_PATH); "
                          "$s=Get-AuthenticodeSignature -FilePath $p; "
                          "@{status=[string]$s.Status;publisher=$s.SignerCertificate.Subject} "
                          "| ConvertTo-Json -Compress")],
