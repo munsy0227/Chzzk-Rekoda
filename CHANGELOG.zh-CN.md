@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### 可选安装 Rust
+
+首次安装时可以选择安装 Rust 辅助程序。在 x86_64/aarch64 架构的 Windows 和 macOS 上会通过 SHA-256 验证 Rustup 安装程序。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安装的 Rust 会重复使用。若 Linux 软件包版本过旧或构建失败，请使用发行版工具更新或参阅手动说明；Linux 不会自动改用 Rustup。默认使用 Python；拒绝或安装失败时会继续使用 Python。其他操作系统和架构请使用手动安装说明。尚未在各操作系统上实际验证 Rust 安装。
+
 ### 可选 Rust 辅助程序与长时间检查指南
 
 为直播信息 HTTP 查询和大小至少为 256 KiB 的受支持连续性报告摘要接入可选 Rust 辅助程序；辅助程序不可用或报告格式不受支持时回退到 Python。录制、Streamlink/FFmpeg、DoH 和轮询计划仍由 Python 负责。手动 Actions 检查说明了 Python/Rust 选择、Linux/Windows/macOS 运行环境、长时间录制及单独每分钟一次的直播状态查询；artifact 包含 Rust 构建/测试日志和摘要。各平台实际长时间运行结果请以对应 Actions 执行的 artifact 为准。

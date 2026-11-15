@@ -41,3 +41,10 @@
 - 130초 실제 지속 조회는 총 3회 중 성공 2회·네트워크 오류 1회, helper 실패 0회였다. 이후 조회까지 연결을 유지하고 정상 종료했으며 native health 판정은 통과했다. 임시 검증 스크립트의 최초 '세 번 모두 외부 요청 성공' 조건은 실패했으므로 이를 무오류 네트워크 결과로 주장하지 않는다. 일시적 네트워크 실패를 별도 집계하고 다음 폴링을 유지하는 제품/Actions 정책은 통과했으며 원인은 분류 이상의 증거가 없어 확정하지 않았다.
 - `experiments/`의 36개 파일을 게시 전 검토했다. 소스·잠금파일·설명과 원시 benchmark JSON(최대 약 2MB)이며 비밀키·개인 설정·빌드 바이너리·실방송 로그가 없었다. 결과 README가 참조하는 재현 근거이므로 이 Rust 작업의 커밋에 포함한다. `.cache`와 `target`은 제외한다.
 - 게시 대상은 `origin`의 `codex/rust-features`이고 같은 이름의 원격 브랜치는 게시 전 없었다. GitHub 인증·workflow 권한을 확인했다. 사용자가 요청한 push 뒤 자동 실행된 원격 결과는 해당 Actions run과 최종 응답에서 확인하며, 수동 5시간 실행은 설정 완료와 구분한다.
+
+## 녹화 작업의 Rust 2차 검증 제안 검토
+
+- 사용자가 CDN 선택, LL-HLS 수신, 조각/버퍼/복구, 파일 분할과 정상 종료를 Rust로 추가 검증하는 방안에 대한 의견을 요청했다.
+- `hls_continuity.py:validate_media/matches/download_parts/_deliver`, `recording_buffer.py:MediaBuffer`, 실험 Rust validator와 최신 Knowledge를 확인했다. 원본 수신 자료를 재사용하는 독립 검증과 관찰 단계 도입을 권고하며, 세부 검토는 [2차 검증 제안](../plans/rust-secondary-validation.md)에 기록했다.
+- `checkpoint`가 RingBuffer 출력 뒤 발생하는 점, 실험 Rust validator가 구조 검사에 한정되는 점, 정상 discontinuity reset 및 최종 저장 파일 디코딩을 별도 검증해야 하는 점을 구분했다. RFC 8216과 FFmpeg 공식 문서를 확인했다.
+- 실행 코드·테스트·의존성은 변경하지 않았으며 새 방송/장애 주입 검사는 수행하지 않았다. 이번 검토 문서의 커밋·push는 수행하지 않았다.

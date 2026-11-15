@@ -2,6 +2,32 @@
 
 The Rust binary is an optional optimization. Python remains the baseline and takes over when the binary is missing or its service cannot be used.
 
+## Installation
+
+The first-time installer offers Rust as an opt-in (`1` for Rust, `2` for Python; default `2`). On x86_64/aarch64 Windows and macOS, it verifies the Rustup installer SHA-256, installs the toolchain and build dependencies, and builds the helper. On x86_64/aarch64 Ubuntu/Debian it installs `rustc cargo` with `apt-get install`; Fedora uses `dnf install rust cargo`; Arch Linux uses `pacman -S rust` (which includes Cargo). Existing Rust is reused. Administrator access, Windows UAC, or macOS Command Line Tools confirmation may be required. Declining or a failed install keeps Python available. If a Linux distribution's Rust is too old or the build fails, update it with distribution tools or follow the manual setup guide; the installer does not automatically fall back to Rustup on Linux. Rerun `uv run python scripts/install_rust.py [--language ko|en|zh-CN|zh-TW|ja]` to change the choice or retry; a successful build is installed in `native/bin`. DoH continues to use Python.
+
+Rust is not automatically installed or run on other operating systems or architectures. Install Rust from the [official Rust installation page](https://rust-lang.org/tools/install), then build from the repository root:
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+```
+
+Publish the newly built binary to `native/bin` before removing the marker; this directory has discovery priority over `native/target/release`, so copying prevents an older published binary from being selected. On Linux/macOS run:
+
+```bash
+mkdir -p native/bin
+cp native/target/release/chzzk-native native/bin/chzzk-native
+```
+
+On Windows PowerShell run:
+
+```powershell
+New-Item -ItemType Directory -Force native/bin | Out-Null
+Copy-Item native/target/release/chzzk-native.exe native/bin/chzzk-native.exe -Force
+```
+
+After copying the successful build, remove `native/.disabled` if present so the application can discover the helper. Python remains available without Rust.
+
 ## Build and discovery
 
 ```bash

@@ -230,6 +230,10 @@ KDE Wayland で Fcitx 5 を使う場合は、**システム設定 → 仮想キ�
 
 ## 🦀 オプションの Rust ヘルパー
 
+初回インストール時に Rust ヘルパーの導入を選択できます。x86_64/aarch64 の Windows と macOS では、Rustup インストーラーの SHA-256 を検証してツールチェーンとビルド依存関係を導入し、ネイティブバイナリをビルドします。Ubuntu/Debian は `apt-get install rustc cargo`、Fedora は `dnf install rust cargo`、Arch Linux は `pacman -S rust`（Cargo を含む）で導入し、既存の Rust は再利用します。管理者権限、UAC、または macOS Command Line Tools の確認が必要になる場合があります。インストールメニューで `1` は Rust、`2` は Python を選び、既定値は `2` です。選択は `native/.disabled` に保存され、拒否または導入失敗時は Python でインストールを続けます。Linux ディストリビューションの Rust が古すぎる場合やビルドに失敗した場合は、ディストリビューションのツールで更新するか、[手動セットアップ手順](native/README.md)に従ってください。Linux では Rustup へ自動フォールバックしません。選択を変更または再試行するには `uv run python scripts/install_rust.py --language ja` を実行してください。成功するとバイナリは `native/bin` にインストールされます。
+
+その他の OS やアーキテクチャでは Rust を自動実行しません。[手動セットアップ手順](native/README.md)を参照してください。手動ビルド後は、新しいバイナリを `native/bin` の既存ファイルに上書きコピーしてから `native/.disabled` を削除してください。そうしないと古い公開済みバイナリが優先して選択される場合があります。`native/.disabled` がなければ、既存の手動ビルド済みヘルパーは引き続き自動検出されます。
+
 Rust ヘルパーは任意機能です。存在しなくても Python のみで動作します。stable Rust と Cargo を用意し、リポジトリのルートでビルドと確認を行います。
 
 ```bash

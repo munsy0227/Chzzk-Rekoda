@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### 선택형 Rust 설치
+
+처음 설치에서 Rust 도우미를 선택적으로 설치할 수 있습니다. x86_64/aarch64 Windows와 macOS에서는 Rustup 설치 파일의 SHA-256을 확인합니다. Ubuntu/Debian은 `apt-get install rustc cargo`, Fedora는 `dnf install rust cargo`, Arch Linux는 `pacman -S rust`(Cargo 포함)를 사용하고 이미 설치된 Rust는 재사용합니다. Linux 패키지 버전이 오래되었거나 빌드에 실패하면 배포판 도구로 업데이트하거나 수동 안내를 따릅니다. Linux에서 Rustup으로 자동 전환하지 않습니다. 기본 선택은 Python이며 설치를 거절하거나 실패해도 Python 설치를 계속합니다. 다른 OS·아키텍처는 수동 설치 안내를 사용합니다. 실제 각 OS에서의 Rust 설치는 검증하지 않았습니다.
+
 ### 선택적 Rust 도우미와 장시간 검증 안내
 
 라이브 정보 HTTP 조회와 256 KiB 이상 지원 연속성 보고서 요약에 선택적 Rust 도우미를 연결하고, 도우미가 없거나 보고서 형식을 지원하지 않을 때 Python으로 대체합니다. 녹화, Streamlink/FFmpeg, DoH와 조회 일정은 Python이 계속 담당합니다. 수동 Actions 검사에 Python/Rust 선택, Linux·Windows·macOS 실행, 장시간 녹화와 별도 분당 방송 상태 조회를 추가하고 Rust 빌드·테스트 로그 및 요약을 artifact로 저장하도록 안내합니다. 플랫폼별 실제 장시간 실행 결과는 각 Actions 실행 artifact에서 확인해야 합니다.

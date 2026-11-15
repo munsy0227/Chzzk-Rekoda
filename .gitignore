@@ -223,3 +223,7 @@ config.json.lock
 .mkv
 .webm
 /ffmpeg
+
+# Installation-local Rust choice and compiled helper.
+/native/.disabled
+/native/bin/

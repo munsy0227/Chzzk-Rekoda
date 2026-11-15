@@ -16,6 +16,7 @@ _MAX_PENDING = 64
 _TIMEOUT = 35
 _HELLO_TIMEOUT = 2
 _REPORT_TIMEOUT = 30
+NATIVE_DIR = Path(__file__).resolve().parent / "native"
 
 
 class _InputTooLarge(ValueError):
@@ -24,10 +25,12 @@ class _InputTooLarge(ValueError):
 
 def native_executable() -> Path | None:
     """Find the repository's installed/release native helper, if present."""
-    root = Path(__file__).resolve().parent
+    disabled = NATIVE_DIR / ".disabled"
+    if disabled.exists() or disabled.is_symlink():
+        return None
     suffix = ".exe" if os.name == "nt" else ""
-    for path in (root / "native" / "bin" / f"chzzk-native{suffix}",
-                 root / "native" / "target" / "release" / f"chzzk-native{suffix}"):
+    for path in (NATIVE_DIR / "bin" / f"chzzk-native{suffix}",
+                 NATIVE_DIR / "target" / "release" / f"chzzk-native{suffix}"):
         if path.is_file():
             return path
     return None

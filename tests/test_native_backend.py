@@ -19,6 +19,32 @@ class NativeBackendTests(unittest.IsolatedAsyncioTestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
 
+    async def test_installation_choice_disables_live_and_report_helpers(self):
+        native = self.root / "native"
+        suffix = ".exe" if os.name == "nt" else ""
+        installed = native / "bin" / ("chzzk-native" + suffix)
+        release = native / "target" / "release" / ("chzzk-native" + suffix)
+        installed.parent.mkdir(parents=True)
+        release.parent.mkdir(parents=True)
+        installed.touch()
+        release.touch()
+        with patch.object(native_backend, "NATIVE_DIR", native):
+            self.assertEqual(native_backend.native_executable(), installed)
+            installed.unlink()
+            self.assertEqual(native_backend.native_executable(), release)
+            (native / ".disabled").touch()
+            self.assertIsNone(native_backend.native_executable())
+            with patch.object(native_backend.asyncio, "create_subprocess_exec") as launch, \
+                    patch.object(native_backend.subprocess, "Popen") as report:
+                async with native_backend.NativeLiveClient() as client:
+                    self.assertFalse(client.available)
+                    self.assertIsNone(await client.live(CHANNEL_A, {}))
+                self.assertIsNone(native_backend.native_report_summary(self.root / "report"))
+            launch.assert_not_called()
+            report.assert_not_called()
+            (native / ".disabled").unlink()
+            self.assertEqual(native_backend.native_executable(), release)
+
     def helper(self, source):
         path = self.root / "helper.py"
         path.write_text(source, encoding="utf-8")

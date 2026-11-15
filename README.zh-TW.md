@@ -230,6 +230,10 @@ GUI 需要桌面環境和 FFmpeg。**開啟登入視窗**直接啟動 CLI 的瀏
 
 ## 🦀 可選 Rust 加速元件
 
+首次安裝時可以選擇安裝 Rust 輔助程式。在 x86_64/aarch64 架構的 Windows 和 macOS 上，安裝程式會驗證 Rustup 安裝程式的 SHA-256、安裝工具鏈和建置相依項目，並建置原生執行檔。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安裝的 Rust 會重複使用。過程可能需要管理員權限、UAC，或確認安裝 macOS 命令列工具。安裝選單中 `1` 選擇 Rust，`2` 選擇 Python；預設值為 `2`。選擇會儲存在 `native/.disabled`；拒絕或安裝失敗時會繼續使用 Python。若 Linux 發行版的 Rust 版本過舊或建置失敗，請使用發行版工具更新，或參閱 [native 手動安裝說明](native/README.md)；安裝程式不會在 Linux 上自動改用 Rustup。若要變更選擇或重試，請執行 `uv run python scripts/install_rust.py --language zh-TW`。成功後，執行檔會安裝至 `native/bin`。
+
+其他作業系統或架構不會自動執行 Rust。請參閱 [native 手動安裝說明](native/README.md)。手動建置後，請先將新執行檔覆蓋複製至 `native/bin`，再移除 `native/.disabled`；否則可能會優先選用舊的已發布執行檔。只要 `native/.disabled` 不存在，程式仍會自動探索既有的手動建置輔助程式。
+
 Rust 輔助程式為選用功能；缺少時，程式仍可僅使用 Python 執行。安裝 stable Rust 和 Cargo 後，在儲存庫根目錄建置並檢查：
 
 ```bash

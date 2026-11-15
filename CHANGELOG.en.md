@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-15
 
+### Opt-in Rust installation
+
+The first-time installer can optionally install the Rust helper. It verifies the Rustup installer SHA-256 on x86_64/aarch64 Windows and macOS. Ubuntu/Debian use `apt-get install rustc cargo`, Fedora uses `dnf install rust cargo`, and Arch Linux uses `pacman -S rust` (including Cargo); already installed Rust is reused. If a Linux package is too old or the build fails, update with distribution tools or use the manual guide; Linux does not automatically fall back to Rustup. Python is the default, and declining or failing the install continues with Python. Other operating systems and architectures use the manual setup guide. Rust installation has not been verified on each operating system.
+
 ### Optional Rust helper and long-run check guide
 
 Connect an optional Rust helper for live-info HTTP lookups and supported continuity-report summaries at 256 KiB or larger, with Python fallback when the helper is unavailable or the report format is unsupported. Python continues to handle recording, Streamlink/FFmpeg, DoH, and polling schedules. The manual Actions checks document Python/Rust selection, Linux/Windows/macOS runners, long recordings, and a separate once-per-minute live-status query; artifacts include Rust build/test logs and summaries. Check each Actions run's artifacts for actual platform soak results.

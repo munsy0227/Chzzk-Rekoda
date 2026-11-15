@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### Rust の任意インストール
+
+初回インストール時に Rust ヘルパーを選択して導入できます。x86_64/aarch64 の Windows と macOS では Rustup インストーラーの SHA-256 を検証します。Ubuntu/Debian は `apt-get install rustc cargo`、Fedora は `dnf install rust cargo`、Arch Linux は `pacman -S rust`（Cargo を含む）を使用し、既存の Rust は再利用します。Linux のパッケージが古すぎる場合やビルドに失敗した場合は、ディストリビューションのツールで更新するか手動ガイドを使用します。Linux では Rustup に自動フォールバックしません。既定は Python で、導入を拒否または失敗した場合も Python で続行します。その他の OS とアーキテクチャでは手動セットアップガイドを使用します。各 OS での Rust 導入は実機検証していません。
+
 ### オプションの Rust ヘルパーと長時間検査ガイド
 
 ライブ情報の HTTP 照会と、256 KiB 以上の対応する連続性レポート要約にオプションの Rust ヘルパーを接続しました。ヘルパーを利用できない場合やレポート形式に対応しない場合は Python に切り替わります。録画、Streamlink/FFmpeg、DoH、ポーリング間隔は引き続き Python が担当します。手動 Actions 検査では Python/Rust の選択、Linux/Windows/macOS の実行環境、長時間録画、独立した毎分の配信状態照会を案内し、Rust のビルド・テストログと要約を artifact に保存します。各プラットフォームの実際の長時間実行結果は、該当する Actions 実行の artifact で確認してください。

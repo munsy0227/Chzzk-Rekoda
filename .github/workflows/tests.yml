@@ -80,3 +80,6 @@ jobs:
 
       - name: Run recording CI regressions
         run: uv run --no-sync python -m unittest discover -s tests -p test_recording_ci.py -v
+
+      - name: Run optional Rust installation regressions
+        run: uv run --no-sync python -m unittest discover -s tests -p "test_*install*.py" -v

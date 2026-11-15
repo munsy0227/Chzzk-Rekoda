@@ -12,6 +12,7 @@ if str(BASE_DIR) not in sys.path:
 from config_store import ConfigError, ConfigStore
 from i18n import DEFAULT_LANGUAGE, translate
 from process_utils import console_python
+from scripts.install_rust import configure_rust
 
 
 def main():
@@ -20,6 +21,7 @@ def main():
         store = ConfigStore()
         config = store.load()
         language = config["language"]
+        configure_rust(language, root=BASE_DIR)
         while True:
             print(translate(language, "gui.install_mode"))
             choice = (

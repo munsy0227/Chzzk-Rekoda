@@ -6,6 +6,10 @@
 
 ## 2026-11-15
 
+### 選擇性安裝 Rust
+
+首次安裝時可以選擇安裝 Rust 輔助程式。在 x86_64/aarch64 架構的 Windows 和 macOS 上會透過 SHA-256 驗證 Rustup 安裝程式。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安裝的 Rust 會重複使用。若 Linux 套件版本過舊或建置失敗，請使用發行版工具更新或參閱手動說明；Linux 不會自動改用 Rustup。預設使用 Python；拒絕或安裝失敗時會繼續使用 Python。其他作業系統和架構請使用手動安裝說明。尚未在各作業系統上實際驗證 Rust 安裝。
+
 ### 可選 Rust 輔助程式與長時間檢查指南
 
 為直播資訊 HTTP 查詢和大小至少為 256 KiB 的支援連續性報告摘要接入可選 Rust 輔助程式；輔助程式無法使用或報告格式不受支援時會退回 Python。錄製、Streamlink/FFmpeg、DoH 和輪詢排程仍由 Python 負責。手動 Actions 檢查說明了 Python/Rust 選擇、Linux/Windows/macOS 執行環境、長時間錄製及獨立每分鐘一次的直播狀態查詢；artifact 包含 Rust 建置/測試日誌和摘要。各平台實際長時間執行結果請以對應 Actions 執行的 artifact 為準。
