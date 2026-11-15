@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-15
 
+### Verify the actual Windows installer signature
+
+Align the Windows CI signature fixture with the official Microsoft Build Tools bootstrapper used by automatic setup. Verify both the download and a copy in a Unicode/space/quote path, and check rejection of an unsigned file. The installer is not executed.
+
 ### Windows build-tool detection compatibility
 
 Handle spaces in Visual Studio paths using Windows command-line quoting and make installer test paths portable. Verify Microsoft installer signatures with an individual PowerShell command without changing execution policy, passing the file path separately from code. Administrator approval and full installation of a new SDK still require separate environment testing.
