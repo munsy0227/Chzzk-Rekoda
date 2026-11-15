@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-15
 
+### Compatible Windows signature command and installer checks
+
+Use the compatible FilePath parameter with wildcard escaping for signature verification. Check Korean, Chinese, Japanese, space, bracket, and quote paths, and run Windows/macOS installer checks separately without product dependencies or a Rust build. Keep valid-signature and Microsoft-publisher requirements unchanged.
+
 ### Verify the actual Windows installer signature
 
 Align the Windows CI signature fixture with the official Microsoft Build Tools bootstrapper used by automatic setup. Verify both the download and a copy in a Unicode/space/quote path, and check rejection of an unsigned file. The installer is not executed.

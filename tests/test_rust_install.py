@@ -69,7 +69,8 @@ class RustInstallTests(unittest.TestCase):
         self.assertNotIn("Set-ExecutionPolicy", arguments[-1])
         self.assertNotIn(str(path), arguments[-1])
         self.assertEqual(run.call_args.kwargs["env"]["CHZZK_RUST_VERIFY_PATH"], str(path))
-        self.assertIn("-LiteralPath", arguments[-1])
+        self.assertIn("-FilePath", arguments[-1])
+        self.assertIn("WildcardPattern]::Escape", arguments[-1])
         self.assertIn("Microsoft Corporation", arguments[-1])
 
     def test_supported_host_triplets(self):

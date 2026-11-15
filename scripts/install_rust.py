@@ -332,7 +332,8 @@ def _windows_buildtools_path():
 
 def _verify_authenticode(path):
     script = ("$ErrorActionPreference = 'Stop'\n"
-              "$s = Get-AuthenticodeSignature -LiteralPath $env:CHZZK_RUST_VERIFY_PATH\n"
+              "$p = [System.Management.Automation.WildcardPattern]::Escape($env:CHZZK_RUST_VERIFY_PATH)\n"
+              "$s = Get-AuthenticodeSignature -FilePath $p\n"
               "if ($s.Status -ne 'Valid' -or -not $s.SignerCertificate) { exit 1 }\n"
               "$n = $s.SignerCertificate.GetNameInfo("
               "[System.Security.Cryptography.X509Certificates.X509NameType]"

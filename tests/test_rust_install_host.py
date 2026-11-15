@@ -21,7 +21,7 @@ class InstalledBuildToolsTests(unittest.TestCase):
         self.assertTrue(shutil.which("cl.exe", path=environment["PATH"]))
         self.assertTrue(shutil.which("link.exe", path=environment["PATH"]))
         with tempfile.TemporaryDirectory(prefix="rust-signature-") as temporary, \
-                tempfile.TemporaryDirectory(prefix="Rust 설치 '") as unicode_directory:
+                tempfile.TemporaryDirectory(prefix="Rust 설치 中文 日本語 [probe] '") as unicode_directory:
             setup = Path(temporary) / "vs_BuildTools.exe"
             install_rust._download("https://aka.ms/vs/17/release/vs_BuildTools.exe",
                                    setup, 100 * 1024 * 1024)
@@ -35,13 +35,15 @@ class InstalledBuildToolsTests(unittest.TestCase):
                     environment["CHZZK_RUST_VERIFY_PATH"] = str(binary)
                     diagnostic = subprocess.run(
                         ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
-                         ("$s=Get-AuthenticodeSignature -LiteralPath $env:CHZZK_RUST_VERIFY_PATH; "
+                         ("$p=[System.Management.Automation.WildcardPattern]::Escape($env:CHZZK_RUST_VERIFY_PATH); "
+                         "$s=Get-AuthenticodeSignature -FilePath $p; "
                          "@{status=[string]$s.Status;publisher=$s.SignerCertificate.Subject} "
                          "| ConvertTo-Json -Compress")],
                         env=environment, capture_output=True, check=False, timeout=30,
                     )
                     self.fail("Official bootstrapper signature rejected: "
-                              + diagnostic.stdout.decode("utf-8", errors="replace"))
+                              + diagnostic.stdout.decode("utf-8", errors="replace")
+                              + diagnostic.stderr.decode("utf-8", errors="replace")[:2000])
             unsigned = Path(temporary) / "unsigned.exe"
             unsigned.write_bytes(b"unsigned test fixture")
             with self.assertRaises(subprocess.CalledProcessError):

@@ -81,5 +81,22 @@ jobs:
       - name: Run recording CI regressions
         run: uv run --no-sync python -m unittest discover -s tests -p test_recording_ci.py -v
 
+  installer:
+    name: Installer regressions (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, macos-latest]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
       - name: Run optional Rust installation regressions
-        run: uv run --no-sync python -m unittest discover -s tests -p "test_*install*.py" -v
+        run: uv run --no-project --python 3.12 python -m unittest discover -s tests -p "test_*install*.py" -v
