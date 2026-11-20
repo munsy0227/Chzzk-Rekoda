@@ -1,0 +1,11 @@
+[package]
+name = "chzzk-native"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["std"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = { version = "1", features = ["arbitrary_precision", "float_roundtrip"] }
+tokio = { version = "1", features = ["io-std", "io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }

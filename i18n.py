@@ -355,6 +355,9 @@ TRANSLATIONS = {
             "네이버플러스 멤버십 또는 치트키 구독 계정의 올바른 NID_AUT와 "
             "NID_SES 쿠키 값인지 확인하세요."
         ),
+        "record.native_active": "Rust에서 방송 상태를 조회합니다.",
+        "record.native_fallback": "Rust 상태 조회를 사용할 수 없어 Python으로 전환합니다.",
+        "record.native_request_error": "네트워크 또는 응답 오류",
         "record.http_live_info_error": (
             "{channel_name}의 라이브 정보를 가져오는 중 HTTP 오류가 발생했습니다: "
             "{error}"
@@ -819,6 +822,9 @@ TRANSLATIONS["en"].update({
         "Check that NID_AUT and NID_SES are valid for an account with a Naver "
         "Plus Membership or Cheat Key subscription."
     ),
+    "record.native_active": "Rust is checking broadcast status.",
+    "record.native_fallback": "Rust status checking is unavailable; switching to Python.",
+    "record.native_request_error": "Network or response error",
     "record.http_live_info_error": "HTTP error occurred while fetching live info for {channel_name}: {error}",
     "record.live_info_failed": "Failed to fetch live info for {channel_name}: {error}",
     "record.filename_too_long": "Filename '{filename}' is too long. Shortening to '{shortened}'.",
@@ -1289,6 +1295,9 @@ TRANSLATIONS["zh-CN"].update({
         "无法验证 '{channel_name}' 的会员播放权限。请确认 NID_AUT 和 NID_SES "
         "是已开通 Naver Plus 会员或 Cheat Key 订阅账号的有效 Cookie 值。"
     ),
+    "record.native_active": "正在使用 Rust 查询直播状态。",
+    "record.native_fallback": "Rust 状态查询不可用，正在切换至 Python。",
+    "record.native_request_error": "网络或响应错误",
     "record.http_live_info_error": "获取 {channel_name} 的直播信息时发生 HTTP 错误：{error}",
     "record.live_info_failed": "无法获取 {channel_name} 的直播信息：{error}",
     "record.filename_too_long": "文件名 '{filename}' 过长。将缩短为 '{shortened}'。",
@@ -1373,6 +1382,9 @@ TRANSLATIONS["zh-TW"].update({
         "無法驗證 '{channel_name}' 的會員播放權限。請確認 NID_AUT 和 NID_SES "
         "是已開通 Naver Plus 會員或 Cheat Key 訂閱帳號的有效 Cookie 值。"
     ),
+    "record.native_active": "正在使用 Rust 查詢直播狀態。",
+    "record.native_fallback": "Rust 狀態查詢無法使用，正在切換至 Python。",
+    "record.native_request_error": "網路或回應錯誤",
     "record.http_live_info_error": "取得 {channel_name} 的直播資訊時發生 HTTP 錯誤：{error}",
     "record.live_info_failed": "無法取得 {channel_name} 的直播資訊：{error}",
     "record.filename_too_long": "檔案名稱 '{filename}' 過長。將縮短為 '{shortened}'。",
@@ -1459,6 +1471,9 @@ TRANSLATIONS["ja"].update({
         "Naver Plus メンバーシップまたはチートキーを購読しているアカウントの "
         "有効な NID_AUT と NID_SES の Cookie 値か確認してください。"
     ),
+    "record.native_active": "Rustで配信状況を確認します。",
+    "record.native_fallback": "Rustでの状況確認を利用できないため、Pythonに切り替えます。",
+    "record.native_request_error": "ネットワークまたは応答のエラー",
     "record.http_live_info_error": "{channel_name} のライブ情報取得中に HTTP エラーが発生しました: {error}",
     "record.live_info_failed": "{channel_name} のライブ情報を取得できませんでした: {error}",
     "record.filename_too_long": "ファイル名 '{filename}' が長すぎます。'{shortened}' に短縮します。",
@@ -1974,6 +1989,12 @@ _CI_TEXT = {
     "test_failed": (
         "녹화 테스트 실행에 실패했습니다: {category}", "Recording test execution failed: {category}",
         "录制测试执行失败：{category}", "錄製測試執行失敗：{category}", "録画テストの実行に失敗しました: {category}"),
+    "native_failed": (
+        "Rust 필수 검사에 실패했습니다. native-watch-summary.json과 녹화 로그를 확인하세요.",
+        "Required Rust validation failed. Check native-watch-summary.json and the recorder log.",
+        "Rust 必需检查失败。请检查 native-watch-summary.json 和录制日志。",
+        "Rust 必要檢查失敗。請檢查 native-watch-summary.json 和錄製日誌。",
+        "Rustの必須検証に失敗しました。native-watch-summary.jsonと録画ログを確認してください。"),
     "windows_install_failed": (
         "Windows FFmpeg 설치 검증에 실패했습니다: {stage}", "Windows FFmpeg installation verification failed: {stage}",
         "Windows FFmpeg 安装验证失败：{stage}", "Windows FFmpeg 安裝驗證失敗：{stage}", "Windows FFmpeg のインストール検証に失敗しました: {stage}"),
@@ -1982,6 +2003,140 @@ _CI_TEXT = {
 for _key, _texts in _CI_TEXT.items():
     for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
         TRANSLATIONS[_language]["ci." + _key] = _text
+
+
+_RUST_INSTALL_TEXT = {
+    "intro": (
+        "Rust는 선택 기능입니다. 사용을 선택하면 필요한 Rust와 컴파일 도구를 내려받아 설치하고 기능을 빌드합니다. 관리자 권한이나 운영체제의 설치 승인이 필요할 수 있습니다.",
+        "Rust is optional. Enabling it downloads any required Rust/compiler tools and builds the helper. Administrator permission or an operating-system installation confirmation may be needed.",
+        "Rust 是可选功能。启用后会下载并安装所需的 Rust 和编译工具，然后构建助手程序。可能需要管理员权限或操作系统的安装确认。",
+        "Rust 是選用功能。啟用後會下載並安裝所需的 Rust 與編譯工具，再建置輔助程式。可能需要管理員權限或作業系統的安裝確認。",
+        "Rustは任意の機能です。有効にすると必要なRustとコンパイルツールをダウンロード・インストールし、補助プログラムをビルドします。管理者権限やOSでのインストール確認が必要な場合があります。",
+    ),
+    "prompt": (
+        "Rust 기능: 1=사용(자동 설치·빌드), 2=Python만 사용 [기본값: 2]: ",
+        "Rust features: 1=enable (automatic setup/build), 2=Python only [default: 2]: ",
+        "Rust 功能：1=启用（自动安装和构建），2=仅使用 Python [默认：2]：",
+        "Rust 功能：1=啟用（自動安裝與建置），2=僅使用 Python [預設：2]：",
+        "Rust機能: 1=有効（自動インストール・ビルド）、2=Pythonのみ [既定値: 2]: ",
+    ),
+    "installing": (
+        "Rust 도구와 빌드 환경을 확인하고 필요한 항목을 설치합니다.",
+        "Checking Rust and the build environment, and installing missing components.",
+        "正在检查 Rust 和构建环境，并安装缺少的组件。",
+        "正在檢查 Rust 與建置環境，並安裝缺少的元件。",
+        "Rustとビルド環境を確認し、不足しているコンポーネントをインストールします。",
+    ),
+    "command": (
+        "실행: {command}", "Running: {command}", "执行：{command}",
+        "執行：{command}", "実行: {command}",
+    ),
+    "manual": (
+        "수동 설치 안내: {url}\n빌드가 요구하는 버전의 Rust와 운영체제의 컴파일 도구를 준비한 뒤 다음 명령을 실행하세요.\n{command}\n빌드된 native/target/release/chzzk-native(Windows는 .exe)를 native/bin에 복사해 기존 실행 파일을 교체한 뒤, native/.disabled를 삭제하면 Rust 기능이 켜집니다.",
+        "Manual installation: {url}\nInstall or update Rust to the version required by the build, together with your operating system's compiler tools, then run:\n{command}\nCopy the built native/target/release/chzzk-native (.exe on Windows) into native/bin, replacing any old executable, then remove native/.disabled to enable Rust features.",
+        "手动安装指南：{url}\n准备构建所需版本的 Rust 和操作系统的编译工具，然后运行：\n{command}\n将构建的 native/target/release/chzzk-native（Windows 为 .exe）复制到 native/bin 并替换旧文件，然后删除 native/.disabled 以启用 Rust 功能。",
+        "手動安裝指南：{url}\n準備建置所需版本的 Rust 與作業系統的編譯工具後，執行：\n{command}\n將建置的 native/target/release/chzzk-native（Windows 為 .exe）複製到 native/bin 並取代舊檔案，再刪除 native/.disabled 即可啟用 Rust 功能。",
+        "手動インストール: {url}\nビルドに必要なバージョンのRustとOSに対応するコンパイルツールを用意してから、次を実行してください。\n{command}\nビルドしたnative/target/release/chzzk-native（Windowsでは.exe）をnative/binにコピーして既存の実行ファイルを置き換え、native/.disabledを削除するとRust機能が有効になります。",
+    ),
+    "failed": (
+        "Rust 기능 설치를 완료하지 못했습니다. Python으로 계속합니다: {error}",
+        "Rust setup could not finish. Continuing with Python: {error}",
+        "Rust 功能安装未能完成，将继续使用 Python：{error}",
+        "Rust 功能安裝未能完成，將繼續使用 Python：{error}",
+        "Rust機能のセットアップを完了できませんでした。Pythonで続行します: {error}",
+    ),
+    "ready": (
+        "Rust 기능의 빌드와 실행 확인을 완료했습니다.",
+        "The Rust helper was built and its startup check passed.",
+        "Rust 助手程序已构建并通过启动检查。",
+        "Rust 輔助程式已建置並通過啟動檢查。",
+        "Rust補助プログラムのビルドと起動確認が完了しました。",
+    ),
+    "disabled": (
+        "Python만 사용하도록 설정했습니다. 설치 프로그램을 다시 실행하면 Rust 선택을 바꿀 수 있습니다.",
+        "Python-only mode is selected. Run the installer again to change the Rust selection.",
+        "已选择仅使用 Python。重新运行安装程序可更改 Rust 选项。",
+        "已選擇僅使用 Python。重新執行安裝程式可變更 Rust 選項。",
+        "Pythonのみの使用を選択しました。インストーラーを再実行するとRustの選択を変更できます。",
+    ),
+    "mac_wait": (
+        "macOS의 명령줄 도구 설치 창에서 설치를 완료한 뒤 Enter를 누르세요: ",
+        "Complete installation in the macOS Command Line Tools window, then press Enter: ",
+        "请在 macOS 命令行工具窗口中完成安装，然后按 Enter：",
+        "請在 macOS 命令列工具視窗中完成安裝，然後按 Enter：",
+        "macOSのCommand Line Toolsウィンドウでインストールを完了してからEnterを押してください: ",
+    ),
+    "windows_uac": (
+        "Microsoft C++ 빌드 도구를 설치합니다. Windows의 관리자 승인 창을 확인하세요.",
+        "Installing Microsoft C++ Build Tools. Respond to the Windows administrator approval prompt.",
+        "正在安装 Microsoft C++ 生成工具，请确认 Windows 管理员授权提示。",
+        "正在安裝 Microsoft C++ 建置工具，請確認 Windows 管理員授權提示。",
+        "Microsoft C++ Build Toolsをインストールします。Windowsの管理者承認画面を確認してください。",
+    ),
+    "unsupported": (
+        "이 환경에서는 Rust 자동 설치를 지원하지 않습니다: {platform}",
+        "Automatic Rust setup is not supported on this platform: {platform}",
+        "此环境不支持自动安装 Rust：{platform}",
+        "此環境不支援自動安裝 Rust：{platform}",
+        "この環境ではRustの自動セットアップに対応していません: {platform}",
+    ),
+}
+
+_RUST_INSTALL_TEXT.update({
+    "error_checksum": (
+        "공식 Rust 설치 파일의 체크섬을 검증하지 못했습니다.",
+        "The official Rust installer's checksum could not be verified.",
+        "无法验证官方 Rust 安装程序的校验和。",
+        "無法驗證官方 Rust 安裝程式的校驗碼。",
+        "公式Rustインストーラーのチェックサムを検証できませんでした。",
+    ),
+    "error_download": (
+        "설치 파일 다운로드가 허용 크기를 초과했습니다.",
+        "The installer download exceeded the allowed size.",
+        "安装文件下载超过了允许的大小。",
+        "安裝檔下載超過允許的大小。",
+        "インストーラーのダウンロードが許容サイズを超えました。",
+    ),
+    "error_compiler": (
+        "운영체제의 C/C++ 컴파일러 또는 SDK 설치를 확인하지 못했습니다.",
+        "The operating system's C/C++ compiler or SDK was not detected.",
+        "未检测到操作系统的 C/C++ 编译器或 SDK。",
+        "未偵測到作業系統的 C/C++ 編譯器或 SDK。",
+        "OSのC/C++コンパイラーまたはSDKを確認できませんでした。",
+    ),
+    "error_admin": (
+        "빌드 도구 자동 설치에 필요한 sudo를 찾지 못했습니다.",
+        "sudo is required for automatic build-tool installation but was not found.",
+        "未找到自动安装构建工具所需的 sudo。",
+        "找不到自動安裝建置工具所需的 sudo。",
+        "ビルドツールの自動インストールに必要なsudoが見つかりませんでした。",
+    ),
+    "error_tools": (
+        "사용 가능한 Rust 컴파일러와 Cargo를 찾지 못했습니다.",
+        "A usable Rust compiler and Cargo were not found.",
+        "未找到可用的 Rust 编译器和 Cargo。",
+        "找不到可用的 Rust 編譯器與 Cargo。",
+        "使用可能なRustコンパイラーとCargoが見つかりませんでした。",
+    ),
+    "error_probe": (
+        "빌드된 Rust 도우미의 실행·응답 검증에 실패했습니다.",
+        "The built Rust helper failed its startup or response check.",
+        "构建的 Rust 助手程序未通过启动或响应检查。",
+        "建置的 Rust 輔助程式未通過啟動或回應檢查。",
+        "ビルドしたRust補助プログラムの起動・応答検証に失敗しました。",
+    ),
+    "error_build": (
+        "빌드 결과에서 Rust 도우미 실행 파일을 찾지 못했습니다.",
+        "The Rust helper executable was not found in the build output.",
+        "未在构建结果中找到 Rust 助手可执行文件。",
+        "在建置結果中找不到 Rust 輔助執行檔。",
+        "ビルド結果にRust補助実行ファイルが見つかりませんでした。",
+    ),
+})
+
+for _key, _texts in _RUST_INSTALL_TEXT.items():
+    for _language, _text in zip(SUPPORTED_LANGUAGES, _texts, strict=True):
+        TRANSLATIONS[_language]["rust_install." + _key] = _text
 
 
 _RECORDING_STOP_TEXT = {

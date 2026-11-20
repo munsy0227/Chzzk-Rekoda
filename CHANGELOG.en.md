@@ -4,6 +4,38 @@
 
 Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under its date. This history starts with the changes included in the current dev → main merge. Detailed evidence is in `.ai/worklogs/`.
 
+## 2026-11-21
+
+### Merged the Rust feature branch into main
+
+Merged the optional Rust feature branch into `main`. All six Linux, Windows, and macOS regression jobs passed on the feature tip. See the worklog for the validation scope.
+
+## 2026-11-15
+
+### Isolated Windows signature-check module paths
+
+Fixed signature-command loading when PowerShell 7 launches Windows PowerShell through Python and passes incompatible module paths. Only the child process rebuilds its module path and explicitly loads its own built-in security module. The parent environment, execution policy, and signature/publisher requirements remain unchanged; actual Windows CI will verify the fix.
+
+### Compatible Windows signature command and installer checks
+
+Use the compatible FilePath parameter with wildcard escaping for signature verification. Check Korean, Chinese, Japanese, space, bracket, and quote paths, and run Windows/macOS installer checks separately without product dependencies or a Rust build. Keep valid-signature and Microsoft-publisher requirements unchanged.
+
+### Verify the actual Windows installer signature
+
+Align the Windows CI signature fixture with the official Microsoft Build Tools bootstrapper used by automatic setup. Verify both the download and a copy in a Unicode/space/quote path, and check rejection of an unsigned file. The installer is not executed.
+
+### Windows build-tool detection compatibility
+
+Handle spaces in Visual Studio paths using Windows command-line quoting and make installer test paths portable. Verify Microsoft installer signatures with an individual PowerShell command without changing execution policy, passing the file path separately from code. Administrator approval and full installation of a new SDK still require separate environment testing.
+
+### Opt-in Rust installation
+
+The first-time installer can optionally install the Rust helper. It verifies the Rustup installer SHA-256 on x86_64/aarch64 Windows and macOS. Ubuntu/Debian use `apt-get install rustc cargo`, Fedora uses `dnf install rust cargo`, and Arch Linux uses `pacman -S rust` (including Cargo); already installed Rust is reused. If a Linux package is too old or the build fails, update with distribution tools or use the manual guide; Linux does not automatically fall back to Rustup. Python is the default, and declining or failing the install continues with Python. Other operating systems and architectures use the manual setup guide. Rust installation has not been verified on each operating system.
+
+### Optional Rust helper and long-run check guide
+
+Connect an optional Rust helper for live-info HTTP lookups and supported continuity-report summaries at 256 KiB or larger, with Python fallback when the helper is unavailable or the report format is unsupported. Python continues to handle recording, Streamlink/FFmpeg, DoH, and polling schedules. The manual Actions checks document Python/Rust selection, Linux/Windows/macOS runners, long recordings, and a separate once-per-minute live-status query; artifacts include Rust build/test logs and summaries. Check each Actions run's artifacts for actual platform soak results.
+
 ## 2026-11-11
 
 ### Reject whitespace at the edges of output folder names

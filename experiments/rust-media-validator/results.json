@@ -1,0 +1,133 @@
+{
+  "metadata": {
+    "python": "3.12.15",
+    "platform": "Linux-7.3.4-arch1-1-x86_64-with-glibc2.44",
+    "cpu": "x86_64",
+    "source_sha256": "da3c97aeef6055c0546feacb9d5728202cea64c77a482ebbea05540df04b628b",
+    "seed": 20261115,
+    "compared_inputs": 75287,
+    "accepted_inputs": 9119
+  },
+  "benchmarks": [
+    {
+      "name": "ts-188",
+      "bytes": 188,
+      "is_map": false,
+      "count_per_round": 421941,
+      "rounds": 5,
+      "python_ns_per_call": 326.8,
+      "rust_ns_per_call": 72.4,
+      "speedup": 4.513
+    },
+    {
+      "name": "ts-64k",
+      "bytes": 65612,
+      "is_map": false,
+      "count_per_round": 25252,
+      "rounds": 5,
+      "python_ns_per_call": 12877.1,
+      "rust_ns_per_call": 153.2,
+      "speedup": 84.074
+    },
+    {
+      "name": "ts-1m",
+      "bytes": 1048664,
+      "is_map": false,
+      "count_per_round": 1665,
+      "rounds": 5,
+      "python_ns_per_call": 204457.1,
+      "rust_ns_per_call": 2849.3,
+      "speedup": 71.756
+    },
+    {
+      "name": "ts-8m",
+      "bytes": 8388748,
+      "is_map": false,
+      "count_per_round": 200,
+      "rounds": 5,
+      "python_ns_per_call": 1617660.3,
+      "rust_ns_per_call": 37823.7,
+      "speedup": 42.768
+    },
+    {
+      "name": "fmp4-init",
+      "bytes": 272,
+      "is_map": true,
+      "count_per_round": 181159,
+      "rounds": 5,
+      "python_ns_per_call": 610.4,
+      "rust_ns_per_call": 76.9,
+      "speedup": 7.933
+    },
+    {
+      "name": "fmp4-media-1m",
+      "bytes": 1048592,
+      "is_map": false,
+      "count_per_round": 336701,
+      "rounds": 5,
+      "python_ns_per_call": 626.8,
+      "rust_ns_per_call": 75.3,
+      "speedup": 8.323
+    },
+    {
+      "name": "fmp4-many-small",
+      "bytes": 8208,
+      "is_map": false,
+      "count_per_round": 3134,
+      "rounds": 5,
+      "python_ns_per_call": 105046.1,
+      "rust_ns_per_call": 861.3,
+      "speedup": 121.96
+    },
+    {
+      "name": "fixture:init.mp4",
+      "bytes": 1334,
+      "is_map": true,
+      "count_per_round": 336701,
+      "rounds": 5,
+      "python_ns_per_call": 615.5,
+      "rust_ns_per_call": 78.0,
+      "speedup": 7.887
+    },
+    {
+      "name": "fixture:sample.ts",
+      "bytes": 190256,
+      "is_map": false,
+      "count_per_round": 9168,
+      "rounds": 5,
+      "python_ns_per_call": 36950.9,
+      "rust_ns_per_call": 519.3,
+      "speedup": 71.154
+    },
+    {
+      "name": "fixture:segment-0.m4s",
+      "bytes": 53381,
+      "is_map": false,
+      "count_per_round": 169204,
+      "rounds": 5,
+      "python_ns_per_call": 1239.6,
+      "rust_ns_per_call": 82.1,
+      "speedup": 15.107
+    },
+    {
+      "name": "fixture:segment-1.m4s",
+      "bytes": 53624,
+      "is_map": false,
+      "count_per_round": 205761,
+      "rounds": 5,
+      "python_ns_per_call": 1236.1,
+      "rust_ns_per_call": 85.2,
+      "speedup": 14.504
+    },
+    {
+      "name": "fixture:segment-2.m4s",
+      "bytes": 56932,
+      "is_map": false,
+      "count_per_round": 187265,
+      "rounds": 5,
+      "python_ns_per_call": 1231.4,
+      "rust_ns_per_call": 81.9,
+      "speedup": 15.037
+    }
+  ]
+}

@@ -228,6 +228,21 @@ KDE Wayland で Fcitx 5 を使う場合は、**システム設定 → 仮想キ�
 
 ---
 
+## 🦀 オプションの Rust ヘルパー
+
+初回インストール時に Rust ヘルパーの導入を選択できます。x86_64/aarch64 の Windows と macOS では、Rustup インストーラーの SHA-256 を検証してツールチェーンとビルド依存関係を導入し、ネイティブバイナリをビルドします。Ubuntu/Debian は `apt-get install rustc cargo`、Fedora は `dnf install rust cargo`、Arch Linux は `pacman -S rust`（Cargo を含む）で導入し、既存の Rust は再利用します。管理者権限、UAC、または macOS Command Line Tools の確認が必要になる場合があります。インストールメニューで `1` は Rust、`2` は Python を選び、既定値は `2` です。選択は `native/.disabled` に保存され、拒否または導入失敗時は Python でインストールを続けます。Linux ディストリビューションの Rust が古すぎる場合やビルドに失敗した場合は、ディストリビューションのツールで更新するか、[手動セットアップ手順](native/README.md)に従ってください。Linux では Rustup へ自動フォールバックしません。選択を変更または再試行するには `uv run python scripts/install_rust.py --language ja` を実行してください。成功するとバイナリは `native/bin` にインストールされます。
+
+その他の OS やアーキテクチャでは Rust を自動実行しません。[手動セットアップ手順](native/README.md)を参照してください。手動ビルド後は、新しいバイナリを `native/bin` の既存ファイルに上書きコピーしてから `native/.disabled` を削除してください。そうしないと古い公開済みバイナリが優先して選択される場合があります。`native/.disabled` がなければ、既存の手動ビルド済みヘルパーは引き続き自動検出されます。
+
+Rust ヘルパーは任意機能です。存在しなくても Python のみで動作します。stable Rust と Cargo を用意し、リポジトリのルートでビルドと確認を行います。
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+プログラムは `native/target/release/chzzk-native`（Windows では `chzzk-native.exe`）または `native/bin` 内の実行ファイルを探します。ヘルパーが起動して配信状況の照会を処理すると、ログに `Rustで配信状況を確認します。` と表示されます。起動時にヘルパーがない場合、このログは表示されず Python が使われます。起動後にヘルパーを利用できなくなると、ログに `Rustでの状況確認を利用できないため、Pythonに切り替えます。` と表示され、Python に切り替わります。DoH を有効にすると、配信状況の照会も既存の Python 経路を使います。Rust が処理するのはライブ情報の HTTP 照会と、256 KiB 以上の連続性レポートのうち対応する要約だけです。ポーリング、認証、録画、Streamlink/FFmpeg、DoH の実装は引き続き Python が担当します。要約時にヘルパーがない、タイムアウト・エラー・未対応データがある場合は Python に切り替わります。3xx リダイレクトでは Rust ヘルパーを無効化し、Python の既存リクエスト経路で処理します。通常の HTTP 4xx/5xx またはネットワークエラーは、同じポーリングで Python から再試行しません。手動 Actions 長時間検査は [native ヘルパーの案内](native/README.md)をご覧ください。
+
 <a id="faq"></a>
 
 ## よくある質問（FAQ）

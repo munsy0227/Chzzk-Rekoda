@@ -1,0 +1,539 @@
+{
+  "schema_version": 1,
+  "scope": "whole NDJSON input -> summary JSON, including Rust validation; Python oracle is continuity_report.summarize",
+  "units": {
+    "wall": "nanoseconds",
+    "cpu": "seconds for child process; algorithm_cpu_ns when available",
+    "rss": {
+      "process_self_vm_hwm_kib": "KiB; /proc/self/status VmHWM after algorithm",
+      "process_self_vm_rss_kib": "KiB; /proc/self/status VmRSS after algorithm",
+      "wait4_child_ru_maxrss_kib_raw": "KiB; raw wait4 ru_maxrss, not used for candidate comparison"
+    }
+  },
+  "datasets": [
+    {
+      "dataset": "recorded",
+      "input_bytes": 18735,
+      "rounds": 5,
+      "samples": {
+        "python": [
+          {
+            "process_wall_ns": 19769010,
+            "process_cpu_seconds": 0.019399,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15124,
+            "process_self_vm_rss_kib": 15124,
+            "algorithm_wall_ns": 1003326,
+            "algorithm_cpu_ns": 998280,
+            "startup_and_output_wall_ns_estimate": 18765684,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 19747791,
+            "process_cpu_seconds": 0.019011,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15056,
+            "process_self_vm_rss_kib": 15056,
+            "algorithm_wall_ns": 955410,
+            "algorithm_cpu_ns": 950070,
+            "startup_and_output_wall_ns_estimate": 18792381,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 21195939,
+            "process_cpu_seconds": 0.020463,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15108,
+            "process_self_vm_rss_kib": 15108,
+            "algorithm_wall_ns": 1059861,
+            "algorithm_cpu_ns": 1055860,
+            "startup_and_output_wall_ns_estimate": 20136078,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 19126554,
+            "process_cpu_seconds": 0.018654999999999998,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15076,
+            "process_self_vm_rss_kib": 15076,
+            "algorithm_wall_ns": 982628,
+            "algorithm_cpu_ns": 941040,
+            "startup_and_output_wall_ns_estimate": 18143926,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 23366916,
+            "process_cpu_seconds": 0.023117999999999996,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15084,
+            "process_self_vm_rss_kib": 15084,
+            "algorithm_wall_ns": 1248025,
+            "algorithm_cpu_ns": 1243950,
+            "startup_and_output_wall_ns_estimate": 22118891,
+            "input_bytes": 18735,
+            "input_rows": 87
+          }
+        ],
+        "rust": [
+          {
+            "process_wall_ns": 1092118,
+            "process_cpu_seconds": 0.000979,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2604,
+            "process_self_vm_rss_kib": 2604,
+            "algorithm_wall_ns": 155717,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 936401,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 1130325,
+            "process_cpu_seconds": 0.001019,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2576,
+            "process_self_vm_rss_kib": 2576,
+            "algorithm_wall_ns": 195333,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 934992,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 956979,
+            "process_cpu_seconds": 0.000861,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2576,
+            "process_self_vm_rss_kib": 2576,
+            "algorithm_wall_ns": 157107,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 799872,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 832390,
+            "process_cpu_seconds": 0.000758,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2604,
+            "process_self_vm_rss_kib": 2604,
+            "algorithm_wall_ns": 149857,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 682533,
+            "input_bytes": 18735,
+            "input_rows": 87
+          },
+          {
+            "process_wall_ns": 1046453,
+            "process_cpu_seconds": 0.0009419999999999999,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2568,
+            "process_self_vm_rss_kib": 2568,
+            "algorithm_wall_ns": 156166,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 890287,
+            "input_bytes": 18735,
+            "input_rows": 87
+          }
+        ]
+      }
+    },
+    {
+      "dataset": "synthetic-1000",
+      "input_bytes": 186134,
+      "rounds": 5,
+      "samples": {
+        "python": [
+          {
+            "process_wall_ns": 27872768,
+            "process_cpu_seconds": 0.027655999999999997,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15028,
+            "process_self_vm_rss_kib": 15028,
+            "algorithm_wall_ns": 9639740,
+            "algorithm_cpu_ns": 9601340,
+            "startup_and_output_wall_ns_estimate": 18233028,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 30055216,
+            "process_cpu_seconds": 0.029448,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15076,
+            "process_self_vm_rss_kib": 15076,
+            "algorithm_wall_ns": 9754871,
+            "algorithm_cpu_ns": 9568240,
+            "startup_and_output_wall_ns_estimate": 20300345,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 29746132,
+            "process_cpu_seconds": 0.029334,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15088,
+            "process_self_vm_rss_kib": 15088,
+            "algorithm_wall_ns": 10139518,
+            "algorithm_cpu_ns": 10059420,
+            "startup_and_output_wall_ns_estimate": 19606614,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 30191043,
+            "process_cpu_seconds": 0.029065999999999998,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15132,
+            "process_self_vm_rss_kib": 15132,
+            "algorithm_wall_ns": 9843463,
+            "algorithm_cpu_ns": 9511670,
+            "startup_and_output_wall_ns_estimate": 20347580,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 33525444,
+            "process_cpu_seconds": 0.033153,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15132,
+            "process_self_vm_rss_kib": 15132,
+            "algorithm_wall_ns": 10227661,
+            "algorithm_cpu_ns": 10179780,
+            "startup_and_output_wall_ns_estimate": 23297783,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          }
+        ],
+        "rust": [
+          {
+            "process_wall_ns": 2337873,
+            "process_cpu_seconds": 0.002224,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2772,
+            "process_self_vm_rss_kib": 2772,
+            "algorithm_wall_ns": 1412021,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 925852,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 2438055,
+            "process_cpu_seconds": 0.002339,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2748,
+            "process_self_vm_rss_kib": 2748,
+            "algorithm_wall_ns": 1548490,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 889565,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 3089440,
+            "process_cpu_seconds": 0.002829,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2776,
+            "process_self_vm_rss_kib": 2776,
+            "algorithm_wall_ns": 1992882,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1096558,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 2248702,
+            "process_cpu_seconds": 0.0021449999999999998,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2732,
+            "process_self_vm_rss_kib": 2732,
+            "algorithm_wall_ns": 1400972,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 847730,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          },
+          {
+            "process_wall_ns": 2921705,
+            "process_cpu_seconds": 0.002623,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 2728,
+            "process_self_vm_rss_kib": 2728,
+            "algorithm_wall_ns": 1765352,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1156353,
+            "input_bytes": 186134,
+            "input_rows": 1010
+          }
+        ]
+      }
+    },
+    {
+      "dataset": "synthetic-10000",
+      "input_bytes": 1851134,
+      "rounds": 5,
+      "samples": {
+        "python": [
+          {
+            "process_wall_ns": 118059572,
+            "process_cpu_seconds": 0.114467,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15124,
+            "process_self_vm_rss_kib": 15124,
+            "algorithm_wall_ns": 94689606,
+            "algorithm_cpu_ns": 91822630,
+            "startup_and_output_wall_ns_estimate": 23369966,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 137327475,
+            "process_cpu_seconds": 0.13276899999999997,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15092,
+            "process_self_vm_rss_kib": 15092,
+            "algorithm_wall_ns": 116126873,
+            "algorithm_cpu_ns": 112447150,
+            "startup_and_output_wall_ns_estimate": 21200602,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 135735779,
+            "process_cpu_seconds": 0.130041,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15104,
+            "process_self_vm_rss_kib": 15104,
+            "algorithm_wall_ns": 110028274,
+            "algorithm_cpu_ns": 105677870,
+            "startup_and_output_wall_ns_estimate": 25707505,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 118461856,
+            "process_cpu_seconds": 0.115842,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15088,
+            "process_self_vm_rss_kib": 15088,
+            "algorithm_wall_ns": 97221037,
+            "algorithm_cpu_ns": 95236910,
+            "startup_and_output_wall_ns_estimate": 21240819,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 117737797,
+            "process_cpu_seconds": 0.114118,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15084,
+            "process_self_vm_rss_kib": 15084,
+            "algorithm_wall_ns": 95995511,
+            "algorithm_cpu_ns": 93061060,
+            "startup_and_output_wall_ns_estimate": 21742286,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          }
+        ],
+        "rust": [
+          {
+            "process_wall_ns": 17255491,
+            "process_cpu_seconds": 0.016701999999999998,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 4376,
+            "process_self_vm_rss_kib": 4376,
+            "algorithm_wall_ns": 15909064,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1346427,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 15726331,
+            "process_cpu_seconds": 0.015059,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 4356,
+            "process_self_vm_rss_kib": 4356,
+            "algorithm_wall_ns": 14546320,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1180011,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 15718192,
+            "process_cpu_seconds": 0.015231999999999999,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 4356,
+            "process_self_vm_rss_kib": 4356,
+            "algorithm_wall_ns": 14389144,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1329048,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 15434276,
+            "process_cpu_seconds": 0.014838,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 4340,
+            "process_self_vm_rss_kib": 4340,
+            "algorithm_wall_ns": 14206909,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1227367,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          },
+          {
+            "process_wall_ns": 17942685,
+            "process_cpu_seconds": 0.017712,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 4364,
+            "process_self_vm_rss_kib": 4364,
+            "algorithm_wall_ns": 16645054,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1297631,
+            "input_bytes": 1851134,
+            "input_rows": 10010
+          }
+        ]
+      }
+    },
+    {
+      "dataset": "synthetic-100000",
+      "input_bytes": 18501134,
+      "rounds": 5,
+      "samples": {
+        "python": [
+          {
+            "process_wall_ns": 984266094,
+            "process_cpu_seconds": 0.961146,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15036,
+            "process_self_vm_rss_kib": 15036,
+            "algorithm_wall_ns": 962255860,
+            "algorithm_cpu_ns": 939762330,
+            "startup_and_output_wall_ns_estimate": 22010234,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 955365170,
+            "process_cpu_seconds": 0.9316969999999999,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15124,
+            "process_self_vm_rss_kib": 15124,
+            "algorithm_wall_ns": 934097769,
+            "algorithm_cpu_ns": 910728900,
+            "startup_and_output_wall_ns_estimate": 21267401,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 925096594,
+            "process_cpu_seconds": 0.905158,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15104,
+            "process_self_vm_rss_kib": 15104,
+            "algorithm_wall_ns": 904465987,
+            "algorithm_cpu_ns": 885315460,
+            "startup_and_output_wall_ns_estimate": 20630607,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 926718451,
+            "process_cpu_seconds": 0.914866,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15032,
+            "process_self_vm_rss_kib": 15032,
+            "algorithm_wall_ns": 906322470,
+            "algorithm_cpu_ns": 895172600,
+            "startup_and_output_wall_ns_estimate": 20395981,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 918322788,
+            "process_cpu_seconds": 0.899246,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 15080,
+            "process_self_vm_rss_kib": 15080,
+            "algorithm_wall_ns": 898125689,
+            "algorithm_cpu_ns": 879724470,
+            "startup_and_output_wall_ns_estimate": 20197099,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          }
+        ],
+        "rust": [
+          {
+            "process_wall_ns": 138277947,
+            "process_cpu_seconds": 0.132226,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 20620,
+            "process_self_vm_rss_kib": 20620,
+            "algorithm_wall_ns": 137002434,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1275513,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 131766011,
+            "process_cpu_seconds": 0.12911,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 20648,
+            "process_self_vm_rss_kib": 20648,
+            "algorithm_wall_ns": 130446312,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1319699,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 136771515,
+            "process_cpu_seconds": 0.13297299999999998,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 20640,
+            "process_self_vm_rss_kib": 20640,
+            "algorithm_wall_ns": 135525529,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1245986,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 135860041,
+            "process_cpu_seconds": 0.131993,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 20644,
+            "process_self_vm_rss_kib": 20644,
+            "algorithm_wall_ns": 134743384,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1116657,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          },
+          {
+            "process_wall_ns": 139801705,
+            "process_cpu_seconds": 0.137427,
+            "wait4_child_ru_maxrss_kib_raw": 58952,
+            "process_self_vm_hwm_kib": 20604,
+            "process_self_vm_rss_kib": 20604,
+            "algorithm_wall_ns": 138659510,
+            "algorithm_cpu_ns": null,
+            "startup_and_output_wall_ns_estimate": 1142195,
+            "input_bytes": 18501134,
+            "input_rows": 100010
+          }
+        ]
+      }
+    }
+  ]
+}

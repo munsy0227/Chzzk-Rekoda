@@ -1,6 +1,7 @@
 """Portable manual Actions recording tests and the legacy monitor entrypoint."""
 
 import argparse
+import asyncio
 import contextlib
 import json
 import os
@@ -14,13 +15,11 @@ import threading
 import time
 from pathlib import Path
 
-
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_DIR))
 
-from continuity_report import summarize  # noqa: E402
+from continuity_report import summarize_file  # noqa: E402
 from i18n import SUPPORTED_LANGUAGES, translate  # noqa: E402
-
 
 DEFAULT_CHANNEL = "64a90ba95d1f9feb0a798a20bbf0f40c"
 MEDIA_SUFFIXES = {".ts", ".mkv", ".webm"}
@@ -145,11 +144,7 @@ def drain_events(stream):
 
 
 def save_summary(report, destination):
-    try:
-        with report.open(encoding="utf-8") as source:
-            result = summarize(source)
-    except (OSError, UnicodeError):
-        result = summarize([])
+    result = summarize_file(report)
     destination.write_text(
         json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )
@@ -161,9 +156,72 @@ def save_summary(report, destination):
     return result["passed"]
 
 
+class NativeWatch:
+    """Exercise one persistent native client throughout a manual recording test."""
+
+    def __init__(self, channel, destination, interval=60):
+        self.channel = channel
+        self.destination = Path(destination)
+        self.interval = interval
+        self.stop = threading.Event()
+        self.ready = threading.Event()
+        self.result = dict(version=1, started=False, requests=0, successes=0,
+                           http_errors=0, network_errors=0, invalid_response_errors=0,
+                           helper_failures=0, error_category=None)
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    async def watch(self):
+        from chzzk_record import get_auth_headers
+        from native_backend import NativeLiveClient, NativeRequestError
+
+        async with NativeLiveClient() as client:
+            self.result["started"] = client.available
+            self.ready.set()
+            if not client.available:
+                self.result["helper_failures"] += 1
+                return
+            while not self.stop.is_set():
+                self.result["requests"] += 1
+                try:
+                    data = await client.live(self.channel, get_auth_headers({}))
+                except NativeRequestError as failure:
+                    self.result[failure.category + "_errors"] += 1
+                else:
+                    if data is None:
+                        self.result["helper_failures"] += 1
+                        break
+                    self.result["successes"] += 1
+                await asyncio.to_thread(self.stop.wait, self.interval)
+
+    def run(self):
+        try:
+            asyncio.run(self.watch())
+        except Exception as failure:  # noqa: BLE001 - retain evidence if the worker crashes.
+            self.result["helper_failures"] += 1
+            self.result["error_category"] = type(failure).__name__
+        finally:
+            self.ready.set()
+
+    def start(self):
+        self.thread.start()
+        return self.ready.wait(10) and self.result["started"]
+
+    def close(self):
+        self.stop.set()
+        self.thread.join(timeout=45)
+        result = dict(self.result)
+        if self.thread.is_alive():
+            result["helper_failures"] += 1
+        result["passed"] = bool(result["started"] and result["successes"]
+                                and not result["helper_failures"])
+        self.destination.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+        return result["passed"]
+
+
 def monitor_recording(duration_seconds, stall_seconds, output_dir, config_path,
                       *, poll_interval=15, janitor_interval=60,
-                      stop_timeout=120, early_exit_tolerance=60):
+                      stop_timeout=120, early_exit_tolerance=60,
+                      require_native=False, native_channel=None):
     output_dir = Path(output_dir).resolve()
     config_path = Path(config_path).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -172,10 +230,16 @@ def monitor_recording(duration_seconds, stall_seconds, output_dir, config_path,
     log_path = config_path.parent / "log.log"
     started = time.monotonic()
     next_janitor = started
-    process = consumer = None
-    stalled = forced = interrupted = False
+    process = consumer = native_watch = None
+    stalled = forced = interrupted = native_failed = False
     continuity_passed = False
+    native_passed = not require_native
     try:
+        if require_native:
+            native_watch = NativeWatch(channel_id(native_channel or ""),
+                                       output_dir / "native-watch-summary.json")
+            if not native_watch.start():
+                raise TestFailure(message("native_failed"))
         kwargs = {"start_new_session": True} if os.name != "nt" else {
             "creationflags": subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW,
         }
@@ -188,6 +252,10 @@ def monitor_recording(duration_seconds, stall_seconds, output_dir, config_path,
         consumer.start()
         while process.poll() is None:
             now = time.monotonic()
+            if native_watch is not None and not native_watch.thread.is_alive():
+                error("native_failed")
+                native_failed = True
+                break
             if now - started >= duration_seconds:
                 break
             if now >= next_janitor:
@@ -214,11 +282,15 @@ def monitor_recording(duration_seconds, stall_seconds, output_dir, config_path,
                 if consumer is not None:
                     consumer.join(timeout=5)
         finally:
-            # Startup failures and forced exits must also leave a failed summary.
-            continuity_passed = save_summary(report, summary)
+            try:
+                if native_watch is not None:
+                    native_passed = native_watch.close()
+            finally:
+                # Startup failures and forced exits must also leave a failed summary.
+                continuity_passed = save_summary(report, summary)
     if interrupted:
         return 130
-    if stalled or forced:
+    if stalled or forced or native_failed:
         return 1
     if process.returncode != 0:
         error("recorder_exit", status=process.returncode)
@@ -230,6 +302,11 @@ def monitor_recording(duration_seconds, stall_seconds, output_dir, config_path,
         log = log_path.read_text(encoding="utf-8", errors="replace")
     except FileNotFoundError:
         log = ""
+    if require_native and (not native_passed
+                           or translate("en", "record.native_active") not in log
+                           or translate("en", "record.native_fallback") in log):
+        error("native_failed")
+        return 1
     if "Recording started for " not in log:
         error("never_started")
         return 1
@@ -332,10 +409,15 @@ def save_environment(root):
             }
         except OSError:
             data["linux_distribution"] = None
-    for tool in ("ffmpeg", "ffprobe"):
+    from native_backend import native_executable
+    executable = native_executable()
+    data["require_native"] = os.environ.get("REQUIRE_NATIVE") == "1"
+    data["native_executable"] = str(executable) if executable is not None else None
+    for tool in ("ffmpeg", "ffprobe", "rustc", "cargo"):
         data[tool + "_path"] = shutil.which(tool)
         try:
-            result = subprocess.run([tool, "-version"], check=True, capture_output=True,
+            option = "-version" if tool in {"ffmpeg", "ffprobe"} else "--version"
+            result = subprocess.run([tool, option], check=True, capture_output=True,
                                     text=True, encoding="utf-8", errors="replace", timeout=15)
             data[tool + "_version"] = result.stdout.splitlines()[0]
         except (OSError, subprocess.SubprocessError, IndexError):
@@ -355,7 +437,10 @@ def run_suite(kind, root):
         directory = root / ("chzzk-codec-" + codec if codec else "chzzk-long-recording")
         config_path = write_config(channel, directory, codec)
         try:
-            result = monitor_recording(duration * 60, 180, directory, config_path)
+            result = monitor_recording(
+                duration * 60, 180, directory, config_path,
+                require_native=os.environ.get("REQUIRE_NATIVE") == "1", native_channel=channel,
+            )
         finally:
             if codec and (directory / "log.log").exists():
                 shutil.copy2(directory / "log.log", root / "chzzk-codec-logs" / (codec + ".log"))
@@ -397,6 +482,8 @@ def main():
             return monitor_recording(
                 positive_integer(args.duration_minutes) * 60,
                 positive_integer(args.stall_seconds), args.output_dir, args.config,
+                require_native=os.environ.get("REQUIRE_NATIVE") == "1",
+                native_channel=os.environ.get("CHANNEL_ID", ""),
             )
         if args.command == "validate":
             test_inputs(args.kind)

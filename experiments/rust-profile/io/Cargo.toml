@@ -1,0 +1,12 @@
+[package]
+name = "rust-profile-io"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+
+[dependencies]
+crc32fast = "1"
+sha2 = "0.10"

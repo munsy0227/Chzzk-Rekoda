@@ -1646,7 +1646,8 @@ class ContinuityReportTests(unittest.TestCase):
                 scripts.mkdir()
                 shutil.copy2(root / "scripts/run_long_recording_test.sh", scripts)
                 shutil.copy2(root / "scripts/run_recording_test.py", scripts)
-                for name in ("continuity_report.py", "recording_continuity.py", "i18n.py"):
+                for name in ("continuity_report.py", "recording_continuity.py", "i18n.py",
+                             "native_backend.py", "process_utils.py"):
                     shutil.copy2(root / name, project)
                 output = project / "output"
                 output.mkdir()

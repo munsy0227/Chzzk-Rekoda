@@ -4,6 +4,38 @@
 
 날짜는 한국 시간(Asia/Seoul) 기준이며 최신 기록부터 표시합니다. 같은 날짜 아래 커밋마다 항목을 추가합니다. 최초 기록은 이번 dev → main 병합 대상부터 시작합니다. 상세 근거는 `.ai/worklogs/`에 있습니다.
 
+## 2026-11-21
+
+### Rust 기능 브랜치를 main에 병합
+
+선택형 Rust 기능 브랜치를 `main`에 병합했습니다. 병합 대상 커밋에서 Linux·Windows·macOS 회귀 검사 6개가 통과했으며, 자세한 검증 범위는 작업 기록에 남겼습니다.
+
+## 2026-11-15
+
+### Windows 서명 검사 모듈 경로 분리
+
+PowerShell 7에서 Python을 거쳐 Windows PowerShell을 실행할 때 다른 버전의 모듈 경로가 상속되어 서명 검사 명령이 로드되지 않는 문제를 수정했습니다. 자식 프로세스에서만 모듈 경로를 재구성하고 해당 PowerShell의 기본 보안 모듈을 명시적으로 사용합니다. 부모 환경과 실행 정책, 서명·게시자 검증 조건은 유지하며 실제 Windows CI에서 재확인합니다.
+
+### Windows 서명 명령과 설치 전용 검사
+
+서명 확인에 호환되는 FilePath 인수와 와일드카드 이스케이프를 적용했습니다. 한글·중국어·일본어·공백·대괄호·따옴표 경로를 검사하며, Windows/macOS 설치 검사는 제품 의존성이나 Rust 빌드 없이 별도 실행합니다. 서명 상태와 Microsoft 게시자 검증은 유지합니다.
+
+### 실제 Windows 설치 파일의 서명 검사
+
+Windows CI의 서명 검사 대상을 자동 설치와 동일한 Microsoft 공식 Build Tools 부트스트래퍼로 맞췄습니다. 다운로드한 원본과 한글·공백·따옴표 경로의 복사본을 확인하고 서명 없는 파일은 거절하는지 검사합니다. 설치 파일은 실행하지 않습니다.
+
+### Windows 빌드 도구 탐지 호환성
+
+Visual Studio 경로의 공백을 Windows 명령줄 규칙에 맞게 처리하고, 운영체제별 경로 표현을 설치 테스트에 반영했습니다. Microsoft 설치 파일의 서명은 PowerShell 실행 정책을 바꾸지 않는 개별 명령으로 확인하며, 파일 경로를 코드와 분리해 전달합니다. 새 SDK의 관리자 승인·전체 설치는 여전히 별도 실환경 검증이 필요합니다.
+
+### 선택형 Rust 설치
+
+처음 설치에서 Rust 도우미를 선택적으로 설치할 수 있습니다. x86_64/aarch64 Windows와 macOS에서는 Rustup 설치 파일의 SHA-256을 확인합니다. Ubuntu/Debian은 `apt-get install rustc cargo`, Fedora는 `dnf install rust cargo`, Arch Linux는 `pacman -S rust`(Cargo 포함)를 사용하고 이미 설치된 Rust는 재사용합니다. Linux 패키지 버전이 오래되었거나 빌드에 실패하면 배포판 도구로 업데이트하거나 수동 안내를 따릅니다. Linux에서 Rustup으로 자동 전환하지 않습니다. 기본 선택은 Python이며 설치를 거절하거나 실패해도 Python 설치를 계속합니다. 다른 OS·아키텍처는 수동 설치 안내를 사용합니다. 실제 각 OS에서의 Rust 설치는 검증하지 않았습니다.
+
+### 선택적 Rust 도우미와 장시간 검증 안내
+
+라이브 정보 HTTP 조회와 256 KiB 이상 지원 연속성 보고서 요약에 선택적 Rust 도우미를 연결하고, 도우미가 없거나 보고서 형식을 지원하지 않을 때 Python으로 대체합니다. 녹화, Streamlink/FFmpeg, DoH와 조회 일정은 Python이 계속 담당합니다. 수동 Actions 검사에 Python/Rust 선택, Linux·Windows·macOS 실행, 장시간 녹화와 별도 분당 방송 상태 조회를 추가하고 Rust 빌드·테스트 로그 및 요약을 artifact로 저장하도록 안내합니다. 플랫폼별 실제 장시간 실행 결과는 각 Actions 실행 artifact에서 확인해야 합니다.
+
 ## 2026-11-11
 
 ### 저장 폴더 이름 공백 검증

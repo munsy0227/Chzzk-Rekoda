@@ -1,0 +1,35 @@
+{
+  "platform": "Linux-7.3.4-arch1-1-x86_64-with-glibc2.44",
+  "python": {
+    "backend": "python",
+    "returncode": 0,
+    "wall_seconds": 74.2327782049997,
+    "child_cpu_seconds": 17.693857,
+    "tests": 137,
+    "profiled_processes": 35,
+    "active_processes": 18,
+    "validation_calls": 949,
+    "validated_bytes": 32285444,
+    "validation_ms": 2.957956
+  },
+  "rust": {
+    "backend": "rust",
+    "returncode": 0,
+    "wall_seconds": 74.27060673600135,
+    "child_cpu_seconds": 17.761057,
+    "tests": 137,
+    "profiled_processes": 35,
+    "active_processes": 18,
+    "validation_calls": 944,
+    "validated_bytes": 31671114,
+    "validation_ms": 0.86043
+  },
+  "pyo3": "0.30.1",
+  "maturin": "1.16.0",
+  "streamlink": "8.6.2",
+  "source_commit": "797820e7e8d87ea598ef8064a3e9b5cdb62733aa",
+  "ffmpeg": "ffmpeg version n9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "cpu": "AMD Ryzen 5 5600X 6-Core Processor",
+  "python_version": "3.12.15",
+  "rust_version": "1.100.0"
+}

@@ -230,6 +230,21 @@ KDE Wayland에서 Fcitx 5를 사용하려면 **시스템 설정 → 가상 키�
 
 ---
 
+## 🦀 선택적 Rust 가속기
+
+처음 설치할 때 Rust 도우미 설치를 선택할 수 있습니다. x86_64/aarch64의 Windows와 macOS에서는 Rustup 설치 파일의 SHA-256을 확인해 도구 모음과 빌드 의존성을 설치하고 네이티브 실행 파일을 빌드합니다. Ubuntu/Debian은 `apt-get install rustc cargo`, Fedora는 `dnf install rust cargo`, Arch Linux는 `pacman -S rust`(Cargo 포함)로 설치하며, 이미 설치된 Rust는 재사용합니다. 관리자 권한, UAC 또는 macOS 명령행 도구 확인이 필요할 수 있습니다. 설치 메뉴에서 `1`은 Rust, `2`는 Python이며 기본값은 `2`입니다. 선택은 `native/.disabled`에 저장되며, 거절하거나 설치에 실패하면 Python으로 계속 설치됩니다. Linux 배포판의 Rust가 너무 오래되었거나 빌드에 실패하면 배포판 도구로 업데이트하거나 [수동 설치 안내](native/README.md)를 따르세요. 설치 프로그램은 Linux에서 Rustup으로 자동 전환하지 않습니다. 선택을 바꾸거나 다시 시도하려면 `uv run python scripts/install_rust.py --language ko`를 실행하세요. 성공하면 `native/bin`에 설치됩니다. Rust가 없어도 Python만으로 실행됩니다.
+
+위 자동 설치 대상이 아닌 OS나 아키텍처에서는 Rust를 자동 실행하지 않습니다. [native 사용 안내](native/README.md)의 수동 설치 절차를 따르세요. 수동 빌드 후에는 새 실행 파일을 `native/bin`에 덮어 복사한 다음 `native/.disabled`를 제거해야 기존 바이너리가 우선 선택되는 일을 막을 수 있습니다. 기존에 직접 빌드한 도우미는 `native/.disabled`가 없으면 자동 검색됩니다.
+
+Rust stable과 Cargo로 저장소 루트에서 빌드하고 검사할 수도 있습니다.
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+프로그램은 `native/target/release/chzzk-native` (Windows는 `chzzk-native.exe`) 또는 `native/bin`의 실행 파일을 찾습니다. 도우미가 시작되어 방송 상태 조회를 처리하면 로그에 `Rust에서 방송 상태를 조회합니다.`가 표시됩니다. 시작 시 도우미가 없으면 이 로그 없이 Python을 사용합니다. 시작 후 도우미가 사용할 수 없게 되면 `Rust 상태 조회를 사용할 수 없어 Python으로 전환합니다.` 로그가 표시되고 Python으로 전환합니다. DoH를 사용하도록 설정하면 라이브 상태 조회도 기존 Python 경로를 사용합니다. Rust는 라이브 정보 HTTP 조회와 256 KiB 이상 연속성 보고서의 지원되는 요약만 처리합니다. 폴링·인증·녹화와 Streamlink/FFmpeg는 Python이 계속 담당합니다. 보고서 요약은 도우미가 없거나 시간 초과·오류·미지원 데이터가 있으면 Python으로 대체합니다. 3xx 리디렉션은 Rust 도우미를 비활성화하고 Python의 기존 요청 경로로 처리하며, 일반 HTTP 4xx/5xx 또는 네트워크 오류는 같은 폴링에서 Python으로 재요청하지 않습니다. 수동 Actions 장시간 검사는 [native 사용 안내](native/README.md)를 참고하세요.
+
 <a id="faq"></a>
 
 ## ❓ 자주 묻는 질문 (FAQ)

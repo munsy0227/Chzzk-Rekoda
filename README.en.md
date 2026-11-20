@@ -228,6 +228,21 @@ If a black window is open and text is appearing, it is working normally.
 
 ---
 
+## 🦀 Optional Rust helper
+
+You can opt in to installing the Rust helper during the first installation. On x86_64/aarch64 Windows and macOS, the installer verifies the Rustup installer SHA-256, installs the toolchain and build dependencies, and builds the native binary. On Ubuntu/Debian it installs `rustc cargo` with `apt-get install`; Fedora uses `dnf install rust cargo`; Arch Linux uses `pacman -S rust` (which includes Cargo). Already installed Rust is reused. Administrator access, UAC, or confirmation for macOS Command Line Tools may be required. In the install menu, `1` selects Rust and `2` selects Python; the default is `2`. The choice is saved in `native/.disabled`; declining or failing installation continues with Python. If a Linux distribution's Rust is too old or the build fails, update it with the distribution tools or follow the [manual setup instructions](native/README.md); the installer does not automatically fall back to Rustup on Linux. To change the choice or retry, run `uv run python scripts/install_rust.py --language en`. On success, the binary is installed in `native/bin`.
+
+Rust is not automatically run on other operating systems or architectures. Follow the [manual setup instructions](native/README.md). After a manual build, copy the new binary over the one in `native/bin` before removing `native/.disabled`; otherwise the older published binary may be selected first. An existing manually built helper is still discovered when `native/.disabled` is absent.
+
+The helper is optional; the program runs with Python alone when it is absent. With stable Rust and Cargo, build and check it from the repository root:
+
+```bash
+cargo build --release --locked --manifest-path native/Cargo.toml
+cargo test --locked --manifest-path native/Cargo.toml
+```
+
+The program looks for `native/target/release/chzzk-native` (`chzzk-native.exe` on Windows) or a binary in `native/bin`. When the helper starts and handles broadcast-status lookups, the log says `Rust is checking broadcast status.` If it is missing at startup, Python is used without that message. If it becomes unavailable after starting, the log says `Rust status checking is unavailable; switching to Python.` and Python takes over. Enabling DoH also routes live-status lookups through the existing Python path. Rust handles only live-info HTTP lookups and supported continuity-report summaries for reports at least 256 KiB. Python continues to handle polling, authentication, recording, Streamlink/FFmpeg, and the DoH implementation. Report summaries fall back to Python when the helper is missing, times out, fails, or encounters unsupported data. A 3xx redirect disables the Rust helper and is handled by Python's existing request path; ordinary HTTP 4xx/5xx and network errors are not retried through Python in the same poll. See the [native helper guide](native/README.md) for the manual Actions soak test.
+
 <a id="faq"></a>
 
 ## FAQ

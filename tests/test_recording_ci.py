@@ -7,14 +7,14 @@ import os
 import shutil
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from i18n import SUPPORTED_LANGUAGES, TRANSLATIONS, translate
 from scripts import run_recording_test as runner
-
 
 FIXTURE = r'''
 import argparse, json, os, subprocess, sys, time
@@ -29,7 +29,8 @@ directory = args.continuity_report.parent
 if mode == 'startup-failure':
     raise SystemExit(7)
 args.config.parent.joinpath('log.log').write_text(
-    'Recording started for fixture\n' + ('ffmpeg failed for fixture\n' if mode == 'ffmpeg-error' else ''),
+    'Recording started for fixture\n' + os.environ.get('CI_FIXTURE_NATIVE_LOG', '')
+    + ('ffmpeg failed for fixture\n' if mode == 'ffmpeg-error' else ''),
     encoding='utf-8')
 if mode != 'no-output':
     directory.joinpath('녹화 segment.ts').write_bytes(b'' if mode == 'empty' else b'media')
@@ -63,7 +64,115 @@ raise SystemExit(0)
 '''
 
 
+class NativeWatchTests(unittest.TestCase):
+    def test_persistent_watch_counts_errors_successes_and_stops_promptly(self):
+        from native_backend import NativeRequestError
+
+        queried = threading.Event()
+
+        class Client:
+            available = True
+            calls = 0
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *_args):
+                self.available = False
+
+            async def live(self, _channel, headers):
+                self.calls += 1
+                self_outer.assertEqual(headers['Cookie'], 'NID_AUT=; NID_SES=')
+                if self.calls == 1:
+                    raise NativeRequestError('http', 429)
+                queried.set()
+                return {'content': {'status': 'OPEN'}}
+
+        self_outer = self
+        client = Client()
+        with tempfile.TemporaryDirectory() as temporary, \
+                patch('native_backend.NativeLiveClient', return_value=client):
+            path = Path(temporary) / 'native-watch-summary.json'
+            watcher = runner.NativeWatch('a' * 32, path, interval=0.005)
+            self.assertTrue(watcher.start())
+            self.assertTrue(queried.wait(2))
+            self.assertTrue(watcher.close())
+            result = json.loads(path.read_text())
+        self.assertEqual(result['http_errors'], 1)
+        self.assertGreaterEqual(result['successes'], 1)
+        self.assertFalse(watcher.thread.is_alive())
+        self.assertFalse(client.available)
+
+    def test_missing_crashed_and_fallback_helpers_cannot_pass(self):
+        for mode in ('missing', 'crashed', 'fallback'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as temporary:
+                class Client:
+                    test_mode = mode
+                    available = mode != 'missing'
+
+                    async def __aenter__(self):
+                        return self
+
+                    async def __aexit__(self, *_args):
+                        self.available = False
+
+                    async def live(self, *_args):
+                        if self.test_mode == 'crashed':
+                            raise OSError('sensitive dummy exception')
+
+                with patch('native_backend.NativeLiveClient', return_value=Client()):
+                    path = Path(temporary) / 'native-watch-summary.json'
+                    watcher = runner.NativeWatch('a' * 32, path, interval=0.001)
+                    watcher.start()
+                    watcher.thread.join(timeout=2)
+                    self.assertFalse(watcher.close())
+                    self.assertNotIn('sensitive', path.read_text())
+                    self.assertGreater(watcher.result['helper_failures'], 0)
+                    self.assertFalse(watcher.thread.is_alive())
+
+
 class RecordingCITests(unittest.TestCase):
+    def test_required_native_checks_recorder_activation_and_fallback(self):
+        active = translate('en', 'record.native_active') + '\n'
+        fallback = translate('en', 'record.native_fallback') + '\n'
+        for log, expected in (('', 1), (active, 0), (active + fallback, 1)):
+            with self.subTest(log=log), tempfile.TemporaryDirectory() as temporary:
+                project = Path(temporary)
+                (project / 'chzzk_record.py').write_text(FIXTURE, encoding='utf-8')
+                output = project / 'output'
+                config = runner.write_config(runner.DEFAULT_CHANNEL, output)
+                watcher = Mock()
+                watcher.start.return_value = True
+                watcher.close.return_value = True
+                watcher.thread.is_alive.return_value = True
+                with patch.object(runner, 'PROJECT_DIR', project), \
+                        patch.object(runner, 'NativeWatch', return_value=watcher), \
+                        patch.dict(os.environ, {'CI_FIXTURE_MODE': 'normal',
+                                                'CI_FIXTURE_NATIVE_LOG': log}), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    status = runner.monitor_recording(
+                        0.2, 180, output, config, poll_interval=0.02,
+                        require_native=True, native_channel=runner.DEFAULT_CHANNEL,
+                    )
+                self.assertEqual(status, expected)
+                watcher.close.assert_called_once_with()
+
+    def test_required_native_startup_failure_retains_failed_evidence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            watcher = Mock()
+            watcher.start.return_value = False
+            watcher.close.return_value = False
+            with patch.object(runner, 'NativeWatch', return_value=watcher), \
+                    patch.object(runner.subprocess, 'Popen') as popen, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(runner.TestFailure):
+                    runner.monitor_recording(1, 180, output, output / 'config.json',
+                                             require_native=True)
+            watcher.close.assert_called_once_with()
+            popen.assert_not_called()
+            self.assertFalse(json.loads((output / 'continuity-summary.json').read_text())['passed'])
+
     def test_channel_default_blank_custom_and_invalid_inputs(self):
         for value in ('', '  ', runner.DEFAULT_CHANNEL):
             self.assertEqual(runner.channel_id(value), runner.DEFAULT_CHANNEL)
@@ -174,7 +283,7 @@ class RecordingCITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
 
-            def fail_recording(_duration, _stall, directory, config):
+            def fail_recording(_duration, _stall, directory, config, **_kwargs):
                 config.parent.joinpath('log.log').write_text('failure evidence')
                 directory.joinpath('continuity-summary.json').write_text('{"passed":false}')
                 return 7

@@ -4,6 +4,38 @@
 
 日期采用韩国时间（Asia/Seoul），最新记录在前。每次提交在对应日期下新增一项。首次记录从本次 dev → main 合并涉及的变更开始。详细依据见 `.ai/worklogs/`。
 
+## 2026-11-21
+
+### 将 Rust 功能分支合并到 main
+
+已将可选 Rust 功能分支合并到 `main`。该功能分支的最新提交通过了 Linux、Windows 和 macOS 上的全部六项回归检查。验证范围见工作记录。
+
+## 2026-11-15
+
+### 隔离 Windows 签名检查的模块路径
+
+修复 PowerShell 7 通过 Python 启动 Windows PowerShell 时，继承不兼容模块路径导致签名检查命令无法加载的问题。仅在子进程中重建模块路径，并显式加载该 PowerShell 自带的安全模块。父进程环境、执行策略及签名和发布者验证条件保持不变；修复将通过实际 Windows CI 再次验证。
+
+### Windows 签名命令兼容性与安装专项检查
+
+签名验证使用兼容的 FilePath 参数并转义通配符。检查韩文、中文、日文、空格、方括号和引号路径，并在不安装产品依赖或构建 Rust 的情况下单独运行 Windows/macOS 安装检查。有效签名和 Microsoft 发布者要求保持不变。
+
+### 验证实际 Windows 安装文件的签名
+
+Windows CI 的签名测试改用与自动安装相同的 Microsoft 官方 Build Tools 引导程序。验证下载原件以及位于含中文、空格和引号路径中的副本，并检查是否拒绝未签名文件。不会运行安装程序。
+
+### Windows 构建工具检测兼容性
+
+按照 Windows 命令行引用规则处理 Visual Studio 路径中的空格，并让安装测试适应不同系统的路径表示。Microsoft 安装文件的签名使用单独的 PowerShell 命令验证，不更改执行策略，并将文件路径与代码分开传递。新 SDK 的管理员授权和完整安装仍需单独进行实机验证。
+
+### 可选安装 Rust
+
+首次安装时可以选择安装 Rust 辅助程序。在 x86_64/aarch64 架构的 Windows 和 macOS 上会通过 SHA-256 验证 Rustup 安装程序。Ubuntu/Debian 使用 `apt-get install rustc cargo`，Fedora 使用 `dnf install rust cargo`，Arch Linux 使用 `pacman -S rust`（包含 Cargo）；已安装的 Rust 会重复使用。若 Linux 软件包版本过旧或构建失败，请使用发行版工具更新或参阅手动说明；Linux 不会自动改用 Rustup。默认使用 Python；拒绝或安装失败时会继续使用 Python。其他操作系统和架构请使用手动安装说明。尚未在各操作系统上实际验证 Rust 安装。
+
+### 可选 Rust 辅助程序与长时间检查指南
+
+为直播信息 HTTP 查询和大小至少为 256 KiB 的受支持连续性报告摘要接入可选 Rust 辅助程序；辅助程序不可用或报告格式不受支持时回退到 Python。录制、Streamlink/FFmpeg、DoH 和轮询计划仍由 Python 负责。手动 Actions 检查说明了 Python/Rust 选择、Linux/Windows/macOS 运行环境、长时间录制及单独每分钟一次的直播状态查询；artifact 包含 Rust 构建/测试日志和摘要。各平台实际长时间运行结果请以对应 Actions 执行的 artifact 为准。
+
 ## 2026-11-11
 
 ### 检查保存文件夹名称首尾的空白
