@@ -2776,14 +2776,8 @@ async def record_stream(
                             encoding_args = build_h264_encoding_args(active_h264_settings, recording_format)
                             encoding_args.extend(metadata_args)
                         else:
+                            # MPEG-TS selects the Annex B filter for the copied codec.
                             encoding_args = ["-c", "copy", *metadata_args]
-                            if recording_format == "ts":
-                                encoding_args.extend(
-                                    [
-                                        "-bsf:v",
-                                        "h264_mp4toannexb",
-                                    ]
-                                )
 
                         encoding_args = add_video_filters(encoding_args, plan["filters"])
                         output_path = (

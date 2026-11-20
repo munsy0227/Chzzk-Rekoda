@@ -6,6 +6,10 @@ Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under 
 
 ## 2026-11-21
 
+### Fixed original HEVC recordings in TS
+
+FFmpeg now selects the proper bitstream filter for the incoming codec when saving the original stream to TS. H.264 and HEVC can be saved to single or split TS files without re-encoding. Seeking during TS recording was verified on both channels from issue #90.
+
 ### Merged the Rust feature branch into main
 
 Merged the optional Rust feature branch into `main`. All six Linux, Windows, and macOS regression jobs passed on the feature tip. See the worklog for the validation scope.

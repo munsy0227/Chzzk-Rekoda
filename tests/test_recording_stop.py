@@ -247,14 +247,25 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
     async def test_abandoned_pipe_drain_fails_even_when_media_is_intact(self):
         await self.record('pipe_timeout')
 
-    async def record(self, mode):
+    async def test_copy_hevc_fragment_to_ts(self):
+        encoders = subprocess.check_output(['ffmpeg', '-hide_banner', '-encoders'], timeout=10)
+        if b' libx265 ' not in encoders:
+            self.skipTest('FFmpeg with libx265 required')
+        await self.record('delivery', hevc_ts=True)
+
+    async def record(self, mode, *, hevc_ts=False):
+        output_format = 'ts' if hevc_ts else 'mkv'
+        video_args = ['-c:v', 'libx264', '-sc_threshold', '0']
+        if hevc_ts:
+            video_args = ['-c:v', 'libx265', '-x265-params',
+                          'scenecut=0:bframes=0:pools=1:log-level=error', '-tag:v', 'hvc1']
         with tempfile.TemporaryDirectory() as directory, CDN() as cdn:
             root = Path(directory)
             fixture = root / 'source.mp4'
             subprocess.run([
                 'ffmpeg', '-v', 'error', '-f', 'lavfi', '-i', 'testsrc2=size=160x90:rate=60',
                 '-f', 'lavfi', '-i', 'sine=sample_rate=48000', '-t', '16.666667',
-                '-c:v', 'libx264', '-preset', 'ultrafast', '-g', '250', '-sc_threshold', '0',
+                *video_args, '-preset', 'ultrafast', '-g', '250',
                 '-c:a', 'aac', '-movflags', 'frag_keyframe+empty_moov+default_base_moof', str(fixture)
             ], check=True, timeout=30)
             data = fixture.read_bytes()
@@ -327,7 +338,7 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
                 task = asyncio.create_task(recorder.record_stream(
                     dict(id='test', name='fixture', output_dir=directory, active='on'), {}, None,
                     0, 1, Path(shutil.which('ffmpeg')), 2, config['hevc_settings'],
-                    config['av1_settings'], 'mkv', 0, config['h264_settings'],
+                    config['av1_settings'], output_format, 0, config['h264_settings'],
                     config['quality_settings'], True))
                 try:
                     async with asyncio.timeout(10):
@@ -357,19 +368,20 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(summary['error_count'], int(mode == 'pipe_timeout'))
             self.assertFalse(Path(commands[0][commands[0].index('--chzzk-stop-file') + 1]).parent.exists())
             self.assertFalse(list(root.glob('.chzzk-buffer-*')))
-            outputs = list(root.glob('*.mkv'))
+            outputs = list(root.glob(f'*.{output_format}'))
             self.assertEqual(len(outputs), 1)
             prefix = root / 'prefix.mp4'
             prefix.write_bytes(expected)
             def probe(path):
                 return json.loads(subprocess.check_output([
                     'ffprobe', '-v', 'error', '-count_frames', '-show_streams', '-show_packets',
-                    '-show_entries', 'stream=codec_type,nb_read_frames:packet=codec_type,pts_time',
+                    '-show_entries', 'stream=codec_type,codec_name,nb_read_frames:packet=codec_type,pts_time',
                     '-of', 'json', str(path)], timeout=20))
             baseline, recorded = probe(prefix), probe(outputs[0])
             for kind in ('video', 'audio'):
                 before = next(s for s in baseline['streams'] if s['codec_type'] == kind)
                 after = next(s for s in recorded['streams'] if s['codec_type'] == kind)
+                self.assertEqual(after['codec_name'], before['codec_name'])
                 self.assertEqual(int(after['nb_read_frames']), int(before['nb_read_frames']))
                 pts = sorted(float(p['pts_time']) for p in recorded['packets']
                              if p['codec_type'] == kind and 'pts_time' in p)
@@ -379,7 +391,7 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(len(pts), len(set(pts)))
                 # AAC priming gives the fixture an initial video interval longer
                 # than 1/60s. Compare every timestamp with that actual input,
-                # allowing only Matroska's millisecond rounding and start offset.
+                # allowing container timestamp rounding and start offset.
                 for actual, original in zip(pts, source_pts):
                     self.assertLessEqual(abs((actual-pts[0])-(original-source_pts[0])), 0.002)
                 self.assertLessEqual(max(b-a for a,b in zip(pts,pts[1:])),
@@ -388,6 +400,7 @@ class RealStopTests(unittest.IsolatedAsyncioTestCase):
                                       if s['codec_type']=='video')['nb_read_frames']), 250)
             decoded = subprocess.run([
                 'ffmpeg', '-v', 'warning', '-xerror', '-i', str(outputs[0]), '-map', '0',
+                '-map_metadata:s', '-1',
                 '-fps_mode:v', 'passthrough', '-enc_time_base:v', '1:1000', '-f', 'null', '-'
             ], capture_output=True, timeout=20)
             self.assertEqual(decoded.returncode, 0, decoded.stderr.decode())
