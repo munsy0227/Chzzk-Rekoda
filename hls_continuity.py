@@ -98,7 +98,7 @@ def failure_category(error):
 
 def quality_from_url(url):
     for part in urlparse(url).path.split("/"):
-        if re.fullmatch(r"\d+p(?:\d+)?", part):
+        if re.fullmatch(r"\d+p(?:\d+)?(?:-hevc)?", part):
             return part
     return None
 
