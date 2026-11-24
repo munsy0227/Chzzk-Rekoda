@@ -4,6 +4,12 @@
 
 Dates use Korea time (Asia/Seoul), newest first. Add one entry per commit under its date. This history starts with the changes included in the current dev → main merge. Detailed evidence is in `.ai/worklogs/`.
 
+## 2026-11-24
+
+### Fixed missing history playlists when recording the previous hour
+
+History playlist URLs from the CHZZK API now decode correctly when their Base64 values contain an unescaped `+`. Previously, the history playlist for the affected quality could be skipped, causing the recording to start at the live edge with the previous-hour option enabled. The regression test and all six GitHub Actions jobs for PR #93 passed.
+
 ## 2026-11-21
 
 ### Fixed original HEVC recordings in TS

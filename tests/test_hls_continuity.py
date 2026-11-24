@@ -1479,12 +1479,14 @@ class SettingsAndProtocolTests(unittest.TestCase):
 
     def test_api_cdn_extraction_requires_advertised_http_url(self):
         import base64
-        encoded = base64.b64encode(b"https://cdn.example/master.m3u8").decode()
+        # A raw "+" in the base64 value, as the API sends it.
+        encoded = base64.b64encode(b"https://cdn.example/master.m3u8?a=~>").decode()
+        self.assertIn("+", encoded)
         paths = source_paths([dict(mediaId="HLS", protocol="HLS", path="https://cdn.example/live",
                                    encodingTrack=[dict(p2pPath="https://p2p.example/?cdn_url=" + encoded)])])
         self.assertEqual([(p.url, p.history) for p in paths],
                          [("https://cdn.example/live", False),
-                          ("https://cdn.example/master.m3u8", True)])
+                          ("https://cdn.example/master.m3u8?a=~>", True)])
 
     def test_korean_llhls_stays_primary_with_additional_akamai_probe(self):
         paths = source_paths([
