@@ -106,6 +106,8 @@ def source_paths(media):
             if not isinstance(p2p_path, str):
                 continue
             for encoded in parse_qs(urlparse(p2p_path).query).get("cdn_url", []):
+                # The API leaves base64 "+" unescaped; parse_qs turns it into a space.
+                encoded = encoded.replace(" ", "+")
                 try:
                     url = base64.b64decode(encoded + "=" * (-len(encoded) % 4)).decode("utf-8")
                     parsed = urlparse(url)
